@@ -1,28 +1,35 @@
-# QuantTrader Pro V3.8 需求规格说明书
+# QuantTrader Pro V3.9 需求规格说明书
 
 ## 1. 项目概述
-QuantTrader Pro 是一款面向 XAUUSD 及主流外汇品种的 MT4 全自动量化交易系统。V3.8 为“低压加仓优化版”，以网格加仓为核心，强调单边独立止盈、低压手数递进、动态间距扩张和可视化操作面板。
+QuantTrader Pro 是一款面向 XAUUSD 及主流外汇品种的 MT4 全自动量化交易系统。V3.9 引入 ATR 动态波动率适配，使网格间距随市场波动自动伸缩，同时保留单边独立止盈、低压手数递进、动态间距扩张与可视化操作面板。
 
 目标：在保持顺势收割效率的同时，降低单边压力，提供可控的风险边界与更细致的人工干预能力。
 
 ## 2. 版本功能要点
 
-### 2.1 V3.8 低压加仓优化
+### 2.1 V3.9 ATR 动态波动率适配 (Volatility Adaptive)
+- **动态网格**：废除固定点数间距，使用 ATR 动态计算补仓距离。
+- **两种模式**：
+  - **直接模式**：`GridDist = InpATRMultiplier * ATR(Period)`
+  - **缩放模式**：`GridDist = BaseDist * (CurrentATR / InpBaseATRPoints)`
+- **层级保持**：后续层仍沿用 `GridDistLayer2 / GridMinDist` 的间距比例。
+
+### 2.2 V3.8 低压加仓优化
 - **多模式加仓**：指数、斐波那契、线性三种模式可选。
 - **衰减机制**：达到指定层数后使用衰减倍率，避免手数指数爆炸。
 - **单笔封顶**：单笔最大手数限制。
 - **动态扩距**：第 4 层起每加一层，补仓间距 +20%。
 - **单边独立止盈**：按多/空总手数与目标点数换算的金额进行分开止盈。
 
-### 2.2 V3.7 面板交互增强
+### 2.3 V3.7 面板交互增强
 - 交易状态与数据可视化面板。
 - 按钮式多空开关、全平、暂停/恢复。
 
-### 2.3 V3.6 机构级功能
+### 2.4 V3.6 机构级功能
 - **双向启动**：可自动补齐多/空首单。
 - **保本/锁盈**：达到指定盈利点数后自动推移止损。
 
-### 2.4 V3.5 首尾对冲减仓
+### 2.5 V3.5 首尾对冲减仓
 - 当同侧订单层数达到阈值，若最早单 + 最新单合计盈利达标，则同时平仓减压。
 
 ## 3. 交易逻辑说明
@@ -42,7 +49,11 @@ QuantTrader Pro 是一款面向 XAUUSD 及主流外汇品种的 MT4 全自动量
 - 任一方向浮盈达到目标则只平该方向持仓。
 
 ### 3.3 加仓触发与间距
-- 首层与后续层使用不同的基础间距：`GridMinDist`、`GridDistLayer2`。
+- 基础间距采用 ATR 动态计算，并保留首层/后续层的间距比例：
+  - 直接模式：`GridDist = InpATRMultiplier * ATR(Period)`
+  - 缩放模式：`GridDist = BaseDist * (CurrentATR / InpBaseATRPoints)`
+- 后续层按 `GridDistLayer2 / GridMinDist` 比例放大。
+- ATR 计算周期由 `InpATRTF` 与 `InpATRPeriod` 决定。
 - 启用动态扩距后，层数 >= 4 时每层间距扩大 20%。
 
 ### 3.4 低压手数算法
@@ -66,6 +77,12 @@ QuantTrader Pro 是一款面向 XAUUSD 及主流外汇品种的 MT4 全自动量
 
 | 分组 | 参数名 | 默认值 | 说明 |
 | :--- | :--- | :--- | :--- |
+| **V3.9 ATR 动态适配** | `InpUseATRGrid` | true | 是否启用 ATR 动态网格。 |
+| | `InpATRMode` | `ATR_DIRECT` | 动态模式：直接/缩放。 |
+| | `InpATRTF` | `PERIOD_CURRENT` | ATR 计算周期。 |
+| | `InpATRPeriod` | 14 | ATR 周期。 |
+| | `InpATRMultiplier` | 0.5 | 直接模式倍率。 |
+| | `InpBaseATRPoints` | 1000 | 缩放模式基准 ATR 点数。 |
 | **V3.8 低压加仓设置** | `InpMartinMode` | `MODE_FIBONACCI` | 加仓模式：指数/斐波那契/线性。 |
 | | `InpMaxSingleLot` | 0.50 | 单笔最大手数。 |
 | | `InpDecayStep` | 6 | 从第几层开始衰减倍率（指数模式）。 |
@@ -86,8 +103,8 @@ QuantTrader Pro 是一款面向 XAUUSD 及主流外汇品种的 MT4 全自动量
 | | `InpMagicNum` | 999008 | 魔术号。 |
 | | `InpInitialLots` | 0.01 | 初始手数。 |
 | | `MartinMulti` | 1.5 | 指数模式默认倍率。 |
-| | `GridMinDist` | 100 | 首次补仓间距（点）。 |
-| | `GridDistLayer2` | 300 | 后续补仓间距（点）。 |
+| | `GridMinDist` | 100 | 首次补仓基准间距（点），用于 ATR 缩放与层级比例。 |
+| | `GridDistLayer2` | 300 | 后续补仓基准间距（点），用于层级比例。 |
 
 ## 5. UI 交互设计 (Dashboard)
 面板风格：深色战术仪表盘风格，左侧主题色竖条 + 顶部标题栏，数值采用等宽字体强调精度。

@@ -1,13 +1,13 @@
 //+------------------------------------------------------------------+
-//|                                      QuantTrader_Pro_V3_8.mq4    |
+//|                                      QuantTrader_Pro_V3_9.mq4    |
 //|                                  Copyright 2026, Antigravity AI  |
 //|                                             https://www.mql5.com |
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, Antigravity AI"
 #property link      "https://www.mql5.com"
-#property version   "3.80"
+#property version   "3.90"
 #property strict
-#property description "全自动多策略量化交易系统 V3.8 [低压加仓优化版]"
+#property description "全自动多策略量化交易系统 V3.9 [ATR动态波动率适配]"
 
 //--- 枚举定义
 enum ENUM_MARTIN_MODE {
@@ -15,10 +15,22 @@ enum ENUM_MARTIN_MODE {
    MODE_FIBONACCI,   // 斐波那契 (0.01, 0.01, 0.02, 0.03, 0.05...)
    MODE_LINEAR       // 线性递增 (0.01, 0.02, 0.03, 0.04...)
 };
+enum ENUM_ATR_GRID_MODE {
+   ATR_DIRECT, // 直接模式：倍率 * ATR
+   ATR_SCALE   // 缩放模式：BaseDist * (ATR / BaseATR)
+};
 
 //====================================================================
 //                       参数输入模块 (Parameters)
 //====================================================================
+input group "=== V3.9 ATR 动态波动率适配 ==="
+input bool     InpUseATRGrid   = true;           // 是否启用 ATR 动态网格
+input ENUM_ATR_GRID_MODE InpATRMode = ATR_DIRECT;// 动态模式
+input ENUM_TIMEFRAMES InpATRTF = PERIOD_CURRENT; // ATR 计算周期
+input int      InpATRPeriod    = 14;             // ATR 周期
+input double   InpATRMultiplier = 0.5;           // 直接模式倍率
+input double   InpBaseATRPoints = 1000;          // 缩放模式基准 ATR 点数
+
 input group "=== V3.8 低压加仓设置 ==="
 input ENUM_MARTIN_MODE InpMartinMode = MODE_FIBONACCI; // [核心] 加仓模式
 input double   InpMaxSingleLot   = 0.50;           // 单笔订单封顶手数
@@ -144,6 +156,37 @@ double GetSecondLastLot(int side) {
 }
 
 //====================================================================
+//                       V3.9 ATR 动态网格
+//====================================================================
+
+double GetATRPoints() {
+   double atr = iATR(_Symbol, InpATRTF, InpATRPeriod, 0);
+   if(atr <= 0) return 0;
+   return atr / _Point;
+}
+
+double GetGridDistance(int orderCount) {
+   double baseDist = (orderCount == 1) ? GridMinDist : GridDistLayer2;
+   if(InpUseATRGrid) {
+      double atrPoints = GetATRPoints();
+      if(atrPoints > 0) {
+         if(InpATRMode == ATR_DIRECT) {
+            baseDist = atrPoints * InpATRMultiplier;
+            if(orderCount > 1 && GridMinDist > 0)
+               baseDist *= ((double)GridDistLayer2 / GridMinDist);
+         } else {
+            double baseAtr = (InpBaseATRPoints > 0 ? InpBaseATRPoints : atrPoints);
+            baseDist = baseDist * (atrPoints / baseAtr);
+         }
+      }
+   }
+   if(InpGridExpansion && orderCount >= 4)
+      baseDist = baseDist * (1 + (orderCount-4)*0.2);
+   if(baseDist < 1) baseDist = 1;
+   return baseDist;
+}
+
+//====================================================================
 //                       重构后的马丁逻辑
 //====================================================================
 
@@ -160,24 +203,19 @@ void RunMartingaleLogic() {
    // 2. 加仓检查
    int bCnt = CountOrders(OP_BUY);
    if(g_AllowLong && (bCnt > 0)) {
-      int dist = (bCnt == 1) ? GridMinDist : GridDistLayer2;
-      // [V3.8] 动态扩张：每深一层加 20% 间距
-      if(InpGridExpansion && bCnt >= 4) dist = (int)(dist * (1 + (bCnt-4)*0.2));
-      
+      double dist = GetGridDistance(bCnt);
       if(Bid <= GetLastPrice(OP_BUY) - dist * _Point) {
          if(InpSingleSideMaxLoss == 0 || bProf >= -InpSingleSideMaxLoss)
-            SafeOrderSend(OP_BUY, CalculateNextLot(OP_BUY), "Add_V3.8");
+            SafeOrderSend(OP_BUY, CalculateNextLot(OP_BUY), "Add_V3.9");
       }
    }
 
    int sCnt = CountOrders(OP_SELL);
    if(g_AllowShort && (sCnt > 0)) {
-      int dist = (sCnt == 1) ? GridMinDist : GridDistLayer2;
-      if(InpGridExpansion && sCnt >= 4) dist = (int)(dist * (1 + (sCnt-4)*0.2));
-      
+      double dist = GetGridDistance(sCnt);
       if(Ask >= GetLastPrice(OP_SELL) + dist * _Point) {
          if(InpSingleSideMaxLoss == 0 || sProf >= -InpSingleSideMaxLoss)
-            SafeOrderSend(OP_SELL, CalculateNextLot(OP_SELL), "Add_V3.8");
+            SafeOrderSend(OP_SELL, CalculateNextLot(OP_SELL), "Add_V3.9");
       }
    }
 }
@@ -225,7 +263,7 @@ void CheckDestocking(int side) {
 }
 
 //====================================================================
-//                       UI 系统 (V3.8 展示增强)
+//                       UI 系统 (V3.9 展示增强)
 //====================================================================
 
 void OnChartEvent(const int id, const long& l, const double& d, const string& s) {
@@ -248,7 +286,7 @@ void DrawDashboard() {
    CreateRect("Accent", x, y, 4, h, UI_ThemeColor);
    CreateRect("Header", x+4, y, w-4, headerH, g_ColorHeader);
    CreateLabel("T_Title", "QuantTrader Pro", x+pad+2, y+9, g_ColorText, 10, "微软雅黑");
-   CreateLabel("T_Ver", "V3.8", x+w-46, y+9, g_ColorMuted, 9, "Consolas");
+   CreateLabel("T_Ver", "V3.9", x+w-46, y+9, g_ColorMuted, 9, "Consolas");
 
    CreateLabel("T_Status", "策略状态", x+pad, cy, g_ColorMuted, 8, "微软雅黑");
    cy+=18;
