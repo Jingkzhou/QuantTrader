@@ -58,6 +58,15 @@ string   g_ObjPrefix="QT38_";
 datetime g_LastCloseTime=0;
 double   g_PipValue=1.0;
 string   g_LastHedgeInfo="";
+color    g_ColorPanel = C'26,29,33';
+color    g_ColorHeader = C'20,23,27';
+color    g_ColorLine = C'55,60,66';
+color    g_ColorText = C'230,232,235';
+color    g_ColorMuted = C'150,160,170';
+color    g_ColorInk = C'15,17,19';
+color    g_ColorGood = C'90,205,135';
+color    g_ColorBad = C'230,90,75';
+color    g_ColorButton = C'70,75,80';
 
 //+------------------------------------------------------------------+
 //| 初始化                                                           |
@@ -230,58 +239,77 @@ void OnChartEvent(const int id, const long& l, const double& d, const string& s)
 }
 
 void DrawDashboard() {
-   int x=UI_X_Offset, y=UI_Y_Offset, w=300;
-   CreateRect("Bg", x, y, w, 400, C'30,30,30', UI_ThemeColor);
-   CreateLabel("L_BuyState", "可以多", x+20, y+15, clrLime, 10, "微软雅黑");
-   CreateLabel("L_SellState", "可以空", x+w-70, y+15, clrLime, 10, "微软雅黑");
-   
-   y+=45; CreateRect("Line1", x+10, y, w-20, 1, clrSilver);
-   CreateLabel("T_Profit", "【V3.8 低压版统计】", x+w/2-55, y-10, clrGold, 9, "微软雅黑");
-   
-   y+=25; CreateLabel("T_Mode", "加仓模式:", x+20, y, clrWhite, 9);
+   int x=UI_X_Offset, y=UI_Y_Offset;
+   int w=320, h=390, headerH=34, pad=12;
+   int cy=y+headerH+10;
    string modeS = (InpMartinMode==MODE_FIBONACCI?"斐波那契":(InpMartinMode==MODE_LINEAR?"线性递增":"指数衰减"));
-   CreateLabel("V_Mode", modeS, x+120, y, clrCyan, 9);
 
-   y+=25; CreateLabel("T_Today", "今日获利:", x+20, y, clrWhite, 9);
-   CreateLabel("V_TodayM", "0.00 USD", x+120, y, clrLime, 9);
-   CreateLabel("V_TodayP", "0.00%", x+w-70, y, clrLime, 9);
-   
-   y+=25; CreateLabel("V_Target", "多头目标: 0.00 | 空头目标: 0.00", x+20, y, clrSilver, 8);
+   CreateRect("Bg", x, y, w, h, g_ColorPanel, UI_ThemeColor);
+   CreateRect("Accent", x, y, 4, h, UI_ThemeColor);
+   CreateRect("Header", x+4, y, w-4, headerH, g_ColorHeader);
+   CreateLabel("T_Title", "QuantTrader Pro", x+pad+2, y+9, g_ColorText, 10, "微软雅黑");
+   CreateLabel("T_Ver", "V3.8", x+w-46, y+9, g_ColorMuted, 9, "Consolas");
 
-   y+=30; CreateRect("Line2", x+10, y, w-20, 1, clrSilver);
-   y+=15; CreateLabel("T_Bal", "账户余额:", x+20, y, clrWhite, 9);
-   CreateLabel("V_Bal", "0.00 USD", x+120, y, clrWhite, 9);
-   
-   y+=25; CreateLabel("T_Used", "已用预付款:", x+20, y, clrWhite, 9); // 找回已用预付款
-   CreateLabel("V_Used", "0.00 USD", x+120, y, clrSilver, 9);
+   CreateLabel("T_Status", "策略状态", x+pad, cy, g_ColorMuted, 8, "微软雅黑");
+   cy+=18;
+   CreateRect("Chip_Buy", x+pad, cy, 68, 18, g_ColorGood);
+   CreateLabel("L_BuyState", "多头 ON", x+pad+8, cy+3, g_ColorInk, 8, "微软雅黑");
+   CreateRect("Chip_Sell", x+pad+76, cy, 68, 18, g_ColorGood);
+   CreateLabel("L_SellState", "空头 ON", x+pad+84, cy+3, g_ColorInk, 8, "微软雅黑");
+   CreateLabel("T_Mode", "模式:", x+w-110, cy+3, g_ColorMuted, 8, "微软雅黑");
+   CreateLabel("V_Mode", modeS, x+w-64, cy+3, UI_ThemeColor, 8, "微软雅黑");
 
-   y+=25; CreateLabel("T_Margin", "预付款比例:", x+20, y, clrWhite, 9);
-   CreateLabel("V_Margin", "0.00%", x+w/2, y, clrCyan, 10, "Arial Bold");
-   
-   y+=40; CreateButton("Btn_Buy", "多头开关", x+15, y, 85, 25, UI_ThemeColor);
-   CreateButton("Btn_Sell", "空头开关", x+w/2-42, y, 85, 25, UI_ThemeColor);
-   CreateButton("Btn_CloseAll", "全平清仓", x+w-95, y, 80, 25, clrRed);
-   y+=35; CreateButton("Btn_Pause", "系统全线启停", x+15, y, w-30, 25, clrGray);
+   cy+=26; CreateRect("Line1", x+pad, cy, w-2*pad, 1, g_ColorLine);
+   cy+=10; CreateLabel("T_Profit", "收益表现", x+pad, cy, g_ColorMuted, 8, "微软雅黑");
+   cy+=18; CreateLabel("T_Today", "今日获利", x+pad, cy, g_ColorText, 9, "微软雅黑");
+   CreateLabel("V_TodayM", "0.00 USD", x+pad+70, cy, g_ColorGood, 9, "Consolas");
+   CreateLabel("V_TodayP", "0.00%", x+w-58, cy, g_ColorGood, 9, "Consolas");
+   cy+=20; CreateLabel("V_Target", "多头目标: 0.00 | 空头目标: 0.00", x+pad, cy, g_ColorMuted, 8, "微软雅黑");
+
+   cy+=24; CreateRect("Line2", x+pad, cy, w-2*pad, 1, g_ColorLine);
+   cy+=10; CreateLabel("T_Account", "账户数据", x+pad, cy, g_ColorMuted, 8, "微软雅黑");
+   cy+=18; CreateLabel("T_Bal", "余额", x+pad, cy, g_ColorText, 9, "微软雅黑");
+   CreateLabel("V_Bal", "0.00 USD", x+pad+70, cy, g_ColorText, 9, "Consolas");
+   cy+=20; CreateLabel("T_Used", "已用保证金", x+pad, cy, g_ColorMuted, 9, "微软雅黑");
+   CreateLabel("V_Used", "0.00 USD", x+pad+70, cy, g_ColorMuted, 9, "Consolas");
+   cy+=20; CreateLabel("T_Margin", "保证金率", x+pad, cy, g_ColorText, 9, "微软雅黑");
+   CreateLabel("V_Margin", "0.00%", x+pad+70, cy, UI_ThemeColor, 10, "Consolas");
+
+   cy+=24; CreateRect("Line3", x+pad, cy, w-2*pad, 1, g_ColorLine);
+   cy+=10; CreateLabel("T_Control", "手动控制", x+pad, cy, g_ColorMuted, 8, "微软雅黑");
+   cy+=18; CreateButton("Btn_Buy", "多头开关", x+pad, cy, 90, 24, UI_ThemeColor);
+   CreateButton("Btn_Sell", "空头开关", x+pad+98, cy, 90, 24, UI_ThemeColor);
+   CreateButton("Btn_CloseAll", "全平清仓", x+pad+196, cy, 90, 24, g_ColorBad);
+   cy+=30; CreateButton("Btn_Pause", "系统运行中", x+pad, cy, w-2*pad, 26, g_ColorButton);
 }
 
 void UpdateDashboard() {
    double bal = AccountBalance();
    datetime todayS = iTime(_Symbol, PERIOD_D1, 0);
    double pToday = GetHistoryProfit(todayS, TimeCurrent()+3600);
+   double margin = AccountMargin();
+   color todayColor = (pToday >= 0 ? g_ColorGood : g_ColorBad);
    
    SetLabelText("V_TodayM", StringFormat("%.2f USD", pToday));
    SetLabelText("V_TodayP", StringFormat("%.2f%%", (bal>0?pToday/bal*100:0)));
+   SetObjectColor("V_TodayM", todayColor);
+   SetObjectColor("V_TodayP", todayColor);
    SetLabelText("V_Bal", StringFormat("%.2f USD", bal));
-   SetLabelText("V_Used", StringFormat("%.2f USD", AccountMargin())); // 实时更新已用预付款
-   if(AccountMargin()>0) SetLabelText("V_Margin", StringFormat("%.2f%%", AccountEquity()/AccountMargin()*100));
+   SetLabelText("V_Used", StringFormat("%.2f USD", margin)); // 实时更新已用保证金
+   if(margin>0) SetLabelText("V_Margin", StringFormat("%.2f%%", AccountEquity()/margin*100));
+   else SetLabelText("V_Margin", "0.00%");
    
    double bLots=GetTotalLots(OP_BUY), sLots=GetTotalLots(OP_SELL);
    SetLabelText("V_Target", StringFormat("多头目标: %.2f | 空头目标: %.2f", bLots*InpTargetPips*g_PipValue, sLots*InpTargetPips*g_PipValue));
 
-   SetLabelText("L_BuyState", g_AllowLong?"可以多":"禁多"); SetObjectColor("L_BuyState", g_AllowLong?clrLime:clrRed);
-   SetLabelText("L_SellState", g_AllowShort?"可以空":"禁空"); SetObjectColor("L_SellState", g_AllowShort?clrLime:clrRed);
-   SetLabelText("Btn_Pause", g_IsTradingAllowed?"系统正在运行 [点击暂停]":"系统已经停机 [点击恢复]");
-   SetBtnColor("Btn_Pause", g_IsTradingAllowed?clrGray:clrRed);
+   SetLabelText("L_BuyState", g_AllowLong?"多头 ON":"多头 OFF");
+   SetObjectColor("L_BuyState", g_AllowLong?g_ColorInk:g_ColorText);
+   SetRectBg("Chip_Buy", g_AllowLong?g_ColorGood:g_ColorBad);
+   SetLabelText("L_SellState", g_AllowShort?"空头 ON":"空头 OFF");
+   SetObjectColor("L_SellState", g_AllowShort?g_ColorInk:g_ColorText);
+   SetRectBg("Chip_Sell", g_AllowShort?g_ColorGood:g_ColorBad);
+   SetLabelText("Btn_Pause", g_IsTradingAllowed?"系统运行中 · 点击暂停":"系统已暂停 · 点击恢复");
+   SetBtnColor("Btn_Pause", g_IsTradingAllowed?g_ColorButton:g_ColorBad);
 }
 
 // 辅助底层函数
@@ -310,8 +338,9 @@ double GetFloatingPL(int t){double p=0;for(int i=0;i<OrdersTotal();i++)if(OrderS
 double GetLastPrice(int t){double p=0;datetime d=0;for(int i=0;i<OrdersTotal();i++)if(OrderSelect(i,SELECT_BY_POS)&&OrderMagicNumber()==InpMagicNum&&OrderType()==t)if(OrderOpenTime()>d){d=OrderOpenTime();p=OrderOpenPrice();}return p;}
 double GetLastLot(int t){double l=InpInitialLots;datetime d=0;for(int i=0;i<OrdersTotal();i++)if(OrderSelect(i,SELECT_BY_POS)&&OrderMagicNumber()==InpMagicNum&&OrderType()==t)if(OrderOpenTime()>d){d=OrderOpenTime();l=OrderLots();}return l;}
 void CreateRect(string n,int x,int y,int w,int h,color bg,color border=CLR_NONE) { string name=g_ObjPrefix+n; if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_RECTANGLE_LABEL,0,0,0); ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x); ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y); ObjectSetInteger(0,name,OBJPROP_XSIZE,w); ObjectSetInteger(0,name,OBJPROP_YSIZE,h); ObjectSetInteger(0,name,OBJPROP_BGCOLOR,bg); ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,border);ObjectSetInteger(0,name,OBJPROP_BACK,true); }
-void CreateLabel(string n,string t,int x,int y,color c,int s=9,string f="Arial") { string name=g_ObjPrefix+n; if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0); ObjectSetString(0,name,OBJPROP_TEXT,t); ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x); ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y); ObjectSetInteger(0,name,OBJPROP_COLOR,c); ObjectSetInteger(0,name,OBJPROP_FONTSIZE,s); ObjectSetString(0,name,OBJPROP_FONT,f);}
-void CreateButton(string n,string t,int x,int y,int w,int h,color bg) { string name=g_ObjPrefix+n; if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0); ObjectSetString(0,name,OBJPROP_TEXT,t); ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x); ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y); ObjectSetInteger(0,name,OBJPROP_XSIZE,w); ObjectSetInteger(0,name,OBJPROP_YSIZE,h); ObjectSetInteger(0,name,OBJPROP_BGCOLOR,bg); ObjectSetInteger(0,name,OBJPROP_COLOR,clrWhite); ObjectSetInteger(0,name,OBJPROP_FONTSIZE,8); }
+void CreateLabel(string n,string t,int x,int y,color c,int s=9,string f="微软雅黑") { string name=g_ObjPrefix+n; if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0); ObjectSetString(0,name,OBJPROP_TEXT,t); ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x); ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y); ObjectSetInteger(0,name,OBJPROP_COLOR,c); ObjectSetInteger(0,name,OBJPROP_FONTSIZE,s); ObjectSetString(0,name,OBJPROP_FONT,f);}
+void CreateButton(string n,string t,int x,int y,int w,int h,color bg) { string name=g_ObjPrefix+n; if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0); ObjectSetString(0,name,OBJPROP_TEXT,t); ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x); ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y); ObjectSetInteger(0,name,OBJPROP_XSIZE,w); ObjectSetInteger(0,name,OBJPROP_YSIZE,h); ObjectSetInteger(0,name,OBJPROP_BGCOLOR,bg); ObjectSetInteger(0,name,OBJPROP_COLOR,g_ColorText); ObjectSetInteger(0,name,OBJPROP_FONTSIZE,8); ObjectSetString(0,name,OBJPROP_FONT,"微软雅黑"); }
 void SetLabelText(string n,string t) { if(ObjectFind(0,g_ObjPrefix+n)>=0) ObjectSetString(0,g_ObjPrefix+n,OBJPROP_TEXT,t); }
 void SetObjectColor(string n,color c) { if(ObjectFind(0,g_ObjPrefix+n)>=0) ObjectSetInteger(0,g_ObjPrefix+n,OBJPROP_COLOR,c); }
 void SetBtnColor(string n,color c) { if(ObjectFind(0,g_ObjPrefix+n)>=0) ObjectSetInteger(0,g_ObjPrefix+n,OBJPROP_BGCOLOR,c); }
+void SetRectBg(string n,color c) { if(ObjectFind(0,g_ObjPrefix+n)>=0) ObjectSetInteger(0,g_ObjPrefix+n,OBJPROP_BGCOLOR,c); }
