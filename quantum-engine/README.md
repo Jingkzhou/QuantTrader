@@ -33,6 +33,12 @@ cd quantum-engine
 docker-compose up -d
 ```
 
+### 一键启动
+```bash
+cd quantum-engine
+./deploy/scripts/start_all.sh
+```
+
 ### 运行 Rust 执行层
 ```bash
 cd core_engine
