@@ -53,8 +53,8 @@ QuantTrader Pro 是一款面向 XAUUSD 及主流外汇品种的 MT4 全自动量
 - 触发后保持停机，需人工重新启动策略。
 
 ### 3.3 单日风控 (Daily Loss Limit)
-- 计算公式：`当日已实现亏损(仅负值) + 当前浮亏(仅负值)`。
-- 达到 `余额 × InpDailyLossPct` 时，强制全平并当日停机，次日自动解除。
+- 计算公式：`当日已实现盈亏 + 当前浮动盈亏`（净值日内变化）。
+- 当净值下降达到 `余额 × InpDailyLossPct` 时，强制全平并当日停机，次日自动解除。
 
 ### 3.4 技术性断裂 (Technical Breakdown)
 - 单边层数达到 `InpMaxLayerPerSide` 或单边浮亏点数 >= `InpMaxAdversePoints` 时，强制平掉该方向所有持仓。
@@ -100,7 +100,7 @@ QuantTrader Pro 是一款面向 XAUUSD 及主流外汇品种的 MT4 全自动量
 | | `InpMaxAdversePoints` | 2000 | 单边最大浮亏点数。 |
 | **V3.9 ATR 动态适配** | `InpUseATRGrid` | true | 是否启用 ATR 动态网格。 |
 | | `InpATRMode` | `ATR_DIRECT` | 动态模式：直接/缩放。 |
-| | `InpATRTF` | `PERIOD_CURRENT` | ATR 计算周期。 |
+| | `InpATRTF` | `PERIOD_H1` | ATR 计算周期。 |
 | | `InpATRPeriod` | 14 | ATR 周期。 |
 | | `InpATRMultiplier` | 0.5 | 直接模式倍率。 |
 | | `InpBaseATRPoints` | 1000 | 缩放模式基准 ATR 点数。 |

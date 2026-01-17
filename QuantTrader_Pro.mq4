@@ -32,7 +32,7 @@ input int      InpMaxAdversePoints = 2000;       // 单边最大浮亏点数
 input group "=== V3.9 ATR 动态波动率适配 ==="
 input bool     InpUseATRGrid   = true;           // 是否启用 ATR 动态网格
 input ENUM_ATR_GRID_MODE InpATRMode = ATR_DIRECT;// 动态模式
-input ENUM_TIMEFRAMES InpATRTF = PERIOD_CURRENT; // ATR 计算周期
+input ENUM_TIMEFRAMES InpATRTF = PERIOD_H1;      // ATR 计算周期
 input int      InpATRPeriod    = 14;             // ATR 周期
 input double   InpATRMultiplier = 0.5;           // 直接模式倍率
 input double   InpBaseATRPoints = 1000;          // 缩放模式基准 ATR 点数
@@ -408,55 +408,96 @@ void ClosePositions(int m) {
    g_LastCloseTime=TimeCurrent();
 }
 void CloseAll() { ClosePositions(6); }
+//+------------------------------------------------------------------+
+//| 全局风控检查器 (修正版)                                             |
+//+------------------------------------------------------------------+
 bool GlobalRiskCheck() {
+   // 1. 日期检测与重置
    datetime today = iTime(_Symbol, PERIOD_D1, 0);
-   if(g_DailyStopDay != today) { g_DailyStopDay = today; g_DailyStopTriggered = false; }
+   if(g_DailyStopDay != today) { 
+      g_DailyStopDay = today; 
+      g_DailyStopTriggered = false; 
+   }
 
    double bal = AccountBalance();
    double eq = AccountEquity();
 
+   // ---------------------------------------------------------
+   // [一级熔断] 净值硬止损 (Circuit Breaker)
+   // 逻辑：保命。一旦净值低于 本金*(1-比例)，无条件清仓。
+   // ---------------------------------------------------------
    if(!g_CircuitBreakerTriggered && InpEquityStopPct > 0 && bal > 0) {
+      // 注意：这里用 AccountBalance() 作为基准。
+      // 如果你希望用“历史最高余额”做基准(移动止损)，逻辑会更复杂，目前这样是标准的“本金保护”。
       if(eq <= bal * (1.0 - InpEquityStopPct/100.0)) {
+         Print(StringFormat("【一级熔断】净值触及止损线! 当前: %.2f, 阈值: %.2f", eq, bal * (1.0 - InpEquityStopPct/100.0)));
          CloseAll();
          g_CircuitBreakerTriggered = true;
+         g_IsTradingAllowed = false; // 永久停机
          return false;
       }
    }
    if(g_CircuitBreakerTriggered) return false;
 
+   // ---------------------------------------------------------
+   // [二级熔断] 单日净亏损限额 (Daily Drawdown Limit)
+   // 逻辑：防上头。计算 (今日已平仓盈亏 + 当前持仓浮动盈亏)。
+   // ---------------------------------------------------------
    if(!g_DailyStopTriggered && InpDailyLossPct > 0 && bal > 0) {
-      double realized = GetHistoryProfit(today, TimeCurrent()+3600);
-      double floating = GetFloatingPL(OP_BUY) + GetFloatingPL(OP_SELL);
-      double realizedLoss = (realized < 0 ? -realized : 0);
-      double floatingLoss = (floating < 0 ? -floating : 0);
-      double lossLimit = bal * (InpDailyLossPct/100.0);
-      if((realizedLoss + floatingLoss) >= lossLimit) {
-         CloseAll();
+      double realized = GetHistoryProfit(today, TimeCurrent()+3600); // 今日已结盈亏
+      double floating = GetFloatingPL(OP_BUY) + GetFloatingPL(OP_SELL); // 当前浮动盈亏
+      
+      double dailyNetPL = realized + floating; // 今日真实净盈亏
+      double lossLimit = bal * (InpDailyLossPct/100.0); // 允许亏损额 (正数)
+
+      // 如果 净盈亏 是负数，且 亏损额绝对值 超过 限额
+      if(dailyNetPL < 0 && MathAbs(dailyNetPL) >= lossLimit) {
+         Print(StringFormat("【二级熔断】单日亏损达标! 今日净值: %.2f, 限额: %.2f", dailyNetPL, -lossLimit));
+         // 策略：通常单日风控触发后，选择平仓休息
+         CloseAll(); 
          g_DailyStopTriggered = true;
+         // 注意：这里不永久设为 false，因为 UI 里可以通过点击按钮恢复，或者第二天自动恢复
          return false;
       }
    }
    if(g_DailyStopTriggered) return false;
 
-   int bCnt = CountOrders(OP_BUY);
-   if(bCnt > 0 && (InpMaxLayerPerSide > 0 || InpMaxAdversePoints > 0)) {
-      double bDraw = GetMaxAdversePoints(OP_BUY);
-      if((InpMaxLayerPerSide > 0 && bCnt >= InpMaxLayerPerSide) || (InpMaxAdversePoints > 0 && bDraw >= InpMaxAdversePoints)) {
-         ClosePositions(3);
-         g_AllowLong = false;
-         return false;
-      }
-   }
-   int sCnt = CountOrders(OP_SELL);
-   if(sCnt > 0 && (InpMaxLayerPerSide > 0 || InpMaxAdversePoints > 0)) {
-      double sDraw = GetMaxAdversePoints(OP_SELL);
-      if((InpMaxLayerPerSide > 0 && sCnt >= InpMaxLayerPerSide) || (InpMaxAdversePoints > 0 && sDraw >= InpMaxAdversePoints)) {
-         ClosePositions(4);
-         g_AllowShort = false;
-         return false;
+   // ---------------------------------------------------------
+   // [三级熔断] 技术性止损 (Technical Stop)
+   // 逻辑：承认方向错误。层数过高或逆势太远，砍掉单边。
+   // ---------------------------------------------------------
+   // 检查多头
+   if(g_AllowLong) {
+      int bCnt = CountOrders(OP_BUY);
+      if(bCnt > 0) {
+         bool hitLayer = (InpMaxLayerPerSide > 0 && bCnt >= InpMaxLayerPerSide);
+         bool hitDist  = (InpMaxAdversePoints > 0 && GetMaxAdversePoints(OP_BUY) >= InpMaxAdversePoints);
+         
+         if(hitLayer || hitDist) {
+            Print("【三级熔断】多头风控触发 (层数/点数超限)，强制平多!");
+            ClosePositions(3); // 平多
+            g_AllowLong = false; // 仅关闭多头开关
+            // 不返回 false，允许程序继续处理空头
+         }
       }
    }
 
+   // 检查空头
+   if(g_AllowShort) {
+      int sCnt = CountOrders(OP_SELL);
+      if(sCnt > 0) {
+         bool hitLayer = (InpMaxLayerPerSide > 0 && sCnt >= InpMaxLayerPerSide);
+         bool hitDist  = (InpMaxAdversePoints > 0 && GetMaxAdversePoints(OP_SELL) >= InpMaxAdversePoints);
+         
+         if(hitLayer || hitDist) {
+            Print("【三级熔断】空头风控触发 (层数/点数超限)，强制平空!");
+            ClosePositions(4); // 平空
+            g_AllowShort = false; // 仅关闭空头开关
+         }
+      }
+   }
+
+   // 只要没触发一二级熔断，就返回 true 继续交易
    return true;
 }
 void SafeOrderSend(int t,double l,string c){ if(OrderSend(_Symbol,t,l,(t==OP_BUY?Ask:Bid),10,0,0,c,InpMagicNum,0,(t==OP_BUY?clrBlue:clrRed))<0) Print(GetLastError());}
