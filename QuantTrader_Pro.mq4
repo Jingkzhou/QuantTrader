@@ -1,13 +1,13 @@
 //+------------------------------------------------------------------+
-//|                                      QuantTrader_Pro_V3_9.mq4    |
+//|                                      QuantTrader_Pro_V4_0.mq4    |
 //|                                  Copyright 2026, Antigravity AI  |
 //|                                             https://www.mql5.com |
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, Antigravity AI"
 #property link      "https://www.mql5.com"
-#property version   "3.90"
+#property version   "4.00"
 #property strict
-#property description "全自动多策略量化交易系统 V3.9 [ATR动态波动率适配]"
+#property description "全自动多策略量化交易系统 V4 [三重风险防火墙]"
 
 //--- 枚举定义
 enum ENUM_MARTIN_MODE {
@@ -23,6 +23,12 @@ enum ENUM_ATR_GRID_MODE {
 //====================================================================
 //                       参数输入模块 (Parameters)
 //====================================================================
+input group "=== V4 风控防火墙 ==="
+input double   InpEquityStopPct   = 25.0;        // 账户级硬止损回撤比例
+input double   InpDailyLossPct    = 5.0;         // 单日亏损限制比例
+input int      InpMaxLayerPerSide = 12;          // 单边最大层数
+input int      InpMaxAdversePoints = 2000;       // 单边最大浮亏点数
+
 input group "=== V3.9 ATR 动态波动率适配 ==="
 input bool     InpUseATRGrid   = true;           // 是否启用 ATR 动态网格
 input ENUM_ATR_GRID_MODE InpATRMode = ATR_DIRECT;// 动态模式
@@ -70,6 +76,9 @@ string   g_ObjPrefix="QT38_";
 datetime g_LastCloseTime=0;
 double   g_PipValue=1.0;
 string   g_LastHedgeInfo="";
+bool     g_CircuitBreakerTriggered = false;
+bool     g_DailyStopTriggered = false;
+datetime g_DailyStopDay = 0;
 color    g_ColorPanel = C'26,29,33';
 color    g_ColorHeader = C'20,23,27';
 color    g_ColorLine = C'55,60,66';
@@ -95,8 +104,8 @@ void OnDeinit(const int reason) { ObjectsDeleteAll(0, g_ObjPrefix); EventKillTim
 //| 核心引擎                                                         |
 //+------------------------------------------------------------------+
 void OnTick() {
+   if(!GlobalRiskCheck()) { UpdateDashboard(); return; }
    if(!g_IsTradingAllowed) { UpdateDashboard(); return; }
-   if(!GlobalRiskCheck()) return;
 
    if(InpEnableDualHedge) { CheckDestocking(OP_BUY); CheckDestocking(OP_SELL); }
    CheckBreakEven();
@@ -186,6 +195,28 @@ double GetGridDistance(int orderCount) {
    return baseDist;
 }
 
+double GetMaxAdversePoints(int side) {
+   double extreme = 0;
+   bool has=false;
+   for(int i=0; i<OrdersTotal(); i++) {
+      if(OrderSelect(i, SELECT_BY_POS) && OrderMagicNumber()==InpMagicNum && OrderType()==side) {
+         double op = OrderOpenPrice();
+         if(!has) { extreme = op; has = true; }
+         else {
+            if(side==OP_BUY && op > extreme) extreme = op;
+            if(side==OP_SELL && op < extreme) extreme = op;
+         }
+      }
+   }
+   if(!has) return 0;
+   if(side==OP_BUY) {
+      double dist = (extreme - Bid) / _Point;
+      return (dist > 0 ? dist : 0);
+   }
+   double dist = (Ask - extreme) / _Point;
+   return (dist > 0 ? dist : 0);
+}
+
 //====================================================================
 //                       重构后的马丁逻辑
 //====================================================================
@@ -206,7 +237,7 @@ void RunMartingaleLogic() {
       double dist = GetGridDistance(bCnt);
       if(Bid <= GetLastPrice(OP_BUY) - dist * _Point) {
          if(InpSingleSideMaxLoss == 0 || bProf >= -InpSingleSideMaxLoss)
-            SafeOrderSend(OP_BUY, CalculateNextLot(OP_BUY), "Add_V3.9");
+            SafeOrderSend(OP_BUY, CalculateNextLot(OP_BUY), "Add_V4");
       }
    }
 
@@ -215,7 +246,7 @@ void RunMartingaleLogic() {
       double dist = GetGridDistance(sCnt);
       if(Ask >= GetLastPrice(OP_SELL) + dist * _Point) {
          if(InpSingleSideMaxLoss == 0 || sProf >= -InpSingleSideMaxLoss)
-            SafeOrderSend(OP_SELL, CalculateNextLot(OP_SELL), "Add_V3.9");
+            SafeOrderSend(OP_SELL, CalculateNextLot(OP_SELL), "Add_V4");
       }
    }
 }
@@ -263,7 +294,7 @@ void CheckDestocking(int side) {
 }
 
 //====================================================================
-//                       UI 系统 (V3.9 展示增强)
+//                       UI 系统 (V4 展示增强)
 //====================================================================
 
 void OnChartEvent(const int id, const long& l, const double& d, const string& s) {
@@ -271,7 +302,10 @@ void OnChartEvent(const int id, const long& l, const double& d, const string& s)
       if(s==g_ObjPrefix+"Btn_Buy") g_AllowLong=!g_AllowLong;
       else if(s==g_ObjPrefix+"Btn_Sell") g_AllowShort=!g_AllowShort;
       else if(s==g_ObjPrefix+"Btn_CloseAll") CloseAll();
-      else if(s==g_ObjPrefix+"Btn_Pause") g_IsTradingAllowed=!g_IsTradingAllowed;
+      else if(s==g_ObjPrefix+"Btn_Pause") {
+         if(g_CircuitBreakerTriggered || g_DailyStopTriggered) return;
+         g_IsTradingAllowed=!g_IsTradingAllowed;
+      }
       UpdateDashboard();
    }
 }
@@ -286,7 +320,7 @@ void DrawDashboard() {
    CreateRect("Accent", x, y, 4, h, UI_ThemeColor);
    CreateRect("Header", x+4, y, w-4, headerH, g_ColorHeader);
    CreateLabel("T_Title", "QuantTrader Pro", x+pad+2, y+9, g_ColorText, 10, "微软雅黑");
-   CreateLabel("T_Ver", "V3.9", x+w-46, y+9, g_ColorMuted, 9, "Consolas");
+   CreateLabel("T_Ver", "V4.0", x+w-46, y+9, g_ColorMuted, 9, "Consolas");
 
    CreateLabel("T_Status", "策略状态", x+pad, cy, g_ColorMuted, 8, "微软雅黑");
    cy+=18;
@@ -327,6 +361,7 @@ void UpdateDashboard() {
    double pToday = GetHistoryProfit(todayS, TimeCurrent()+3600);
    double margin = AccountMargin();
    color todayColor = (pToday >= 0 ? g_ColorGood : g_ColorBad);
+   bool riskLock = (g_CircuitBreakerTriggered || g_DailyStopTriggered);
    
    SetLabelText("V_TodayM", StringFormat("%.2f USD", pToday));
    SetLabelText("V_TodayP", StringFormat("%.2f%%", (bal>0?pToday/bal*100:0)));
@@ -346,8 +381,13 @@ void UpdateDashboard() {
    SetLabelText("L_SellState", g_AllowShort?"空头 ON":"空头 OFF");
    SetObjectColor("L_SellState", g_AllowShort?g_ColorInk:g_ColorText);
    SetRectBg("Chip_Sell", g_AllowShort?g_ColorGood:g_ColorBad);
-   SetLabelText("Btn_Pause", g_IsTradingAllowed?"系统运行中 · 点击暂停":"系统已暂停 · 点击恢复");
-   SetBtnColor("Btn_Pause", g_IsTradingAllowed?g_ColorButton:g_ColorBad);
+   if(riskLock) {
+      SetLabelText("Btn_Pause", g_CircuitBreakerTriggered?"已触发熔断 · 关机":"当日止损触发 · 已停机");
+      SetBtnColor("Btn_Pause", g_ColorBad);
+   } else {
+      SetLabelText("Btn_Pause", g_IsTradingAllowed?"系统运行中 · 点击暂停":"系统已暂停 · 点击恢复");
+      SetBtnColor("Btn_Pause", g_IsTradingAllowed?g_ColorButton:g_ColorBad);
+   }
 }
 
 // 辅助底层函数
@@ -368,7 +408,57 @@ void ClosePositions(int m) {
    g_LastCloseTime=TimeCurrent();
 }
 void CloseAll() { ClosePositions(6); }
-bool GlobalRiskCheck() { return true; } // 简化版风控
+bool GlobalRiskCheck() {
+   datetime today = iTime(_Symbol, PERIOD_D1, 0);
+   if(g_DailyStopDay != today) { g_DailyStopDay = today; g_DailyStopTriggered = false; }
+
+   double bal = AccountBalance();
+   double eq = AccountEquity();
+
+   if(!g_CircuitBreakerTriggered && InpEquityStopPct > 0 && bal > 0) {
+      if(eq <= bal * (1.0 - InpEquityStopPct/100.0)) {
+         CloseAll();
+         g_CircuitBreakerTriggered = true;
+         return false;
+      }
+   }
+   if(g_CircuitBreakerTriggered) return false;
+
+   if(!g_DailyStopTriggered && InpDailyLossPct > 0 && bal > 0) {
+      double realized = GetHistoryProfit(today, TimeCurrent()+3600);
+      double floating = GetFloatingPL(OP_BUY) + GetFloatingPL(OP_SELL);
+      double realizedLoss = (realized < 0 ? -realized : 0);
+      double floatingLoss = (floating < 0 ? -floating : 0);
+      double lossLimit = bal * (InpDailyLossPct/100.0);
+      if((realizedLoss + floatingLoss) >= lossLimit) {
+         CloseAll();
+         g_DailyStopTriggered = true;
+         return false;
+      }
+   }
+   if(g_DailyStopTriggered) return false;
+
+   int bCnt = CountOrders(OP_BUY);
+   if(bCnt > 0 && (InpMaxLayerPerSide > 0 || InpMaxAdversePoints > 0)) {
+      double bDraw = GetMaxAdversePoints(OP_BUY);
+      if((InpMaxLayerPerSide > 0 && bCnt >= InpMaxLayerPerSide) || (InpMaxAdversePoints > 0 && bDraw >= InpMaxAdversePoints)) {
+         ClosePositions(3);
+         g_AllowLong = false;
+         return false;
+      }
+   }
+   int sCnt = CountOrders(OP_SELL);
+   if(sCnt > 0 && (InpMaxLayerPerSide > 0 || InpMaxAdversePoints > 0)) {
+      double sDraw = GetMaxAdversePoints(OP_SELL);
+      if((InpMaxLayerPerSide > 0 && sCnt >= InpMaxLayerPerSide) || (InpMaxAdversePoints > 0 && sDraw >= InpMaxAdversePoints)) {
+         ClosePositions(4);
+         g_AllowShort = false;
+         return false;
+      }
+   }
+
+   return true;
+}
 void SafeOrderSend(int t,double l,string c){ if(OrderSend(_Symbol,t,l,(t==OP_BUY?Ask:Bid),10,0,0,c,InpMagicNum,0,(t==OP_BUY?clrBlue:clrRed))<0) Print(GetLastError());}
 int CountOrders(int t){int c=0;for(int i=0;i<OrdersTotal();i++)if(OrderSelect(i,SELECT_BY_POS)&&OrderMagicNumber()==InpMagicNum&&OrderType()==t)c++;return c;}
 double GetTotalLots(int t){double l=0;for(int i=0;i<OrdersTotal();i++)if(OrderSelect(i,SELECT_BY_POS)&&OrderMagicNumber()==InpMagicNum&&OrderType()==t)l+=OrderLots();return l;}
