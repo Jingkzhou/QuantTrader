@@ -1,13 +1,16 @@
 //+------------------------------------------------------------------+
-//|                                      QuantTrader_Pro_V4_0.mq4    |
+//|                                      QuantTrader_Pro_V4_1.mq4    |
 //|                                  Copyright 2026, Antigravity AI  |
 //|                                             https://www.mql5.com |
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, Antigravity AI"
 #property link      "https://www.mql5.com"
-#property version   "4.00"
+#property version   "4.10"
 #property strict
-#property description "全自动多策略量化交易系统 V4 [三重风险防火墙]"
+#property description "全自动多策略量化交易系统 V4.1 [多产品适配 + 三重风控]"
+
+//--- 引入产品预设配置
+#include "ProductPresets.mqh"
 
 //--- 枚举定义
 enum ENUM_MARTIN_MODE {
@@ -23,6 +26,15 @@ enum ENUM_ATR_GRID_MODE {
 //====================================================================
 //                       参数输入模块 (Parameters)
 //====================================================================
+input group "=== V4.1 产品配置 ==="
+input bool     InpUsePreset     = true;        // 使用产品预设配置
+input ENUM_PRODUCT_TYPE InpProductType = PRODUCT_GOLD; // 产品类型选择
+input bool     InpEnableSession = true;        // 启用交易时段过滤
+
+input group "=== V4.1 资金层级 ==="
+input bool     InpAutoTier      = true;        // 自动检测资金层级
+input ENUM_CAPITAL_TIER InpCapitalTier = TIER_SOLDIER; // 手动选择层级
+
 input group "=== V4 风控防火墙 ==="
 input double   InpEquityStopPct   = 25.0;        // 账户级硬止损回撤比例
 input double   InpDailyLossPct    = 5.0;         // 单日亏损限制比例
@@ -72,13 +84,16 @@ input int      GridDistLayer2   = 300;
 //--- 全局变量
 bool     g_IsTradingAllowed = true;
 bool     g_AllowLong=true, g_AllowShort=true;
-string   g_ObjPrefix="QT38_";
+string   g_ObjPrefix="QT41_";
 datetime g_LastCloseTime=0;
 double   g_PipValue=1.0;
 string   g_LastHedgeInfo="";
 bool     g_CircuitBreakerTriggered = false;
 bool     g_DailyStopTriggered = false;
 datetime g_DailyStopDay = 0;
+ProductConfig g_ProductCfg;  // V4.1 产品配置
+TierConfig    g_TierCfg;     // V4.1 资金层级配置
+double   g_InitialLots = 0.01; // 动态起始手数
 color    g_ColorPanel = C'26,29,33';
 color    g_ColorHeader = C'20,23,27';
 color    g_ColorLine = C'55,60,66';
@@ -94,6 +109,78 @@ color    g_ColorButton = C'70,75,80';
 //+------------------------------------------------------------------+
 int OnInit() {
    g_PipValue = MarketInfo(_Symbol, MODE_TICKVALUE) / (MarketInfo(_Symbol, MODE_TICKSIZE) / _Point);
+   
+   //--- V4.1 产品配置初始化
+   if(InpUsePreset) {
+      // 自动识别产品类型或使用用户选择
+      ENUM_PRODUCT_TYPE detectedType = DetectProductType(_Symbol);
+      if(detectedType != InpProductType) {
+         Print("自动识别产品类型: ", EnumToString(detectedType), " (用户选择: ", EnumToString(InpProductType), ")");
+      }
+      g_ProductCfg = GetProductConfig(InpProductType);
+      PrintProductConfig(g_ProductCfg);
+   } else {
+      // 使用手动输入参数，构建配置
+      g_ProductCfg.symbol = _Symbol;
+      g_ProductCfg.type = InpProductType;
+      g_ProductCfg.atrMultiplier = InpATRMultiplier;
+      g_ProductCfg.atrPeriod = InpATRPeriod;
+      g_ProductCfg.atrTimeframe = InpATRTF;
+      g_ProductCfg.martinMode = InpMartinMode;
+      g_ProductCfg.martinMulti = MartinMulti;
+      g_ProductCfg.decayStep = InpDecayStep;
+      g_ProductCfg.decayMulti = InpDecayMulti;
+      g_ProductCfg.maxSingleLot = InpMaxSingleLot;
+      g_ProductCfg.maxLayers = InpMaxLayerPerSide;
+      g_ProductCfg.targetPips = InpTargetPips;
+      g_ProductCfg.dailyLossPct = InpDailyLossPct;
+      g_ProductCfg.equityStopPct = InpEquityStopPct;
+      g_ProductCfg.singleSideMaxLoss = InpSingleSideMaxLoss;
+      g_ProductCfg.maxAdversePoints = InpMaxAdversePoints;
+      g_ProductCfg.gridMinDist = GridMinDist;
+      g_ProductCfg.gridDistLayer2 = GridDistLayer2;
+      g_ProductCfg.gridExpansion = InpGridExpansion;
+      g_ProductCfg.sessionStartHour = 0;
+      g_ProductCfg.sessionEndHour = 24;
+      g_ProductCfg.allowWeekend = true;
+      g_ProductCfg.destockMinLayer = InpDestockMinLayer;
+      g_ProductCfg.destockProfit = InpDestockProfit;
+      g_ProductCfg.beProfitPips = InpBEProfitPips;
+      g_ProductCfg.beLockPips = InpBELockPips;
+      Print("使用手动参数配置");
+   }
+   
+   //--- V4.1 资金层级配置初始化
+   ENUM_CAPITAL_TIER activeTier;
+   if(InpAutoTier) {
+      // 自动检测资金层级
+      double balance = AccountBalance();
+      activeTier = DetectCapitalTier(balance);
+      Print("自动检测资金层级: $", balance, " -> ", EnumToString(activeTier));
+   } else {
+      activeTier = InpCapitalTier;
+      Print("使用手动选择层级: ", EnumToString(activeTier));
+   }
+   
+   g_TierCfg = GetTierConfig(activeTier);
+   PrintTierConfig(g_TierCfg);
+   
+   // 应用层级配置到产品配置
+   ApplyTierToProduct(g_ProductCfg, g_TierCfg);
+   g_InitialLots = g_TierCfg.initialLots;
+   
+   // 输出最终配置
+   Print("=== 最终参数配置 ===");
+   Print("起始手数: ", g_InitialLots, " | 封顶: ", g_ProductCfg.maxSingleLot);
+   Print("马丁模式: ", (g_ProductCfg.martinMode==0?"指数":(g_ProductCfg.martinMode==1?"斐波那契":"线性")));
+   Print("最大层数: ", g_ProductCfg.maxLayers);
+   Print("网格间距: 首层=", g_ProductCfg.gridMinDist, " 后续=", g_ProductCfg.gridDistLayer2);
+   Print("熔断: ", g_ProductCfg.equityStopPct, "% 日亏: ", g_ProductCfg.dailyLossPct, "%");
+   if(g_TierCfg.useCentAccount) {
+      Print("⚠️ 建议: 当前资金量建议使用美分账户 (Cent Account)");
+   }
+   Print("========================");
+   
    EventSetTimer(1);
    DrawDashboard();
    return(INIT_SUCCEEDED);
@@ -106,6 +193,12 @@ void OnDeinit(const int reason) { ObjectsDeleteAll(0, g_ObjPrefix); EventKillTim
 void OnTick() {
    if(!GlobalRiskCheck()) { UpdateDashboard(); return; }
    if(!g_IsTradingAllowed) { UpdateDashboard(); return; }
+   
+   //--- V4.1 交易时段检查
+   if(InpEnableSession && !IsTradingAllowedByProduct(g_ProductCfg)) {
+      UpdateDashboard();
+      return;  // 不在交易时段，跳过交易逻辑
+   }
 
    if(InpEnableDualHedge) { CheckDestocking(OP_BUY); CheckDestocking(OP_SELL); }
    CheckBreakEven();
@@ -122,27 +215,28 @@ void OnTick() {
 
 double CalculateNextLot(int side) {
    int cnt = CountOrders(side);
-   if(cnt == 0) return InpInitialLots;
+   // 修正：使用 g_InitialLots 而不是 InpInitialLots
+   if(cnt == 0) return g_InitialLots;
    
    double lastLot = GetLastLot(side);
    double secondLastLot = GetSecondLastLot(side);
    double nextLot = lastLot;
 
-   // 1. 基础模式计算
-   if(InpMartinMode == MODE_EXPONENTIAL) {
-      double multi = (cnt >= InpDecayStep) ? InpDecayMulti : MartinMulti;
+   // 1. 基础模式计算 - 修正：全部替换为 g_ProductCfg 参数
+   if(g_ProductCfg.martinMode == MODE_EXPONENTIAL) {
+      double multi = (cnt >= g_ProductCfg.decayStep) ? g_ProductCfg.decayMulti : g_ProductCfg.martinMulti;
       nextLot = lastLot * multi;
    }
-   else if(InpMartinMode == MODE_FIBONACCI) {
-      if(cnt == 1) nextLot = InpInitialLots;
+   else if(g_ProductCfg.martinMode == MODE_FIBONACCI) {
+      if(cnt == 1) nextLot = g_InitialLots;  // 修正
       else nextLot = lastLot + secondLastLot;
    }
-   else if(InpMartinMode == MODE_LINEAR) {
-      nextLot = lastLot + InpInitialLots;
+   else if(g_ProductCfg.martinMode == MODE_LINEAR) {
+      nextLot = lastLot + g_InitialLots;  // 修正
    }
 
-   // 2. 封顶保护
-   if(nextLot > InpMaxSingleLot) nextLot = InpMaxSingleLot;
+   // 2. 封顶保护 - 修正
+   if(nextLot > g_ProductCfg.maxSingleLot) nextLot = g_ProductCfg.maxSingleLot;
    
    return NormalizeDouble(nextLot, 2);
 }
@@ -161,7 +255,7 @@ double GetSecondLastLot(int side) {
          }
       }
    }
-   return (secondL > 0) ? secondL : InpInitialLots;
+   return (secondL > 0) ? secondL : g_InitialLots;  // 修正：使用 g_InitialLots
 }
 
 //====================================================================
@@ -175,21 +269,24 @@ double GetATRPoints() {
 }
 
 double GetGridDistance(int orderCount) {
-   double baseDist = (orderCount == 1) ? GridMinDist : GridDistLayer2;
-   if(InpUseATRGrid) {
+   // 修正：使用配置参数
+   double baseDist = (orderCount == 1) ? g_ProductCfg.gridMinDist : g_ProductCfg.gridDistLayer2;
+   
+   if(InpUseATRGrid) {  // ATR开关保留为总开关
       double atrPoints = GetATRPoints();
       if(atrPoints > 0) {
          if(InpATRMode == ATR_DIRECT) {
-            baseDist = atrPoints * InpATRMultiplier;
-            if(orderCount > 1 && GridMinDist > 0)
-               baseDist *= ((double)GridDistLayer2 / GridMinDist);
+            baseDist = atrPoints * g_ProductCfg.atrMultiplier;  // 修正
+            if(orderCount > 1 && g_ProductCfg.gridMinDist > 0)
+               baseDist *= ((double)g_ProductCfg.gridDistLayer2 / g_ProductCfg.gridMinDist);  // 修正
          } else {
             double baseAtr = (InpBaseATRPoints > 0 ? InpBaseATRPoints : atrPoints);
             baseDist = baseDist * (atrPoints / baseAtr);
          }
       }
    }
-   if(InpGridExpansion && orderCount >= 4)
+   // 修正：使用配置参数
+   if(g_ProductCfg.gridExpansion && orderCount >= 4)
       baseDist = baseDist * (1 + (orderCount-4)*0.2);
    if(baseDist < 1) baseDist = 1;
    return baseDist;
@@ -225,18 +322,18 @@ void RunMartingaleLogic() {
    double bProf=GetFloatingPL(OP_BUY), sProf=GetFloatingPL(OP_SELL);
    double bLots=GetTotalLots(OP_BUY), sLots=GetTotalLots(OP_SELL);
    
-   // 1. 独立止盈检查
-   double bT = (bLots * InpTargetPips * g_PipValue);
-   double sT = (sLots * InpTargetPips * g_PipValue);
+   // 1. 独立止盈检查 - 修正：使用 g_ProductCfg.targetPips
+   double bT = (bLots * g_ProductCfg.targetPips * g_PipValue);
+   double sT = (sLots * g_ProductCfg.targetPips * g_PipValue);
    if(bLots > 0 && bProf >= bT) { ClosePositions(3); return; }
    if(sLots > 0 && sProf >= sT) { ClosePositions(4); return; }
    
-   // 2. 加仓检查
+   // 2. 加仓检查 - 修正：使用 g_ProductCfg.singleSideMaxLoss
    int bCnt = CountOrders(OP_BUY);
    if(g_AllowLong && (bCnt > 0)) {
       double dist = GetGridDistance(bCnt);
       if(Bid <= GetLastPrice(OP_BUY) - dist * _Point) {
-         if(InpSingleSideMaxLoss == 0 || bProf >= -InpSingleSideMaxLoss)
+         if(g_ProductCfg.singleSideMaxLoss == 0 || bProf >= -g_ProductCfg.singleSideMaxLoss)
             SafeOrderSend(OP_BUY, CalculateNextLot(OP_BUY), "Add_V4");
       }
    }
@@ -245,7 +342,7 @@ void RunMartingaleLogic() {
    if(g_AllowShort && (sCnt > 0)) {
       double dist = GetGridDistance(sCnt);
       if(Ask >= GetLastPrice(OP_SELL) + dist * _Point) {
-         if(InpSingleSideMaxLoss == 0 || sProf >= -InpSingleSideMaxLoss)
+         if(g_ProductCfg.singleSideMaxLoss == 0 || sProf >= -g_ProductCfg.singleSideMaxLoss)
             SafeOrderSend(OP_SELL, CalculateNextLot(OP_SELL), "Add_V4");
       }
    }
@@ -256,8 +353,9 @@ void RunMartingaleLogic() {
 //====================================================================
 
 void ManageDualEntry() {
-   if(CountOrders(OP_BUY)==0 && g_AllowLong) SafeOrderSend(OP_BUY, InpInitialLots, "Dual_Init");
-   if(CountOrders(OP_SELL)==0 && g_AllowShort) SafeOrderSend(OP_SELL, InpInitialLots, "Dual_Init");
+   // 修正：使用 g_InitialLots
+   if(CountOrders(OP_BUY)==0 && g_AllowLong) SafeOrderSend(OP_BUY, g_InitialLots, "Dual_Init");
+   if(CountOrders(OP_SELL)==0 && g_AllowShort) SafeOrderSend(OP_SELL, g_InitialLots, "Dual_Init");
 }
 
 void CheckBreakEven() {
@@ -312,17 +410,30 @@ void OnChartEvent(const int id, const long& l, const double& d, const string& s)
 
 void DrawDashboard() {
    int x=UI_X_Offset, y=UI_Y_Offset;
-   int w=320, h=390, headerH=34, pad=12;
+   int w=320, h=470, headerH=34, pad=12;  // V4.1 加高面板
    int cy=y+headerH+10;
-   string modeS = (InpMartinMode==MODE_FIBONACCI?"斐波那契":(InpMartinMode==MODE_LINEAR?"线性递增":"指数衰减"));
+   string modeS = (g_ProductCfg.martinMode==1?"斐波那契":(g_ProductCfg.martinMode==2?"线性递增":"指数衰减"));
+   string productS = EnumToString(g_ProductCfg.type);
+   StringReplace(productS, "PRODUCT_", "");
+   string tierS = "Lv." + IntegerToString((int)g_TierCfg.tier + 1) + " " + g_TierCfg.tierName;
 
    CreateRect("Bg", x, y, w, h, g_ColorPanel, UI_ThemeColor);
    CreateRect("Accent", x, y, 4, h, UI_ThemeColor);
    CreateRect("Header", x+4, y, w-4, headerH, g_ColorHeader);
    CreateLabel("T_Title", "QuantTrader Pro", x+pad+2, y+9, g_ColorText, 10, "微软雅黑");
-   CreateLabel("T_Ver", "V4.0", x+w-46, y+9, g_ColorMuted, 9, "Consolas");
+   CreateLabel("T_Ver", "V4.1", x+w-46, y+9, g_ColorMuted, 9, "Consolas");
 
-   CreateLabel("T_Status", "策略状态", x+pad, cy, g_ColorMuted, 8, "微软雅黑");
+   //--- V4.1 产品+层级信息区
+   CreateLabel("T_Product", "配置信息", x+pad, cy, g_ColorMuted, 8, "微软雅黑");
+   cy+=18;
+   CreateLabel("V_ProductType", productS, x+pad, cy, UI_ThemeColor, 9, "Consolas");
+   CreateLabel("V_TierName", tierS, x+pad+80, cy, UI_ThemeColor, 9, "Consolas");
+   cy+=18;
+   CreateLabel("V_SessionTime", "时段: --", x+pad, cy, g_ColorMuted, 8, "Consolas");
+   CreateLabel("V_RiskLevel", "风险: " + IntegerToString((int)g_TierCfg.riskLevel) + "/10", x+pad+100, cy, g_ColorMuted, 8, "Consolas");
+   
+   cy+=24; CreateRect("Line0", x+pad, cy, w-2*pad, 1, g_ColorLine);
+   cy+=10; CreateLabel("T_Status", "策略状态", x+pad, cy, g_ColorMuted, 8, "微软雅黑");
    cy+=18;
    CreateRect("Chip_Buy", x+pad, cy, 68, 18, g_ColorGood);
    CreateLabel("L_BuyState", "多头 ON", x+pad+8, cy+3, g_ColorInk, 8, "微软雅黑");
@@ -363,17 +474,24 @@ void UpdateDashboard() {
    color todayColor = (pToday >= 0 ? g_ColorGood : g_ColorBad);
    bool riskLock = (g_CircuitBreakerTriggered || g_DailyStopTriggered);
    
+   //--- V4.1 交易时段状态更新
+   bool inSession = IsTradingAllowedByProduct(g_ProductCfg);
+   string sessionStr = StringFormat("%02d:00-%02d:00", g_ProductCfg.sessionStartHour, g_ProductCfg.sessionEndHour);
+   if(g_ProductCfg.sessionStartHour == 0 && g_ProductCfg.sessionEndHour == 24) sessionStr = "24H";
+   SetLabelText("V_SessionTime", (inSession ? "时段: " + sessionStr : "休市中"));
+   SetObjectColor("V_SessionTime", inSession ? g_ColorGood : g_ColorBad);
+   
    SetLabelText("V_TodayM", StringFormat("%.2f USD", pToday));
    SetLabelText("V_TodayP", StringFormat("%.2f%%", (bal>0?pToday/bal*100:0)));
    SetObjectColor("V_TodayM", todayColor);
    SetObjectColor("V_TodayP", todayColor);
    SetLabelText("V_Bal", StringFormat("%.2f USD", bal));
-   SetLabelText("V_Used", StringFormat("%.2f USD", margin)); // 实时更新已用保证金
+   SetLabelText("V_Used", StringFormat("%.2f USD", margin));
    if(margin>0) SetLabelText("V_Margin", StringFormat("%.2f%%", AccountEquity()/margin*100));
    else SetLabelText("V_Margin", "0.00%");
    
    double bLots=GetTotalLots(OP_BUY), sLots=GetTotalLots(OP_SELL);
-   SetLabelText("V_Target", StringFormat("多头目标: %.2f | 空头目标: %.2f", bLots*InpTargetPips*g_PipValue, sLots*InpTargetPips*g_PipValue));
+   SetLabelText("V_Target", StringFormat("多头目标: %.2f | 空头目标: %.2f", bLots*g_ProductCfg.targetPips*g_PipValue, sLots*g_ProductCfg.targetPips*g_PipValue));
 
    SetLabelText("L_BuyState", g_AllowLong?"多头 ON":"多头 OFF");
    SetObjectColor("L_BuyState", g_AllowLong?g_ColorInk:g_ColorText);
