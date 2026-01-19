@@ -94,10 +94,10 @@ datetime g_DailyStopDay = 0;
 ProductConfig g_ProductCfg;  // V4.1 产品配置
 TierConfig    g_TierCfg;     // V4.1 资金层级配置
 double   g_InitialLots = 0.01; // 动态起始手数
-color    g_ColorPanel = C'26,29,33';
-color    g_ColorHeader = C'20,23,27';
-color    g_ColorLine = C'55,60,66';
-color    g_ColorText = C'230,232,235';
+color    g_ColorPanel = C'32,35,40';
+color    g_ColorHeader = C'45,50,55';
+color    g_ColorLine = C'70,75,85';
+color    g_ColorText = C'255,255,255';
 color    g_ColorMuted = C'150,160,170';
 color    g_ColorInk = C'15,17,19';
 color    g_ColorGood = C'90,205,135';
@@ -624,7 +624,7 @@ double GetTotalLots(int t){double l=0;for(int i=0;i<OrdersTotal();i++)if(OrderSe
 double GetFloatingPL(int t){double p=0;for(int i=0;i<OrdersTotal();i++)if(OrderSelect(i,SELECT_BY_POS)&&OrderMagicNumber()==InpMagicNum&&OrderType()==t)p+=OrderProfit()+OrderCommission()+OrderSwap();return p;}
 double GetLastPrice(int t){double p=0;datetime d=0;for(int i=0;i<OrdersTotal();i++)if(OrderSelect(i,SELECT_BY_POS)&&OrderMagicNumber()==InpMagicNum&&OrderType()==t)if(OrderOpenTime()>d){d=OrderOpenTime();p=OrderOpenPrice();}return p;}
 double GetLastLot(int t){double l=InpInitialLots;datetime d=0;for(int i=0;i<OrdersTotal();i++)if(OrderSelect(i,SELECT_BY_POS)&&OrderMagicNumber()==InpMagicNum&&OrderType()==t)if(OrderOpenTime()>d){d=OrderOpenTime();l=OrderLots();}return l;}
-void CreateRect(string n,int x,int y,int w,int h,color bg,color border=CLR_NONE) { string name=g_ObjPrefix+n; if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_RECTANGLE_LABEL,0,0,0); ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x); ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y); ObjectSetInteger(0,name,OBJPROP_XSIZE,w); ObjectSetInteger(0,name,OBJPROP_YSIZE,h); ObjectSetInteger(0,name,OBJPROP_BGCOLOR,bg); ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,border);ObjectSetInteger(0,name,OBJPROP_BACK,true); }
+void CreateRect(string n,int x,int y,int w,int h,color bg,color border=CLR_NONE) { string name=g_ObjPrefix+n; if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_RECTANGLE_LABEL,0,0,0); ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x); ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y); ObjectSetInteger(0,name,OBJPROP_XSIZE,w); ObjectSetInteger(0,name,OBJPROP_YSIZE,h); ObjectSetInteger(0,name,OBJPROP_BGCOLOR,bg); ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,border);ObjectSetInteger(0,name,OBJPROP_BACK,false); }
 void CreateLabel(string n,string t,int x,int y,color c,int s=9,string f="微软雅黑") { string name=g_ObjPrefix+n; if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0); ObjectSetString(0,name,OBJPROP_TEXT,t); ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x); ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y); ObjectSetInteger(0,name,OBJPROP_COLOR,c); ObjectSetInteger(0,name,OBJPROP_FONTSIZE,s); ObjectSetString(0,name,OBJPROP_FONT,f);}
 void CreateButton(string n,string t,int x,int y,int w,int h,color bg) { string name=g_ObjPrefix+n; if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0); ObjectSetString(0,name,OBJPROP_TEXT,t); ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x); ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y); ObjectSetInteger(0,name,OBJPROP_XSIZE,w); ObjectSetInteger(0,name,OBJPROP_YSIZE,h); ObjectSetInteger(0,name,OBJPROP_BGCOLOR,bg); ObjectSetInteger(0,name,OBJPROP_COLOR,g_ColorText); ObjectSetInteger(0,name,OBJPROP_FONTSIZE,8); ObjectSetString(0,name,OBJPROP_FONT,"微软雅黑"); }
 void SetLabelText(string n,string t) { if(ObjectFind(0,g_ObjPrefix+n)>=0) ObjectSetString(0,g_ObjPrefix+n,OBJPROP_TEXT,t); }
