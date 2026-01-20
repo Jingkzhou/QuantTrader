@@ -1,13 +1,13 @@
 //+------------------------------------------------------------------+
-//|                                      QuantTrader_Pro_V4_5.mq4    |
+//|                                      QuantTrader_Pro_V4_6.mq4    |
 //|                                  Copyright 2026, Antigravity AI  |
 //|                                             https://www.mql5.com |
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, Antigravity AI"
 #property link      "https://www.mql5.com"
-#property version   "4.50"
+#property version   "4.60"
 #property strict
-#property description "全自动多策略量化交易系统 V4.5 [动态止盈降级 + 智能双模网格 + 三重风控]"
+#property description "全自动多策略量化交易系统 V4.6 [狂暴模式修正 + 动态止盈降级 + 智能双模网格]"
 
 //--- 引入产品预设配置
 #include "ProductPresets.mqh"
@@ -98,7 +98,8 @@ double   g_PipValue=1.0;
 string   g_LastHedgeInfo="";
 bool     g_CircuitBreakerTriggered = false;
 bool     g_DailyStopTriggered = false;
-datetime g_DailyStopDay = 0;
+datetime g_RiskCheckStartTime = 0; // [V4.6] 风控计算起始时间
+double   g_RiskCheckBaselinePL = 0; // [V4.6] 损益基准值偏移
 ProductConfig g_ProductCfg;  // V4.3 产品配置
 TierConfig    g_TierCfg;     // V4.3 资金层级配置
 double   g_InitialLots = 0.01; // 动态起始手数
@@ -118,6 +119,9 @@ color    g_ColorButtonText = C'255,255,255';
 //+------------------------------------------------------------------+
 int OnInit() {
    g_PipValue = MarketInfo(_Symbol, MODE_TICKVALUE) / (MarketInfo(_Symbol, MODE_TICKSIZE) / _Point);
+   
+   //--- V4.6 UI 修正：强制图表 K 线在背景，确保面板覆盖 K 线
+   ChartSetInteger(0, CHART_FOREGROUND, 0);
    
    //--- V4.3 产品配置初始化
    if(InpUsePreset) {
@@ -182,6 +186,26 @@ int OnInit() {
    // 应用层级配置到产品配置
    ApplyTierToProduct(g_ProductCfg, g_TierCfg);
    g_InitialLots = g_TierCfg.initialLots;
+   
+   // ========== V4.6 狂暴模式覆盖层 (修正版) ==========
+   if(g_TierCfg.tier == TIER_BERSERK) {
+      Print("🔥🔥🔥 警告：狂暴模式已启动！强制阉割 ATR 风控！ 🔥🔥🔥");
+      
+      // 1. 强制覆盖间距 (已由 ApplyTierToProduct 缩放，此处确保逻辑)
+      g_ProductCfg.gridExpansion = false; 
+      
+      // 2. 强制覆盖加仓
+      // g_ProductCfg.martinMode = MODE_EXPONENTIAL; // Preset 已设置
+      
+      // 3. 【核心修正】彻底杀死 ATR
+      // 必须把倍率设为 0.0，这样 MathMax(35, 0) 才会强制返回 35
+      g_ProductCfg.atrMultiplier = 0.0; 
+      
+      // 4. 其他修正
+      g_ProductCfg.maxLayers = g_TierCfg.maxLayers;
+      // InpUseDynamicTP 本身为 input 无法修改，但默认是 true
+   }
+   // ===============================================
    
    // 输出最终配置
    Print("=== 最终参数配置 ===");
@@ -293,6 +317,11 @@ double GetATRPoints() {
 }
 
 double GetGridDistance(int orderCount) {
+   // 【V4.6 新增】如果是狂暴模式，直接返回固定值，不听 ATR 的废话
+   if(g_TierCfg.tier == TIER_BERSERK) {
+      return (double)g_ProductCfg.gridMinDist;
+   }
+
    // 1. 获取 V3.8 风格固定间距 (保底收益)
    double fixedDist = (orderCount == 1) ? g_ProductCfg.gridMinDist : g_ProductCfg.gridDistLayer2;
    
@@ -479,8 +508,24 @@ void OnChartEvent(const int id, const long& l, const double& d, const string& s)
       else if(s==g_ObjPrefix+"Btn_Sell") g_AllowShort=!g_AllowShort;
       else if(s==g_ObjPrefix+"Btn_CloseAll") CloseAll();
       else if(s==g_ObjPrefix+"Btn_Pause") {
-         if(g_CircuitBreakerTriggered || g_DailyStopTriggered) return;
-         g_IsTradingAllowed=!g_IsTradingAllowed;
+         // [用户请求] 点击按钮后重置风控状态
+         if(g_CircuitBreakerTriggered || g_DailyStopTriggered) {
+             g_CircuitBreakerTriggered = false;
+             g_DailyStopTriggered = false;
+             g_IsTradingAllowed = false; // 重置为暂停状态
+             
+             // [核心修正] 重置风控起始时间，并快照当前的损益作为基准值
+             // 这样后续的 GlobalRiskCheck 将从这一刻的净值开始重新计算
+             g_RiskCheckStartTime = TimeCurrent(); 
+             g_RiskCheckBaselinePL = GetHistoryProfit(iTime(_Symbol, PERIOD_D1, 0), TimeCurrent()+3600) + GetFloatingPL(OP_BUY) + GetFloatingPL(OP_SELL);
+             
+             Print(StringFormat("🛡️ 风控状态已重置！快照基准盈利: %.2f。系统已复位为暂停模式，请再次点击启动。", g_RiskCheckBaselinePL));
+         } else {
+             // 正常切换暂停/运行
+             g_IsTradingAllowed=!g_IsTradingAllowed;
+         }
+         UpdateDashboard();
+         ChartRedraw(); // 强制重绘
       }
       UpdateDashboard();
    }
@@ -677,11 +722,13 @@ void CloseAll() { ClosePositions(6); }
 //| 全局风控检查器 (修正版)                                             |
 //+------------------------------------------------------------------+
 bool GlobalRiskCheck() {
-   // 1. 日期检测与重置
+   // 1. 日期检测与重置 (新的一天，重置起始点)
    datetime today = iTime(_Symbol, PERIOD_D1, 0);
-   if(g_DailyStopDay != today) { 
-      g_DailyStopDay = today; 
+   if(g_RiskCheckStartTime < today) { 
+      g_RiskCheckStartTime = today; 
+      g_RiskCheckBaselinePL = 0;       // 跨天必须重置基准值
       g_DailyStopTriggered = false; 
+      g_CircuitBreakerTriggered = false; 
    }
 
    double bal = AccountBalance();
@@ -692,13 +739,11 @@ bool GlobalRiskCheck() {
    // 逻辑：保命。一旦净值低于 本金*(1-比例)，无条件清仓。
    // ---------------------------------------------------------
    if(!g_CircuitBreakerTriggered && InpEquityStopPct > 0 && bal > 0) {
-      // 注意：这里用 AccountBalance() 作为基准。
-      // 如果你希望用“历史最高余额”做基准(移动止损)，逻辑会更复杂，目前这样是标准的“本金保护”。
       if(eq <= bal * (1.0 - InpEquityStopPct/100.0)) {
          Print(StringFormat("【一级熔断】净值触及止损线! 当前: %.2f, 阈值: %.2f", eq, bal * (1.0 - InpEquityStopPct/100.0)));
          CloseAll();
          g_CircuitBreakerTriggered = true;
-         g_IsTradingAllowed = false; // 永久停机
+         g_IsTradingAllowed = false; 
          return false;
       }
    }
@@ -707,25 +752,24 @@ bool GlobalRiskCheck() {
    // ---------------------------------------------------------
    // [二级熔断] 单日净亏损限额 (Daily Drawdown Limit)
    // 逻辑：防上头。计算 (今日已平仓盈亏 + 当前持仓浮动盈亏)。
+   // 修正：使用 g_RiskCheckStartTime 作为计算起点，允许手动重置
    // ---------------------------------------------------------
    if(!g_DailyStopTriggered && InpDailyLossPct > 0 && bal > 0) {
-      double realized = GetHistoryProfit(today, TimeCurrent()+3600); // 今日已结盈亏
-      double floating = GetFloatingPL(OP_BUY) + GetFloatingPL(OP_SELL); // 当前浮动盈亏
+      double currentPL = GetHistoryProfit(iTime(_Symbol, PERIOD_D1, 0), TimeCurrent()+3600) + GetFloatingPL(OP_BUY) + GetFloatingPL(OP_SELL); 
       
-      double dailyNetPL = realized + floating; // 今日真实净盈亏
-      double lossLimit = bal * (InpDailyLossPct/100.0); // 允许亏损额 (正数)
+      // 核心计算：当前累计损益 - 重置时的基准值 = 本次运行周期的真实损益
+      double dailyNetPL = currentPL - g_RiskCheckBaselinePL; 
+      double lossLimit = bal * (InpDailyLossPct/100.0); 
 
-      // 如果 净盈亏 是负数，且 亏损额绝对值 超过 限额
       if(dailyNetPL < 0 && MathAbs(dailyNetPL) >= lossLimit) {
-         Print(StringFormat("【二级熔断】单日亏损达标! 今日净值: %.2f, 限额: %.2f", dailyNetPL, -lossLimit));
-         // 策略：通常单日风控触发后，选择平仓休息
+         Print(StringFormat("【二级熔断】风控触发! 当前净盈亏: %.2f, 基准: %.2f, 限额: %.2f", currentPL, g_RiskCheckBaselinePL, -lossLimit));
          CloseAll(); 
          g_DailyStopTriggered = true;
-         // 注意：这里不永久设为 false，因为 UI 里可以通过点击按钮恢复，或者第二天自动恢复
          return false;
       }
    }
    if(g_DailyStopTriggered) return false;
+
 
    // ---------------------------------------------------------
    // [三级熔断] 技术性止损 (Technical Stop)
@@ -772,8 +816,8 @@ double GetFloatingPL(int t){double p=0;for(int i=0;i<OrdersTotal();i++)if(OrderS
 double GetLastPrice(int t){double p=0;datetime d=0;for(int i=0;i<OrdersTotal();i++)if(OrderSelect(i,SELECT_BY_POS)&&OrderMagicNumber()==InpMagicNum&&OrderType()==t)if(OrderOpenTime()>d){d=OrderOpenTime();p=OrderOpenPrice();}return p;}
 double GetLastLot(int t){double l=InpInitialLots;datetime d=0;for(int i=0;i<OrdersTotal();i++)if(OrderSelect(i,SELECT_BY_POS)&&OrderMagicNumber()==InpMagicNum&&OrderType()==t)if(OrderOpenTime()>d){d=OrderOpenTime();l=OrderLots();}return l;}
 void CreateRect(string n,int x,int y,int w,int h,color bg,color border=CLR_NONE) { string name=g_ObjPrefix+n; if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_RECTANGLE_LABEL,0,0,0); ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x); ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y); ObjectSetInteger(0,name,OBJPROP_XSIZE,w); ObjectSetInteger(0,name,OBJPROP_YSIZE,h); ObjectSetInteger(0,name,OBJPROP_BGCOLOR,bg); ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,border);ObjectSetInteger(0,name,OBJPROP_BACK,false); }
-void CreateLabel(string n,string t,int x,int y,color c,int s=9,string f="微软雅黑") { string name=g_ObjPrefix+n; if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0); ObjectSetString(0,name,OBJPROP_TEXT,t); ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x); ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y); ObjectSetInteger(0,name,OBJPROP_COLOR,c); ObjectSetInteger(0,name,OBJPROP_FONTSIZE,s); ObjectSetString(0,name,OBJPROP_FONT,f);}
-void CreateButton(string n,string t,int x,int y,int w,int h,color bg) { string name=g_ObjPrefix+n; if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0); ObjectSetString(0,name,OBJPROP_TEXT,t); ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x); ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y); ObjectSetInteger(0,name,OBJPROP_XSIZE,w); ObjectSetInteger(0,name,OBJPROP_YSIZE,h); ObjectSetInteger(0,name,OBJPROP_BGCOLOR,bg); ObjectSetInteger(0,name,OBJPROP_COLOR,g_ColorButtonText); ObjectSetInteger(0,name,OBJPROP_FONTSIZE,8); ObjectSetString(0,name,OBJPROP_FONT,"微软雅黑"); }
+void CreateLabel(string n,string t,int x,int y,color c,int s=9,string f="微软雅黑") { string name=g_ObjPrefix+n; if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0); ObjectSetString(0,name,OBJPROP_TEXT,t); ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x); ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y); ObjectSetInteger(0,name,OBJPROP_COLOR,c); ObjectSetInteger(0,name,OBJPROP_FONTSIZE,s); ObjectSetString(0,name,OBJPROP_FONT,f); ObjectSetInteger(0,name,OBJPROP_BACK,false); }
+void CreateButton(string n,string t,int x,int y,int w,int h,color bg) { string name=g_ObjPrefix+n; if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0); ObjectSetString(0,name,OBJPROP_TEXT,t); ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x); ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y); ObjectSetInteger(0,name,OBJPROP_XSIZE,w); ObjectSetInteger(0,name,OBJPROP_YSIZE,h); ObjectSetInteger(0,name,OBJPROP_BGCOLOR,bg); ObjectSetInteger(0,name,OBJPROP_COLOR,g_ColorButtonText); ObjectSetInteger(0,name,OBJPROP_FONTSIZE,8); ObjectSetString(0,name,OBJPROP_FONT,"微软雅黑"); ObjectSetInteger(0,name,OBJPROP_BACK,false); }
 void SetLabelText(string n,string t) { if(ObjectFind(0,g_ObjPrefix+n)>=0) ObjectSetString(0,g_ObjPrefix+n,OBJPROP_TEXT,t); }
 void SetObjectColor(string n,color c) { if(ObjectFind(0,g_ObjPrefix+n)>=0) ObjectSetInteger(0,g_ObjPrefix+n,OBJPROP_COLOR,c); }
 void SetBtnColor(string n,color c) { if(ObjectFind(0,g_ObjPrefix+n)>=0) ObjectSetInteger(0,g_ObjPrefix+n,OBJPROP_BGCOLOR,c); }
