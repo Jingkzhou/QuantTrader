@@ -528,9 +528,51 @@ void UpdateDashboard() {
       SetObjectColor("V_SessionTime", g_ColorGood);
    }
    
-   SetLabelText("V_TodayM", StringFormat("%.2f USD", pToday));
+   // --- 1. 获取核心数据 ---
+   int bCnt = CountOrders(OP_BUY);
+   int sCnt = CountOrders(OP_SELL);
+   double floatPL = GetFloatingPL(OP_BUY) + GetFloatingPL(OP_SELL); // 总浮亏
+   double nextBuyLot = CalculateNextLot(OP_BUY);
+   double nextSellLot = CalculateNextLot(OP_SELL);
+
+   // --- 2. 改造状态栏：显示层数和下一单手数 ---
+   // 新逻辑：显示 "多(3层) 0.05"
+   string buyInfo = g_AllowLong ? StringFormat("多(%d层) %.2f", bCnt, nextBuyLot) : "多头 OFF";
+   SetLabelText("L_BuyState", buyInfo);
+   // 颜色逻辑：层数超过6层变橙色预警，超过10层变红色报警
+   if(g_AllowLong) {
+      if(bCnt >= 10) SetRectBg("Chip_Buy", clrRed);
+      else if(bCnt >= 6) SetRectBg("Chip_Buy", clrOrange);
+      else SetRectBg("Chip_Buy", g_ColorGood);
+      SetObjectColor("L_BuyState", g_ColorInk);
+   } else {
+      SetRectBg("Chip_Buy", g_ColorBad);
+      SetObjectColor("L_BuyState", g_ColorText);
+   }
+
+   string sellInfo = g_AllowShort ? StringFormat("空(%d层) %.2f", sCnt, nextSellLot) : "空头 OFF";
+   SetLabelText("L_SellState", sellInfo);
+   // 同理设置空头颜色
+   if(g_AllowShort) {
+      if(sCnt >= 10) SetRectBg("Chip_Sell", clrRed);
+      else if(sCnt >= 6) SetRectBg("Chip_Sell", clrOrange);
+      else SetRectBg("Chip_Sell", g_ColorGood);
+      SetObjectColor("L_SellState", g_ColorInk);
+   } else {
+      SetRectBg("Chip_Sell", g_ColorBad);
+      SetObjectColor("L_SellState", g_ColorText);
+   }
+
+   // --- 3. 改造收益区：显示浮动盈亏 ---
+   // 新逻辑：显示 "盈:5.07 / 浮:-12.5"
+   string profitStr = StringFormat("盈:%.2f  浮:%.2f", pToday, floatPL);
+   SetLabelText("V_TodayM", profitStr);
+   
+   // 浮亏颜色逻辑：浮亏严重时显示红色
+   if(floatPL < -50.0) SetObjectColor("V_TodayM", clrRed); // 浮亏超过50刀变红
+   else SetObjectColor("V_TodayM", todayColor);
+
    SetLabelText("V_TodayP", StringFormat("%.2f%%", (bal>0?pToday/bal*100:0)));
-   SetObjectColor("V_TodayM", todayColor);
    SetObjectColor("V_TodayP", todayColor);
    SetLabelText("V_Bal", StringFormat("%.2f USD", bal));
    SetLabelText("V_Used", StringFormat("%.2f USD", margin));
@@ -539,13 +581,6 @@ void UpdateDashboard() {
    
    double bLots=GetTotalLots(OP_BUY), sLots=GetTotalLots(OP_SELL);
    SetLabelText("V_Target", StringFormat("多头目标: %.2f | 空头目标: %.2f", bLots*g_ProductCfg.targetPips*g_PipValue, sLots*g_ProductCfg.targetPips*g_PipValue));
-
-   SetLabelText("L_BuyState", g_AllowLong?"多头 ON":"多头 OFF");
-   SetObjectColor("L_BuyState", g_AllowLong?g_ColorInk:g_ColorText);
-   SetRectBg("Chip_Buy", g_AllowLong?g_ColorGood:g_ColorBad);
-   SetLabelText("L_SellState", g_AllowShort?"空头 ON":"空头 OFF");
-   SetObjectColor("L_SellState", g_AllowShort?g_ColorInk:g_ColorText);
-   SetRectBg("Chip_Sell", g_AllowShort?g_ColorGood:g_ColorBad);
    if(riskLock) {
       SetLabelText("Btn_Pause", g_CircuitBreakerTriggered?"已触发熔断 · 关机":"当日止损触发 · 已停机");
       SetBtnColor("Btn_Pause", g_ColorBad);
