@@ -57,29 +57,29 @@ input double   InpDecayMulti     = 1.1;            // 衰减后的倍率
 input bool     InpGridExpansion  = true;           // 是否开启动态间距扩张
 
 input group "=== V3.7 UI 面板设置 ==="
-input int      UI_X_Offset      = 50;
-input int      UI_Y_Offset      = 50;
-input color    UI_ThemeColor    = C'0,128,128'; 
+input int      UI_X_Offset      = 50;              // 面板水平偏移量
+input int      UI_Y_Offset      = 50;              // 面板垂直偏移量
+input color    UI_ThemeColor    = C'0,128,128';    // 主题颜色 
 
 input group "=== V3.6 机构级设置 ==="
-input bool     InpEnableDualMode = true;      
-input int      InpBEProfitPips   = 80;        
-input int      InpBELockPips     = 10;        
+input bool     InpEnableDualMode = true;           // 是否启用双向持仓模式
+input int      InpBEProfitPips   = 80;             // 保本激活所需盈利点数
+input int      InpBELockPips     = 10;             // 保本锁定点数偏移        
 
 input group "=== V3.5 首尾对冲设置 ==="
-input bool     InpEnableDualHedge = true;     
-input int      InpDestockMinLayer = 6;        
-input double   InpDestockProfit = 1.0;        
+input bool     InpEnableDualHedge = true;          // 是否启用首尾对冲减仓
+input int      InpDestockMinLayer = 6;             // 触发对冲的最小层数
+input double   InpDestockProfit = 1.0;             // 对冲平仓最低盈利要求        
 
 input group "=== 风控与核心参数 ==="
-input bool     InpUseDynamicTP  = true;
-input int      InpTargetPips    = 150;
-input double   InpSingleSideMaxLoss = 500.0;  
-input int      InpMagicNum      = 999008;
-input double   InpInitialLots   = 0.01;
-input double   MartinMulti      = 1.5;
-input int      GridMinDist      = 100;
-input int      GridDistLayer2   = 300;
+input bool     InpUseDynamicTP  = true;            // 是否启用动态止盈
+input int      InpTargetPips    = 150;             // 目标止盈点数
+input double   InpSingleSideMaxLoss = 500.0;       // 单边最大浮亏限额
+input int      InpMagicNum      = 999008;          // EA订单魔术号
+input double   InpInitialLots   = 0.01;            // 起始开仓手数
+input double   MartinMulti      = 1.5;             // 马丁倍率乘数
+input int      GridMinDist      = 100;             // 首层网格间距点数
+input int      GridDistLayer2   = 300;             // 二层及以后网格间距
 
 //--- 全局变量
 bool     g_IsTradingAllowed = true;
