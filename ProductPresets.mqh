@@ -141,9 +141,9 @@ ProductConfig GetGoldConfig() {
    cfg.gridExpansion = true;
    
    // 交易时段 (避开亚盘低流动性)
-   cfg.sessionStartHour = 8;   // GMT 08:00
-   cfg.sessionEndHour = 22;    // GMT 22:00
-   cfg.allowWeekend = false;
+   cfg.sessionStartHour = 0;   // GMT 08:00
+   cfg.sessionEndHour = 24;    // GMT 22:00
+   cfg.allowWeekend = true;
    
    // 首尾对冲
    cfg.destockMinLayer = 6;
