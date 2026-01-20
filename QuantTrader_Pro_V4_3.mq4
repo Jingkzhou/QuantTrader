@@ -442,7 +442,7 @@ void OnChartEvent(const int id, const long& l, const double& d, const string& s)
 void DrawDashboard() {
    if(!g_PanelVisible) return;
    int x=UI_X_Offset, y=UI_Y_Offset;
-   int w=960, h=720, headerH=40, pad=18;  // V4.3 深度扩容面板
+   int w=480, h=720, headerH=40, pad=18;  // V4.3 深度扩容面板
    int cy=y+headerH+16;
    string modeS = (g_ProductCfg.martinMode==1?"斐波那契":(g_ProductCfg.martinMode==2?"线性递增":"指数衰减"));
    string productS = EnumToString(g_ProductCfg.type);
