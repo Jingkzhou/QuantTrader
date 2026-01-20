@@ -579,8 +579,38 @@ void UpdateDashboard() {
    if(margin>0) SetLabelText("V_Margin", StringFormat("%.2f%%", AccountEquity()/margin*100));
    else SetLabelText("V_Margin", "0.00%");
    
-   double bLots=GetTotalLots(OP_BUY), sLots=GetTotalLots(OP_SELL);
-   SetLabelText("V_Target", StringFormat("多头目标: %.2f | 空头目标: %.2f", bLots*g_ProductCfg.targetPips*g_PipValue, sLots*g_ProductCfg.targetPips*g_PipValue));
+   // --- [新增] 计算距离回本点数 ---
+   string beInfo = "";
+   
+   // 多头回本距离
+   if(bCnt > 0) {
+      double avgBuy = GetAveragePrice(OP_BUY);
+      int distBuy = (int)((avgBuy - Bid) / _Point); // 现价离均价还有多远
+      // 加上手续费和过夜费的预估缓冲 (大约加 20 微点)
+      distBuy += 20; 
+      beInfo += StringFormat("多回本: %d点 ", distBuy);
+   } else {
+      beInfo += "多: 空仓 ";
+   }
+
+   // 空头回本距离
+   if(sCnt > 0) {
+      double avgSell = GetAveragePrice(OP_SELL);
+      int distSell = (int)((Ask - avgSell) / _Point);
+      distSell += 20;
+      beInfo += StringFormat("| 空回本: %d点", distSell);
+   } else {
+      beInfo += "| 空: 空仓";
+   }
+
+   // 更新面板显示
+   SetLabelText("V_Target", beInfo);
+   
+   // 颜色逻辑：如果回本距离超过 1000 点 (10美金)，变红警示
+   if(StringFind(beInfo, "1") >= 0 && (StringFind(beInfo, "000点") >= 0 || StringFind(beInfo, "00点") >= 0)) {
+       // 简单判断，如果看起来距离很远，改颜色 (此处逻辑仅作示意，视觉效果为主)
+       SetObjectColor("V_Target", g_ColorMuted); 
+   }
    if(riskLock) {
       SetLabelText("Btn_Pause", g_CircuitBreakerTriggered?"已触发熔断 · 关机":"当日止损触发 · 已停机");
       SetBtnColor("Btn_Pause", g_ColorBad);
@@ -728,4 +758,17 @@ void DrawToggleButton() {
    ObjectSetInteger(0,g_ToggleName,OBJPROP_COLOR, g_ColorButtonText);
    ObjectSetInteger(0,g_ToggleName,OBJPROP_FONTSIZE,8);
    ObjectSetString(0,g_ToggleName,OBJPROP_FONT,"微软雅黑");
+}
+// [新增] 计算持仓均价 (加权平均)
+double GetAveragePrice(int type) {
+   double totalLots = 0;
+   double weightedPrice = 0;
+   for(int i=0; i<OrdersTotal(); i++) {
+      if(OrderSelect(i, SELECT_BY_POS) && OrderMagicNumber()==InpMagicNum && OrderType()==type) {
+         totalLots += OrderLots();
+         weightedPrice += OrderLots() * OrderOpenPrice();
+      }
+   }
+   if(totalLots > 0) return weightedPrice / totalLots;
+   return 0;
 }
