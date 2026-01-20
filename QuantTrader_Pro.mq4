@@ -443,6 +443,11 @@ void DrawDashboard() {
    if(!g_PanelVisible) return;
    int x=UI_X_Offset, y=UI_Y_Offset;
    int w=960, h=720, headerH=40, pad=18;  // V4.3 深度扩容面板
+   int innerW = w - 2*pad;
+   int colGap = 36;
+   int colW = (innerW - colGap) / 2;
+   int xL = x + pad;
+   int xR = xL + colW + colGap;
    int cy=y+headerH+16;
    string modeS = (g_ProductCfg.martinMode==1?"斐波那契":(g_ProductCfg.martinMode==2?"线性递增":"指数衰减"));
    string productS = EnumToString(g_ProductCfg.type);
@@ -452,50 +457,55 @@ void DrawDashboard() {
    CreateRect("Bg", x, y, w, h, g_ColorPanel, UI_ThemeColor);
    CreateRect("Accent", x, y, 4, h, UI_ThemeColor);
    CreateRect("Header", x+4, y, w-4, headerH, g_ColorHeader);
-   CreateLabel("T_Title", "QuantTrader Pro", x+pad+2, y+9, g_ColorText, 10, "微软雅黑");
+   CreateLabel("T_Title", "QuantTrader Pro", xL+2, y+9, g_ColorText, 10, "微软雅黑");
    CreateLabel("T_Ver", "V4.3", x+w-46, y+9, g_ColorMuted, 9, "Consolas");
 
    //--- V4.3 产品+层级信息区
-   CreateLabel("T_Product", "配置信息", x+pad, cy, g_ColorMuted, 8, "微软雅黑");
+   CreateLabel("T_Product", "配置信息", xL, cy, g_ColorMuted, 8, "微软雅黑");
    cy+=28;
-   CreateLabel("V_ProductType", productS, x+pad, cy, UI_ThemeColor, 10, "Consolas");
-   CreateLabel("V_TierName", tierS, x+pad+120, cy, UI_ThemeColor, 10, "Consolas");
+   CreateLabel("V_ProductType", productS, xL, cy, UI_ThemeColor, 10, "Consolas");
+   CreateLabel("V_TierName", tierS, xR, cy, UI_ThemeColor, 10, "Consolas");
    cy+=28;
-   CreateLabel("V_SessionTime", "首层间距: --", x+pad, cy, g_ColorMuted, 9, "Consolas");
-   CreateLabel("V_RiskLevel", "风险: " + IntegerToString((int)g_TierCfg.riskLevel) + "/10", x+pad+140, cy, g_ColorMuted, 9, "Consolas");
+   CreateLabel("V_SessionTime", "首层间距: --", xL, cy, g_ColorMuted, 9, "Consolas");
+   CreateLabel("V_RiskLevel", "风险: " + IntegerToString((int)g_TierCfg.riskLevel) + "/10", xR, cy, g_ColorMuted, 9, "Consolas");
    
-   cy+=35; CreateRect("Line0", x+pad, cy, w-2*pad, 1, g_ColorLine);
-   cy+=16; CreateLabel("T_Status", "策略状态", x+pad, cy, g_ColorMuted, 8, "微软雅黑");
+   cy+=35; CreateRect("Line0", xL, cy, innerW, 1, g_ColorLine);
+   cy+=16; CreateLabel("T_Status", "策略状态", xL, cy, g_ColorMuted, 8, "微软雅黑");
    cy+=28;
-   CreateRect("Chip_Buy", x+pad, cy, 80, 24, g_ColorGood);
-   CreateLabel("L_BuyState", "多头 ON", x+pad+12, cy+5, g_ColorInk, 8, "微软雅黑");
-   CreateRect("Chip_Sell", x+pad+100, cy, 80, 24, g_ColorGood);
-   CreateLabel("L_SellState", "空头 ON", x+pad+112, cy+5, g_ColorInk, 8, "微软雅黑");
-   CreateLabel("T_Mode", "模式:", x+w-135, cy+5, g_ColorMuted, 9, "微软雅黑");
-   CreateLabel("V_Mode", modeS, x+w-85, cy+5, UI_ThemeColor, 9, "微软雅黑");
+   int chipW = 100;
+   int chipGap = 12;
+   CreateRect("Chip_Buy", xL, cy, chipW, 24, g_ColorGood);
+   CreateLabel("L_BuyState", "多头 ON", xL+12, cy+5, g_ColorInk, 8, "微软雅黑");
+   CreateRect("Chip_Sell", xL+chipW+chipGap, cy, chipW, 24, g_ColorGood);
+   CreateLabel("L_SellState", "空头 ON", xL+chipW+chipGap+12, cy+5, g_ColorInk, 8, "微软雅黑");
+   CreateLabel("T_Mode", "模式:", xR, cy+5, g_ColorMuted, 9, "微软雅黑");
+   CreateLabel("V_Mode", modeS, xR+50, cy+5, UI_ThemeColor, 9, "微软雅黑");
 
-   cy+=35; CreateRect("Line1", x+pad, cy, w-2*pad, 1, g_ColorLine);
-   cy+=16; CreateLabel("T_Profit", "收益表现", x+pad, cy, g_ColorMuted, 8, "微软雅黑");
-   cy+=28; CreateLabel("T_Today", "今日获利", x+pad, cy, g_ColorText, 10, "微软雅黑");
-   CreateLabel("V_TodayM", "0.00 USD", x+pad+110, cy, g_ColorGood, 10, "Consolas");
-   CreateLabel("V_TodayP", "0.00%", x+w-80, cy, g_ColorGood, 10, "Consolas");
-   cy+=30; CreateLabel("V_Target", "多头目标: 0.00 | 空头目标: 0.00", x+pad, cy, g_ColorMuted, 9, "微软雅黑");
+   cy+=35; CreateRect("Line1", xL, cy, innerW, 1, g_ColorLine);
+   cy+=16; CreateLabel("T_Profit", "收益表现", xL, cy, g_ColorMuted, 8, "微软雅黑");
+   cy+=28; CreateLabel("T_Today", "今日获利", xL, cy, g_ColorText, 10, "微软雅黑");
+   CreateLabel("V_TodayM", "0.00 USD", xL+110, cy, g_ColorGood, 10, "Consolas");
+   CreateLabel("V_TodayP", "0.00%", xR+colW-70, cy, g_ColorGood, 10, "Consolas");
+   cy+=30; CreateLabel("V_Target", "多头目标: 0.00 | 空头目标: 0.00", xL, cy, g_ColorMuted, 9, "微软雅黑");
 
-   cy+=35; CreateRect("Line2", x+pad, cy, w-2*pad, 1, g_ColorLine);
-   cy+=16; CreateLabel("T_Account", "账户数据", x+pad, cy, g_ColorMuted, 8, "微软雅黑");
-   cy+=28; CreateLabel("T_Bal", "余额", x+pad, cy, g_ColorText, 10, "微软雅黑");
-   CreateLabel("V_Bal", "0.00 USD", x+pad+110, cy, g_ColorText, 10, "Consolas");
-   cy+=30; CreateLabel("T_Used", "已用保证金", x+pad, cy, g_ColorMuted, 10, "微软雅黑");
-   CreateLabel("V_Used", "0.00 USD", x+pad+130, cy, g_ColorMuted, 10, "Consolas");
-   cy+=30; CreateLabel("T_Margin", "保证金率", x+pad, cy, g_ColorText, 10, "微软雅黑");
-   CreateLabel("V_Margin", "0.00%", x+pad+130, cy, UI_ThemeColor, 11, "Consolas");
+   cy+=35; CreateRect("Line2", xL, cy, innerW, 1, g_ColorLine);
+   cy+=16; CreateLabel("T_Account", "账户数据", xL, cy, g_ColorMuted, 8, "微软雅黑");
+   cy+=28; CreateLabel("T_Bal", "余额", xL, cy, g_ColorText, 10, "微软雅黑");
+   CreateLabel("V_Bal", "0.00 USD", xL+110, cy, g_ColorText, 10, "Consolas");
+   CreateLabel("T_Margin", "保证金率", xR, cy, g_ColorText, 10, "微软雅黑");
+   CreateLabel("V_Margin", "0.00%", xR+130, cy, UI_ThemeColor, 11, "Consolas");
+   cy+=30; CreateLabel("T_Used", "已用保证金", xL, cy, g_ColorMuted, 10, "微软雅黑");
+   CreateLabel("V_Used", "0.00 USD", xL+130, cy, g_ColorMuted, 10, "Consolas");
 
-   cy+=35; CreateRect("Line3", x+pad, cy, w-2*pad, 1, g_ColorLine);
-   cy+=16; CreateLabel("T_Control", "手动控制", x+pad, cy, g_ColorMuted, 8, "微软雅黑");
-   cy+=28; CreateButton("Btn_Buy", "多头开关", x+pad, cy, 110, 30, UI_ThemeColor);
-   CreateButton("Btn_Sell", "空头开关", x+pad+120, cy, 110, 30, UI_ThemeColor);
-   CreateButton("Btn_CloseAll", "全平清仓", x+pad+240, cy, 110, 30, g_ColorBad);
-   cy+=40; CreateButton("Btn_Pause", "系统已暂停 · 点击恢复", x+pad, cy, w-2*pad, 36, g_ColorBad);
+   cy+=35; CreateRect("Line3", xL, cy, innerW, 1, g_ColorLine);
+   cy+=16; CreateLabel("T_Control", "手动控制", xL, cy, g_ColorMuted, 8, "微软雅黑");
+   cy+=28;
+   int btnGap = 12;
+   int btnW = (innerW - btnGap*2) / 3;
+   CreateButton("Btn_Buy", "多头开关", xL, cy, btnW, 30, UI_ThemeColor);
+   CreateButton("Btn_Sell", "空头开关", xL+btnW+btnGap, cy, btnW, 30, UI_ThemeColor);
+   CreateButton("Btn_CloseAll", "全平清仓", xL+2*(btnW+btnGap), cy, btnW, 30, g_ColorBad);
+   cy+=40; CreateButton("Btn_Pause", "系统已暂停 · 点击恢复", xL, cy, innerW, 36, g_ColorBad);
 }
 
 void UpdateDashboard() {
