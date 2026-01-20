@@ -27,6 +27,7 @@ enum ENUM_PRODUCT_TYPE {
 //                       资金层级枚举 (Capital Tier)
 //====================================================================
 enum ENUM_CAPITAL_TIER {
+   TIER_BERSERK,        // Lv.0 狂暴模式 ($50-$5,000) - 仿竞品极限刷单
    TIER_LABORATORY,     // Lv.1 实验室 ($100-$2,000) - 高风险测试
    TIER_SOLDIER,        // Lv.2 特种兵 ($2,000-$10,000) - 单兵作战
    TIER_COMMANDER,      // Lv.3 指挥官 ($10,000-$50,000) - 组合对冲
@@ -518,6 +519,44 @@ bool IsTradingAllowedByProduct(ProductConfig &cfg) {
 }
 
 //====================================================================
+//              资金层级预设 - Lv.0 狂暴模式 (Berserk)
+//              [仿竞品策略：极速刷单，以利润换风险]
+//====================================================================
+TierConfig GetBerserkTier() {
+   TierConfig tier;
+   tier.tier = TIER_BERSERK;
+   tier.tierName = "👹 狂暴模式"; // 加上Emoji警示
+   tier.capitalMin = 50;        // 极低门槛
+   tier.capitalMax = 5000;      // 建议不要超过5000刀玩这个
+   
+   // 核心参数 - 竞品仿生学
+   tier.initialLots = 0.01;     // 起步
+   tier.lotMultiplier = 1.0;    // 基准倍率
+   
+   // [关键点1] 极密网格：0.35倍 = 约 35 微点 (竞品参数)
+   tier.distMultiplier = 0.35;  
+   
+   // [关键点2] 强力指数：配合主程序的 1.3 倍率设置
+   tier.martinMode = 0;         // 指数模式 (Exponential)
+   
+   // [关键点3] 限制层数：防止一波带走，留得青山在
+   tier.maxLayers = 10;         
+   tier.maxSingleLot = 2.50;    // 允许单笔下到很大 (竞品曾下到2.47)
+   
+   // 风控 - 置之死地而后生
+   tier.equityStopPct = 50.0;   // 允许亏损一半本金 (赌博模式)
+   tier.dailyLossPct = 20.0;    // 允许单日回撤 20%
+   tier.riskLevel = 10;         // 风险等级 10/10 (满级)
+   
+   // 策略建议
+   tier.portfolioMode = false;  // 只能跑单品种
+   tier.useCentAccount = false; // 建议标准户博暴利，或者美分户抗单
+   tier.description = "⚠️ 极度危险！仿竞品高频刷单策略。仅限亚盘垃圾时间使用。";
+   
+   return tier;
+}
+
+//====================================================================
 //              资金层级预设 - Lv.1 实验室 (Laboratory)
 //====================================================================
 TierConfig GetLaboratoryTier() {
@@ -646,11 +685,12 @@ TierConfig GetWhaleTier() {
 //====================================================================
 TierConfig GetTierConfig(ENUM_CAPITAL_TIER capitalTier) {
    switch(capitalTier) {
+      case TIER_BERSERK:    return GetBerserkTier();    // Lv.0 狂暴模式
       case TIER_LABORATORY: return GetLaboratoryTier();
       case TIER_SOLDIER:    return GetSoldierTier();
       case TIER_COMMANDER:  return GetCommanderTier();
       case TIER_WHALE:      return GetWhaleTier();
-      default:              return GetSoldierTier();  // 默认特种兵
+      default:              return GetSoldierTier();    // 默认特种兵
    }
 }
 

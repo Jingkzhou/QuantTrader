@@ -1,13 +1,13 @@
 //+------------------------------------------------------------------+
-//|                                      QuantTrader_Pro_V4_3.mq4    |
+//|                                      QuantTrader_Pro_V4_5.mq4    |
 //|                                  Copyright 2026, Antigravity AI  |
 //|                                             https://www.mql5.com |
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, Antigravity AI"
 #property link      "https://www.mql5.com"
-#property version   "4.30"
+#property version   "4.50"
 #property strict
-#property description "全自动多策略量化交易系统 V4.3 [智能双模网格 + 实时间距显示 + 三重风控]"
+#property description "全自动多策略量化交易系统 V4.5 [动态止盈降级 + 智能双模网格 + 三重风控]"
 
 //--- 引入产品预设配置
 #include "ProductPresets.mqh"
@@ -71,8 +71,14 @@ input bool     InpEnableDualHedge = true;          // 是否启用首尾对冲�
 input int      InpDestockMinLayer = 6;             // 触发对冲的最小层数
 input double   InpDestockProfit = 1.0;             // 对冲平仓最低盈利要求        
 
+input group "=== V4.5 动态止盈降级 ==="
+input bool     InpUseDynamicTP    = true;          // 是否启用动态止盈降级
+input int      InpDynamicStart    = 4;             // 防御模式触发层数
+input double   InpDynamicRatio    = 0.5;           // 防御模式止盈折扣
+input int      InpSurvivalStart   = 7;             // 逃生模式触发层数
+input double   InpSurvivalProfit  = 5.0;           // 逃生模式目标金额($)
+
 input group "=== 风控与核心参数 ==="
-input bool     InpUseDynamicTP  = true;            // 是否启用动态止盈
 input int      InpTargetPips    = 150;             // 目标止盈点数
 input double   InpSingleSideMaxLoss = 500.0;       // 单边最大浮亏限额
 input int      InpMagicNum      = 999008;          // EA订单魔术号
@@ -345,31 +351,72 @@ double GetMaxAdversePoints(int side) {
 void RunMartingaleLogic() {
    double bProf=GetFloatingPL(OP_BUY), sProf=GetFloatingPL(OP_SELL);
    double bLots=GetTotalLots(OP_BUY), sLots=GetTotalLots(OP_SELL);
-   
-   // 1. 独立止盈检查 - 修正：使用 g_ProductCfg.targetPips
-   double bT = (bLots * g_ProductCfg.targetPips * g_PipValue);
-   double sT = (sLots * g_ProductCfg.targetPips * g_PipValue);
-   if(bLots > 0 && bProf >= bT) { ClosePositions(3); return; }
-   if(sLots > 0 && sProf >= sT) { ClosePositions(4); return; }
-   
-   // 2. 加仓检查 - 修正：使用 g_ProductCfg.singleSideMaxLoss
    int bCnt = CountOrders(OP_BUY);
+   int sCnt = CountOrders(OP_SELL);
+   
+   // ========== V4.5 动态止盈降级逻辑 ==========
+   // 多头止盈检查
+   if(bLots > 0) {
+      double bTarget = CalculateDynamicTP(bCnt, bLots);
+      if(bProf >= bTarget) { ClosePositions(3); return; }
+   }
+   
+   // 空头止盈检查
+   if(sLots > 0) {
+      double sTarget = CalculateDynamicTP(sCnt, sLots);
+      if(sProf >= sTarget) { ClosePositions(4); return; }
+   }
+   
+   // ========== 加仓检查 ==========
    if(g_AllowLong && (bCnt > 0)) {
       double dist = GetGridDistance(bCnt);
       if(Bid <= GetLastPrice(OP_BUY) - dist * _Point) {
          if(g_ProductCfg.singleSideMaxLoss == 0 || bProf >= -g_ProductCfg.singleSideMaxLoss)
-            SafeOrderSend(OP_BUY, CalculateNextLot(OP_BUY), "Add_V4");
+            SafeOrderSend(OP_BUY, CalculateNextLot(OP_BUY), "Add_V45");
       }
    }
 
-   int sCnt = CountOrders(OP_SELL);
    if(g_AllowShort && (sCnt > 0)) {
       double dist = GetGridDistance(sCnt);
       if(Ask >= GetLastPrice(OP_SELL) + dist * _Point) {
          if(g_ProductCfg.singleSideMaxLoss == 0 || sProf >= -g_ProductCfg.singleSideMaxLoss)
-            SafeOrderSend(OP_SELL, CalculateNextLot(OP_SELL), "Add_V4");
+            SafeOrderSend(OP_SELL, CalculateNextLot(OP_SELL), "Add_V45");
       }
    }
+}
+
+//+------------------------------------------------------------------+
+//| V4.5 动态止盈计算 - 三阶段降级                                      |
+//+------------------------------------------------------------------+
+double CalculateDynamicTP(int layerCount, double totalLots) {
+   // 基础止盈金额
+   double baseTP = totalLots * g_ProductCfg.targetPips * g_PipValue;
+   
+   // 如果未启用动态止盈，返回基础值
+   if(!InpUseDynamicTP) return baseTP;
+   
+   // 阶段一：贪婪模式 (层数 < InpDynamicStart)
+   if(layerCount < InpDynamicStart) {
+      return baseTP;
+   }
+   // 阶段二：防御模式 (InpDynamicStart <= 层数 < InpSurvivalStart)
+   else if(layerCount < InpSurvivalStart) {
+      return baseTP * InpDynamicRatio;
+   }
+   // 阶段三：逃生模式 (层数 >= InpSurvivalStart)
+   else {
+      return InpSurvivalProfit;  // 固定金额止盈
+   }
+}
+
+//+------------------------------------------------------------------+
+//| V4.5 获取止盈模式名称                                               |
+//+------------------------------------------------------------------+
+string GetTPModeName(int layerCount) {
+   if(!InpUseDynamicTP) return "固定";
+   if(layerCount < InpDynamicStart) return "贪婪";
+   else if(layerCount < InpSurvivalStart) return "防御";
+   else return "逃生⚠";
 }
 
 //====================================================================
@@ -458,7 +505,7 @@ void DrawDashboard() {
    CreateRect("Accent", x, y, 4, h, UI_ThemeColor);
    CreateRect("Header", x+4, y, w-4, headerH, g_ColorHeader);
    CreateLabel("T_Title", "QuantTrader Pro", xL+2, y+9, g_ColorText, 10, "微软雅黑");
-   CreateLabel("T_Ver", "V4.3", x+w-46, y+9, g_ColorMuted, 9, "Consolas");
+   CreateLabel("T_Ver", "V4.5", x+w-46, y+9, g_ColorMuted, 9, "Consolas");
 
    //--- V4.3 产品+层级信息区
    CreateLabel("T_Product", "配置信息", xL, cy, g_ColorMuted, 8, "微软雅黑");
@@ -579,37 +626,25 @@ void UpdateDashboard() {
    if(margin>0) SetLabelText("V_Margin", StringFormat("%.2f%%", AccountEquity()/margin*100));
    else SetLabelText("V_Margin", "0.00%");
    
-   // --- [新增] 计算距离回本点数 ---
-   string beInfo = "";
+   // --- V4.5 动态止盈目标显示 ---
+   double bLots = GetTotalLots(OP_BUY);
+   double sLots = GetTotalLots(OP_SELL);
+   double bTarget = CalculateDynamicTP(bCnt, bLots);
+   double sTarget = CalculateDynamicTP(sCnt, sLots);
+   string bMode = GetTPModeName(bCnt);
+   string sMode = GetTPModeName(sCnt);
    
-   // 多头回本距离
-   if(bCnt > 0) {
-      double avgBuy = GetAveragePrice(OP_BUY);
-      int distBuy = (int)((avgBuy - Bid) / _Point); // 现价离均价还有多远
-      // 加上手续费和过夜费的预估缓冲 (大约加 20 微点)
-      distBuy += 20; 
-      beInfo += StringFormat("多回本: %d点 ", distBuy);
-   } else {
-      beInfo += "多: 空仓 ";
-   }
-
-   // 空头回本距离
-   if(sCnt > 0) {
-      double avgSell = GetAveragePrice(OP_SELL);
-      int distSell = (int)((Ask - avgSell) / _Point);
-      distSell += 20;
-      beInfo += StringFormat("| 空回本: %d点", distSell);
-   } else {
-      beInfo += "| 空: 空仓";
-   }
-
-   // 更新面板显示
-   SetLabelText("V_Target", beInfo);
+   // 格式: "多目标: 15.50 (贪婪) | 空目标: 5.00 (逃生⚠)"
+   string targetInfo = StringFormat("多目标: %.2f (%s) | 空目标: %.2f (%s)", bTarget, bMode, sTarget, sMode);
+   SetLabelText("V_Target", targetInfo);
    
-   // 颜色逻辑：如果回本距离超过 1000 点 (10美金)，变红警示
-   if(StringFind(beInfo, "1") >= 0 && (StringFind(beInfo, "000点") >= 0 || StringFind(beInfo, "00点") >= 0)) {
-       // 简单判断，如果看起来距离很远，改颜色 (此处逻辑仅作示意，视觉效果为主)
-       SetObjectColor("V_Target", g_ColorMuted); 
+   // 颜色逻辑：逃生模式变红，防御模式变橙
+   if(bCnt >= InpSurvivalStart || sCnt >= InpSurvivalStart) {
+      SetObjectColor("V_Target", clrRed);
+   } else if(bCnt >= InpDynamicStart || sCnt >= InpDynamicStart) {
+      SetObjectColor("V_Target", clrOrange);
+   } else {
+      SetObjectColor("V_Target", g_ColorMuted);
    }
    if(riskLock) {
       SetLabelText("Btn_Pause", g_CircuitBreakerTriggered?"已触发熔断 · 关机":"当日止损触发 · 已停机");
