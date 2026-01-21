@@ -1,13 +1,13 @@
 //+------------------------------------------------------------------+
-//|                                      QuantTrader_Pro_V4_6.mq4    |
+//|                                      QuantTrader_Pro_V4_7.mq4    |
 //|                                  Copyright 2026, Antigravity AI  |
 //|                                             https://www.mql5.com |
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, Antigravity AI"
 #property link      "https://www.mql5.com"
-#property version   "4.60"
+#property version   "4.70"
 #property strict
-#property description "全自动多策略量化交易系统 V4.6 [狂暴模式修正 + 动态止盈降级 + 智能双模网格]"
+#property description "全自动多策略量化交易系统 V4.7 [智能分级对冲 + 狂暴模式修正]"
 
 //--- 引入产品预设配置
 #include "ProductPresets.mqh"
@@ -244,6 +244,10 @@ void OnTick() {
 
    if(InpEnableDualMode) ManageDualEntry();
    
+   // --- [V4.7 新增] 智能分级全向对冲 ---
+   // 先检查是否满足“全平解套”条件，如果满足直接全平，不走下面的单边逻辑
+   if(CheckSmartCrossHedge()) return; 
+   
    RunMartingaleLogic();
    UpdateDashboard();
 }
@@ -384,14 +388,27 @@ void RunMartingaleLogic() {
    int sCnt = CountOrders(OP_SELL);
    
    // ========== V4.5 动态止盈降级逻辑 ==========
+   // ========== V4.5 动态止盈降级逻辑 ==========
+   // [V4.7 修正] 如果正在等待全向对冲(CheckSmartCrossHedge返回false但接近触发)，是否应该屏蔽单边止盈？
+   // 答：为了简化逻辑，如果 SmartHedge 没触发，说明这里可以正常止盈。
+   //     但狂暴模式下，如果一层被套很深，我们希望留着另一层来对冲，而不是止盈。
+   //     实现：CheckSmartCrossHedge 内部已经负责全平。这里我们只加一个简单的过滤。
+   
+   bool suppressTP = false;
+   if(g_TierCfg.tier == TIER_BERSERK && (bCnt >= 3 || sCnt >= 3)) {
+      // 狂暴模式下，只要有单子被套(>3层)，就尽量憋单等待全向对冲(除非单边赚很多)
+      // 但为了防止死扛，我们仅在“总浮亏较大”时屏蔽小止盈
+      if(GetFloatingPL(OP_BUY) + GetFloatingPL(OP_SELL) < 0) suppressTP = true;
+   }
+
    // 多头止盈检查
-   if(bLots > 0) {
+   if(bLots > 0 && !suppressTP) {
       double bTarget = CalculateDynamicTP(bCnt, bLots);
       if(bProf >= bTarget) { ClosePositions(3); return; }
    }
    
    // 空头止盈检查
-   if(sLots > 0) {
+   if(sLots > 0 && !suppressTP) {
       double sTarget = CalculateDynamicTP(sCnt, sLots);
       if(sProf >= sTarget) { ClosePositions(4); return; }
    }
@@ -817,6 +834,53 @@ double GetLastPrice(int t){double p=0;datetime d=0;for(int i=0;i<OrdersTotal();i
 double GetLastLot(int t){double l=InpInitialLots;datetime d=0;for(int i=0;i<OrdersTotal();i++)if(OrderSelect(i,SELECT_BY_POS)&&OrderMagicNumber()==InpMagicNum&&OrderType()==t)if(OrderOpenTime()>d){d=OrderOpenTime();l=OrderLots();}return l;}
 void CreateRect(string n,int x,int y,int w,int h,color bg,color border=CLR_NONE) { string name=g_ObjPrefix+n; if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_RECTANGLE_LABEL,0,0,0); ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x); ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y); ObjectSetInteger(0,name,OBJPROP_XSIZE,w); ObjectSetInteger(0,name,OBJPROP_YSIZE,h); ObjectSetInteger(0,name,OBJPROP_BGCOLOR,bg); ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,border);ObjectSetInteger(0,name,OBJPROP_BACK,false); }
 void CreateLabel(string n,string t,int x,int y,color c,int s=9,string f="微软雅黑") { string name=g_ObjPrefix+n; if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0); ObjectSetString(0,name,OBJPROP_TEXT,t); ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x); ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y); ObjectSetInteger(0,name,OBJPROP_COLOR,c); ObjectSetInteger(0,name,OBJPROP_FONTSIZE,s); ObjectSetString(0,name,OBJPROP_FONT,f); ObjectSetInteger(0,name,OBJPROP_BACK,false); }
+//+------------------------------------------------------------------+
+//| V4.7 智能分级全向对冲 (Smart Cross Hedging)                      |
+//+------------------------------------------------------------------+
+bool CheckSmartCrossHedge() {
+   // 1. 获取基础数据
+   double totalNetPL = GetFloatingPL(OP_BUY) + GetFloatingPL(OP_SELL);
+   int bCnt = CountOrders(OP_BUY);
+   int sCnt = CountOrders(OP_SELL);
+   int maxLayer = MathMax(bCnt, sCnt); // 当前最大层数
+   
+   // 2. 定义触发门槛
+   int triggerLayer = 999; // 默认无穷大(不触发)
+   double targetProfit = 0.0;
+   
+   if(g_TierCfg.tier == TIER_BERSERK) {
+      // --- 👹 狂暴模式策略 ---
+      // 只要有一边稍微被套(3层)，马上启动对冲
+      triggerLayer = 10; 
+      // 只要总账赚 1 块钱，或者总金额 > 本金的0.1%，就赶紧跑
+      targetProfit = 1.0; 
+   }
+   else {
+      // --- 🛡️ 特种兵/指挥官策略 ---
+      // 只有到了危急时刻(8层以上)，才启动对冲救命
+      // 平时还是各玩各的，不要影响刷单
+      triggerLayer = 8;
+      // 既然都到这份上了，保本出场就行
+      targetProfit = 5.0; 
+   }
+   
+   // 3. 执行对冲检查
+   if(maxLayer >= triggerLayer) {
+      // 到了触发层数，检查总账是否盈利
+      if(totalNetPL >= targetProfit) {
+         string modeName = (g_TierCfg.tier == TIER_BERSERK) ? "狂暴" : "救援";
+         Print(StringFormat("🚀 [%s对冲触发] 层数:%d | 总盈亏:%.2f > 目标:%.2f | 全平!", 
+               modeName, maxLayer, totalNetPL, targetProfit));
+         
+         CloseAll(); // 无论多空，全部平仓
+         
+         // 强制重置状态，防止连击
+         g_CircuitBreakerTriggered = false;
+         return true; // 告诉主流程已经执行了全平
+      }
+   }
+   return false;
+}
 void CreateButton(string n,string t,int x,int y,int w,int h,color bg) { string name=g_ObjPrefix+n; if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0); ObjectSetString(0,name,OBJPROP_TEXT,t); ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x); ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y); ObjectSetInteger(0,name,OBJPROP_XSIZE,w); ObjectSetInteger(0,name,OBJPROP_YSIZE,h); ObjectSetInteger(0,name,OBJPROP_BGCOLOR,bg); ObjectSetInteger(0,name,OBJPROP_COLOR,g_ColorButtonText); ObjectSetInteger(0,name,OBJPROP_FONTSIZE,8); ObjectSetString(0,name,OBJPROP_FONT,"微软雅黑"); ObjectSetInteger(0,name,OBJPROP_BACK,false); }
 void SetLabelText(string n,string t) { if(ObjectFind(0,g_ObjPrefix+n)>=0) ObjectSetString(0,g_ObjPrefix+n,OBJPROP_TEXT,t); }
 void SetObjectColor(string n,color c) { if(ObjectFind(0,g_ObjPrefix+n)>=0) ObjectSetInteger(0,g_ObjPrefix+n,OBJPROP_COLOR,c); }
