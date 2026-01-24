@@ -191,11 +191,76 @@ datetime g_LastBuyOrderTime     = 0;
 datetime g_LastSellOrderTime    = 0;
 datetime g_GlobalResumeTime     = 0;    // NextTime 冷却
 double   g_TotalDeposits        = 0;    // 总入金 (用于计算回报率)
+double   g_SessionMaxDD         = 0;    // 本次运行最大回撤 (Session Max DD)
 
 // 挂单追踪缓存 (原代码 Zi_14/15, Zi_20/21)
 // 原代码中这些变量是在 start() 循环中实时更新的，这里我们每次 OnTick 重新计算
 
 string   g_EAName               = "QuantTrader Pro";
+
+//+------------------------------------------------------------------+
+//|                      数据计算辅助函数 (UI 专属)                  |
+//+------------------------------------------------------------------+
+double CalculatePeriodProfit(datetime startTime) {
+   double profit = 0;
+   int historyTotal = OrdersHistoryTotal();
+   for(int i = 0; i < historyTotal; i++) {
+      if(OrderSelect(i, SELECT_BY_POS, MODE_HISTORY) && OrderMagicNumber() == MagicNumber && OrderSymbol() == Symbol() && OrderCloseTime() >= startTime) {
+         if(OrderType() <= OP_SELL) profit += OrderProfit() + OrderCommission() + OrderSwap();
+      }
+   }
+   return profit;
+}
+
+double GetWinRate(int count) {
+   int wins = 0;
+   int total = 0;
+   int historyTotal = OrdersHistoryTotal();
+   for(int i = historyTotal - 1; i >= 0; i--) {
+      if(OrderSelect(i, SELECT_BY_POS, MODE_HISTORY) && OrderMagicNumber() == MagicNumber && OrderSymbol() == Symbol() && OrderType() <= OP_SELL) {
+         if(OrderProfit() > 0) wins++;
+         total++;
+         if(total >= count) break;
+      }
+   }
+   return (total > 0) ? (double)wins / total * 100.0 : 0.0;
+}
+
+// 简单估算下一单 (仅作参考)
+void GetNextOrderInfo(int type, double &price, double &lot) {
+   double lastLot = 0;
+   double lastPrice = 0;
+   int count = 0;
+   
+   for(int i = OrdersTotal() - 1; i >= 0; i--) {
+      if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES) && OrderSymbol() == Symbol() && OrderMagicNumber() == MagicNumber && OrderType() == type) {
+         if(OrderOpenTime() > 0) { // 找最新单
+            lastLot = OrderLots();
+            lastPrice = OrderOpenPrice();
+            count++;
+         }
+      }
+   }
+   
+   if(count == 0) {
+      price = (type == OP_BUY) ? Ask : Bid;
+      lot = BaseLotSize;
+   } else {
+      // 简单网格逻辑估算
+      double dist = (count == 1) ? FirstOrderDistance : GridStep;
+      price = (type == OP_BUY) ? (lastPrice - dist * _Point) : (lastPrice + dist * _Point);
+      lot = lastLot * LotMultiplier + LotIncrement;
+   }
+}
+
+string FormatTimeRemaining() {
+   if(Period() > PERIOD_D1) return "--:--";
+   long seconds = PeriodSeconds() - (TimeCurrent() % PeriodSeconds());
+   int h = (int)(seconds / 3600);
+   int m = (int)((seconds % 3600) / 60);
+   int s = (int)(seconds % 60);
+   return StringFormat("%02d:%02d:%02d", h, m, s);
+}
 
 
 
@@ -1032,16 +1097,10 @@ void UpdatePanel() {
    CreateButton(PANEL_PREFIX+"Toggle", toggleX, toggleY, 80, 25, toggleText, 9, FONT_NAME);
    
    if(!g_IsPanelVisible) {
-      // 如果隐藏，删除除了Toggle按钮以外的所有面板对象
-      // 注意：DeleteAllPanelObjects 会删掉所有含 PANEL_PREFIX 的，所以我们需要小心
-      // 这里简单处理：先全删，再画Toggle
-      // 为了避免闪烁和逻辑复杂，我们修改 DeleteAllPanelObjects 或在此处硬编码处理
-      // 更好的方式：Panel对象加后缀，Toggle单独命名? 
-      // 鉴于现有架构，我们直接遍历删除非Toggle对象
       for(int i=ObjectsTotal()-1; i>=0; i--) { 
          string n=ObjectName(0,i); 
          if(StringFind(n,PANEL_PREFIX)>=0 && StringFind(n,"Toggle")<0) ObjectDelete(0,n); 
-         if(StringFind(n,BUTTON_PREFIX)>=0) ObjectDelete(0,n); // 面板隐藏时也隐藏按钮区
+         if(StringFind(n,BUTTON_PREFIX)>=0) ObjectDelete(0,n);
       }
       return;
    }
@@ -1052,160 +1111,191 @@ void UpdatePanel() {
    double returnRate = (g_TotalDeposits > 0) ? (totalFloating / g_TotalDeposits * 100.0) : 0.0;
    double marginLevel = (AccountMargin() > 0) ? AccountEquity() / AccountMargin() * 100.0 : 0.0;
    
-   // 2. 布局参数 (锚点为左上角 Corner=0)
-   // 用户要求再扩大一倍 -> 520 * 2 = 1040
+   // Session Max DD 更新
+   double drawDown = (g_TotalDeposits > 0) ? (totalFloating / g_TotalDeposits * 100.0) : 0.0;
+   if(drawDown < g_SessionMaxDD) g_SessionMaxDD = drawDown; // 记录最小负值(即最大回撤)
+
+   // 盈亏统计
+   double profitToday = CalculatePeriodProfit(iTime(NULL, PERIOD_D1, 0));
+   double profitYest  = CalculatePeriodProfit(iTime(NULL, PERIOD_D1, 1)) - profitToday; // 简化处理，实际需更严谨时间逻辑
+   
+   // 保本价计算
+   double buyBEP = (s.buyLots > 0) ? (s.avgBuyPrice - s.buyProfit / (s.buyLots * MarketInfo(Symbol(), MODE_TICKVALUE)) * _Point) : 0; // 简易估算
+   double sellBEP = (s.sellLots > 0) ? (s.avgSellPrice + s.sellProfit / (s.sellLots * MarketInfo(Symbol(), MODE_TICKVALUE)) * _Point) : 0;
+
+
+   // 2. 布局常数
    int panelW = 1040; 
-   int xBase  = 10;   // 面板左边缘距离屏幕左侧的距离
-   int startY = 40;   // Top offset
-   int rowH   = 32;   // 增加行高 (22 -> 32)
+   int xBase  = 10;   
+   int startY = 40;   
+   int rowH   = 32;   
    
-   // 列定义 (极宽模式)
-   // 左半区 (多头/资产) [0-520]
-   int xL_Label  = xBase + 50;        
-   int xL_Value  = xBase + 250; // Gap 200
-   
-   // 右半区 (空头/统计) [520-1040]
-   int centerGap = 520; 
-   int xR_Label  = xBase + centerGap + 50;  
-   int xR_Value  = xBase + centerGap + 250; // Gap 200
-   
-   // 顶部 Header 统计
-   int xH_Label1 = xR_Label;
-   int xH_Value1 = xR_Label + 80;
-   int xH_Label2 = xR_Label + 250; 
-   int xH_Value2 = xR_Label + 330;
+   // 列宽定义
+   int colW = panelW / 2;
+   int xL_Base = xBase + 50;
+   int xR_Base = xBase + colW + 50;
+   int gapVal  = 200;
 
-
-   // 颜色定义
+   // 颜色
    color clrTextMain = C'40,40,40';      
    color clrTextDim  = C'100,100,100';   
    color clrUp       = MediumSeaGreen;   
    color clrDn       = Crimson;          
+   color clrWarn     = Orange;
+   color clrDanger   = Red;
    color clrTitle    = C'60,60,60';
 
-   // --- 背景绘制 ---
-   CreateRectLabel(PANEL_PREFIX+"bg", xBase, startY, panelW, 700, C'252,252,252', C'200,200,200'); // 高度增加到 700
+   // --- 背景 ---
+   CreateRectLabel(PANEL_PREFIX+"bg", xBase, startY, panelW, 700, C'252,252,252', C'200,200,200');
    ObjectSetInteger(0,PANEL_PREFIX+"bg",OBJPROP_CORNER,0);
    
-   // 标题栏背景
-   CreateRectLabel(PANEL_PREFIX+"head_bg", xBase, startY, panelW, 35, C'240,240,240', C'210,210,210');
-   ObjectSetInteger(0,PANEL_PREFIX+"head_bg",OBJPROP_CORNER,0);
+   // ===========================
+   // Zone 1: Header (System & Market)
+   // ===========================
+   CreateRectLabel(PANEL_PREFIX+"HeadBg", xBase, startY, panelW, 40, C'240,240,240', C'210,210,210');
+   ObjectSetInteger(0,PANEL_PREFIX+"HeadBg",OBJPROP_CORNER,0);
    
-   // --- 1. 顶部标题与汇总 ---
-   int y = startY + 10;
-   CreateLabel(PANEL_PREFIX+"App", xL_Label, y, "QuantTrader Pro", 14, "Impact", clrTextMain, 0); // 字体加大
-   CreateLabel(PANEL_PREFIX+"Ver", xL_Label+180, y+4, "v1.0 Plus", 9, FONT_NAME, clrTextDim, 0);
+   int y = startY + 12;
+   // Line 1 Content: Name | Time | Ping | Spread
+   CreateLabel(PANEL_PREFIX+"App", xL_Base, y, "QuantTrader Pro", 12, "Impact", clrTextMain, 0);
    
-   // 顶部核心数据
-   CreateLabel(PANEL_PREFIX+"H_EqL", xH_Label1, y, "净值:", 10, FONT_NAME, clrTextDim, 0);
-   CreateLabel(PANEL_PREFIX+"H_EqV", xH_Value1, y, DoubleToString(AccountEquity(), 0), 12, "Arial Bold", clrTextMain, 0);
+   // Server Time
+   CreateLabel(PANEL_PREFIX+"SrvTime", xL_Base+180, y+2, "Server: "+TimeToString(TimeCurrent(), TIME_SECONDS), 9, "Arial", clrTextDim, 0);
    
-   CreateLabel(PANEL_PREFIX+"H_TPL", xH_Label2, y, "总浮亏:", 10, FONT_NAME, clrTextDim, 0);
-   color profitColor = totalFloating >= 0 ? clrUp : clrDn;
-   CreateLabel(PANEL_PREFIX+"H_TPV", xH_Value2, y, DoubleToString(totalFloating, 2), 12, "Arial Bold", profitColor, 0);
+   // Ping (模拟显示，MT4无直接Ping函数，用 IsConnected 代替状态)
+   color pingColor = IsConnected() ? clrUp : clrTextDim;
+   CreateLabel(PANEL_PREFIX+"Ping", xL_Base+350, y+2, IsConnected()?"Link: OK":"Link: DC", 9, "Arial Bold", pingColor, 0);
    
-   // --- 2. 左右分栏标题 ---
-   y += 50; // 增加间距 40 -> 50
-   // 垂直分割线
-   CreateRectLabel(PANEL_PREFIX+"v_sep", xBase + centerGap, y, 1, 450, C'230,230,230', clrNONE); // 高度增加
-   ObjectSetInteger(0,PANEL_PREFIX+"v_sep",OBJPROP_CORNER,0);
+   // Spread
+   int spread = (int)MarketInfo(Symbol(), MODE_SPREAD);
+   color spreadColor = (spread > MaxAllowedSpread) ? clrDn : clrTextMain;
+   CreateLabel(PANEL_PREFIX+"Spread", xL_Base+450, y+2, "Spread: "+IntegerToString(spread), 9, "Arial Bold", spreadColor, 0);
    
-   // 左侧标题: 多头
-   CreateRectLabel(PANEL_PREFIX+"L_HeadBg", xBase+20, y, 480, 20, g_AllowBuy?C'235,250,235':C'245,245,245', clrNONE);
-   ObjectSetInteger(0,PANEL_PREFIX+"L_HeadBg",OBJPROP_CORNER,0);
-   CreateLabel(PANEL_PREFIX+"L_Title", xBase+200, y+3, "::: 多头 (BUY) :::", 10, "Arial Bold", g_AllowBuy?clrUp:clrTextDim, 0);
-   
-   // 右侧标题: 空头
-   CreateRectLabel(PANEL_PREFIX+"R_HeadBg", xBase+centerGap+20, y, 480, 20, g_AllowSell?C'250,235,235':C'245,245,245', clrNONE);
-   ObjectSetInteger(0,PANEL_PREFIX+"R_HeadBg",OBJPROP_CORNER,0);
-   CreateLabel(PANEL_PREFIX+"R_Title", xBase+centerGap+200, y+3, "::: 空头 (SELL) :::", 10, "Arial Bold", g_AllowSell?clrDn:clrTextDim, 0);
+   // Candle Time
+   CreateLabel(PANEL_PREFIX+"Candle", xR_Base+200, y+2, "Candle Close: "+FormatTimeRemaining(), 9, "Arial", clrBlack, 0);
 
-   // --- 3. 详细数据对比 (Left vs Right) ---
-   y += 35; // 稍微增加间距 30 -> 35
-   
-   // Row 1: 持仓与状态
-   CreateLabel(PANEL_PREFIX+"L_StL", xL_Label, y, "状态:", 10, FONT_NAME, clrTextDim, 0);
-   CreateLabel(PANEL_PREFIX+"L_StV", xL_Value, y, g_AllowBuy?"运行中":"已暂停", 10, FONT_NAME, g_AllowBuy?clrUp:clrTextDim, 0);
-   
-   CreateLabel(PANEL_PREFIX+"R_StL", xR_Label, y, "状态:", 10, FONT_NAME, clrTextDim, 0);
-   CreateLabel(PANEL_PREFIX+"R_StV", xR_Value, y, g_AllowSell?"运行中":"已暂停", 10, FONT_NAME, g_AllowSell?clrDn:clrTextDim, 0);
-   
-   y += rowH; // Row 2: 订单数
-   CreateLabel(PANEL_PREFIX+"L_CntL", xL_Label, y, "持仓单:", 10, FONT_NAME, clrTextDim, 0);
-   CreateLabel(PANEL_PREFIX+"L_CntV", xL_Value, y, IntegerToString(s.buyCount), 10, FONT_NAME, clrTextMain, 0);
-   
-   CreateLabel(PANEL_PREFIX+"R_CntL", xR_Label, y, "持仓单:", 10, FONT_NAME, clrTextDim, 0);
-   CreateLabel(PANEL_PREFIX+"R_CntV", xR_Value, y, IntegerToString(s.sellCount), 10, FONT_NAME, clrTextMain, 0);
-   
-   y += rowH; // Row 3: 手数
-   CreateLabel(PANEL_PREFIX+"L_LotL", xL_Label, y, "总手数:", 10, FONT_NAME, clrTextDim, 0);
-   CreateLabel(PANEL_PREFIX+"L_LotV", xL_Value, y, DoubleToString(s.buyLots, 2), 10, FONT_NAME, clrTextMain, 0);
-   
-   CreateLabel(PANEL_PREFIX+"R_LotL", xR_Label, y, "总手数:", 10, FONT_NAME, clrTextDim, 0);
-   CreateLabel(PANEL_PREFIX+"R_LotV", xR_Value, y, DoubleToString(s.sellLots, 2), 10, FONT_NAME, clrTextMain, 0);
-   
-   y += rowH; // Row 4: 均价
-   CreateLabel(PANEL_PREFIX+"L_AvgL", xL_Label, y, "持仓均价:", 10, FONT_NAME, clrTextDim, 0);
-   CreateLabel(PANEL_PREFIX+"L_AvgV", xL_Value, y, DoubleToString(s.avgBuyPrice, _Digits), 9, "Arial", clrTextDim, 0);
-   
-   CreateLabel(PANEL_PREFIX+"R_AvgL", xR_Label, y, "持仓均价:", 10, FONT_NAME, clrTextDim, 0);
-   CreateLabel(PANEL_PREFIX+"R_AvgV", xR_Value, y, DoubleToString(s.avgSellPrice, _Digits), 9, "Arial", clrTextDim, 0);
-   
-   y += rowH; // Row 5: 挂单
-   CreateLabel(PANEL_PREFIX+"L_PenL", xL_Label, y, "挂单(Stop):", 10, FONT_NAME, clrTextDim, 0);
-   CreateLabel(PANEL_PREFIX+"L_PenV", xL_Value, y, IntegerToString(s.buyPendingCount), 10, FONT_NAME, clrTextMain, 0);
-   
-   CreateLabel(PANEL_PREFIX+"R_PenL", xR_Label, y, "挂单(Stop):", 10, FONT_NAME, clrTextDim, 0);
-   CreateLabel(PANEL_PREFIX+"R_PenV", xR_Value, y, IntegerToString(s.sellPendingCount), 10, FONT_NAME, clrTextMain, 0);
-   
-   y += rowH + 8; // Row 6: 盈亏 (特大字体)
-   CreateLabel(PANEL_PREFIX+"L_PfL", xL_Label, y+2, "多单浮动:", 10, FONT_NAME, clrTextDim, 0);
-   CreateLabel(PANEL_PREFIX+"L_PfV", xL_Value, y, DoubleToString(s.buyProfit, 2), 14, "Arial Bold", s.buyProfit>=0?clrUp:clrTextDim, 0);
-   
-   CreateLabel(PANEL_PREFIX+"R_PfL", xR_Label, y+2, "空单浮动:", 10, FONT_NAME, clrTextDim, 0);
-   CreateLabel(PANEL_PREFIX+"R_PfV", xR_Value, y, DoubleToString(s.sellProfit, 2), 14, "Arial Bold", s.sellProfit>=0?clrDn:clrTextDim, 0);
 
-   // --- 4. 账户详情补充 ---
-   y += 50; // 40 -> 50
-   CreateRectLabel(PANEL_PREFIX+"sep_h", xBase+20, y, panelW-40, 1, C'230,230,230', clrNONE);
-   ObjectSetInteger(0,PANEL_PREFIX+"sep_h",OBJPROP_CORNER,0);
-   y += 15;
+   // ===========================
+   // Zone 2: Main Dashboard (Positions)
+   // ===========================
+   y += 45; 
    
-   // 第一行补充信息
-   CreateLabel(PANEL_PREFIX+"A_BalL", xL_Label, y, "账户余额:", 10, FONT_NAME, clrTextDim, 0);
-   CreateLabel(PANEL_PREFIX+"A_BalV", xL_Value, y, DoubleToString(AccountBalance(), 2), 10, FONT_NAME, clrTextMain, 0);
+   // Left Header (Buy)
+   CreateRectLabel(PANEL_PREFIX+"L_Head", xBase+20, y, colW-40, 25, g_AllowBuy?C'235,250,235':C'245,245,245', clrNONE);
+   ObjectSetInteger(0,PANEL_PREFIX+"L_Head",OBJPROP_CORNER,0);
+   CreateLabel(PANEL_PREFIX+"L_Title", xL_Base+150, y+4, "::: 多头 (BUY) :::", 10, "Arial Bold", g_AllowBuy?clrUp:clrTextDim, 0);
    
-   CreateLabel(PANEL_PREFIX+"A_MarL", xR_Label, y, "已用预付:", 10, FONT_NAME, clrTextDim, 0);
-   CreateLabel(PANEL_PREFIX+"A_MarV", xR_Value, y, DoubleToString(AccountMargin(), 2), 10, FONT_NAME, clrTextMain, 0);
-   
-   // 第二行补充信息
-   y += 30; // 25 -> 30
-   CreateLabel(PANEL_PREFIX+"A_FreL", xL_Label, y, "可用资金:", 10, FONT_NAME, clrTextDim, 0);
-   CreateLabel(PANEL_PREFIX+"A_FreV", xL_Value, y, DoubleToString(AccountFreeMargin(), 2), 10, FONT_NAME, clrTextMain, 0);
-   
-   CreateLabel(PANEL_PREFIX+"A_LevL", xR_Label, y, "风险比例:", 10, FONT_NAME, clrTextDim, 0);
-   CreateLabel(PANEL_PREFIX+"A_LevV", xR_Value, y, DoubleToString(marginLevel, 2)+"%", 10, FONT_NAME, marginLevel<150?clrDn:clrUp, 0);
+   // Right Header (Sell)
+   CreateRectLabel(PANEL_PREFIX+"R_Head", xBase+colW+20, y, colW-40, 25, g_AllowSell?C'250,235,235':C'245,245,245', clrNONE);
+   ObjectSetInteger(0,PANEL_PREFIX+"R_Head",OBJPROP_CORNER,0);
+   CreateLabel(PANEL_PREFIX+"R_Title", xR_Base+150, y+4, "::: 空头 (SELL) :::", 10, "Arial Bold", g_AllowSell?clrDn:clrTextDim, 0);
 
-   // 第三行
-   y += 30; // 25 -> 30
-   CreateLabel(PANEL_PREFIX+"A_RatL", xL_Label, y, "EA回报率:", 10, FONT_NAME, clrTextDim, 0);
-   CreateLabel(PANEL_PREFIX+"A_RatV", xL_Value, y, DoubleToString(returnRate, 2)+"%", 10, FONT_NAME, profitColor, 0);
+   y += 35;
+   int yStart = y;
+
+   // 统一绘制左右列
+   // Labels
+   // 统一绘制左右列
+   string labels[] = {"持仓单数:", "持仓手数:", "持仓均价:", "保本价格:", "挂单(Stop):", "隔夜利息:", "当前浮盈:"};
    
-   // --- 5. 底部按钮控制区 (留白给 DrawButtonPanel) ---
-   CreateButton(PANEL_PREFIX+"OpenBoard", xBase+460, y+50, 120, 25, "显示/隐藏控制台", 9, FONT_NAME);
-   ObjectSetInteger(0,PANEL_PREFIX+"OpenBoard",OBJPROP_CORNER,0);
+   // 由于 MQL4 不支持数组初始化列表包含函数调用，改为直接循环内处理或单独赋值
+   // 这里采用单独赋值的方式来保证代码清晰
+   string l_vals[7];
+   l_vals[0] = IntegerToString(s.buyCount);
+   l_vals[1] = DoubleToString(s.buyLots, 2);
+   l_vals[2] = DoubleToString(s.avgBuyPrice, _Digits);
+   l_vals[3] = (s.buyLots>0) ? DoubleToString(buyBEP, _Digits) : "---";
+   l_vals[4] = IntegerToString(s.buyPendingCount);
+   l_vals[5] = "0.00"; // Swap Todo
+   l_vals[6] = DoubleToString(s.buyProfit, 2);
+
+   string r_vals[7];
+   r_vals[0] = IntegerToString(s.sellCount);
+   r_vals[1] = DoubleToString(s.sellLots, 2);
+   r_vals[2] = DoubleToString(s.avgSellPrice, _Digits);
+   r_vals[3] = (s.sellLots>0) ? DoubleToString(sellBEP, _Digits) : "---";
+   r_vals[4] = IntegerToString(s.sellPendingCount);
+   r_vals[5] = "0.00"; // Swap Todo
+   r_vals[6] = DoubleToString(s.sellProfit, 2);
+   
+   for(int i=0; i<7; i++) {
+      int curY = y + i*rowH;
+      
+      // Left
+      CreateLabel(PANEL_PREFIX+"L_Lb"+(string)i, xL_Base, curY, labels[i], 10, FONT_NAME, clrTextDim, 0);
+      color valColor = clrTextMain;
+      if(i==6) valColor = s.buyProfit>=0 ? clrUp : clrDn; // Profit Color
+      CreateLabel(PANEL_PREFIX+"L_Vl"+(string)i, xL_Base+gapVal, curY, l_vals[i], 10, "Arial", valColor, 0);
+      
+      // Right
+      CreateLabel(PANEL_PREFIX+"R_Lb"+(string)i, xR_Base, curY, labels[i], 10, FONT_NAME, clrTextDim, 0);
+      valColor = clrTextMain;
+      if(i==6) valColor = s.sellProfit>=0 ? clrDn : clrDn; // Sell Profit
+      if(s.sellProfit>=0) valColor = clrUp; else valColor = clrDn;
+      CreateLabel(PANEL_PREFIX+"R_Vl"+(string)i, xR_Base+gapVal, curY, r_vals[i], 10, "Arial", valColor, 0);
+   }
+   y += ArraySize(labels)*rowH + 10;
+
+   // ===========================
+   // Zone 3: Risk & Performance Bar (High Vis)
+   // ===========================
+   // Background height expanded for 2 rows
+   CreateRectLabel(PANEL_PREFIX+"RiskBg", xBase, y, panelW, 80, C'255,248,240', C'255,200,100'); 
+   ObjectSetInteger(0,PANEL_PREFIX+"RiskBg",OBJPROP_CORNER,0);
+   
+   int ry = y + 15;
+   int rx = xBase + 20;
+   int rGap = 400; // Increased horizontal gap for 2 items per row
+   
+   // Row 1: Margin & DD
+   color marginColor = clrUp;
+   if(marginLevel < 1000) marginColor = clrWarn;
+   if(marginLevel < 500) marginColor = clrDanger;
+   CreateLabel(PANEL_PREFIX+"Risk_M", rx, ry, "预付款比例:  " + DoubleToString(marginLevel, 0) + "%", 11, "Arial Bold", marginColor, 0);
+   
+   CreateLabel(PANEL_PREFIX+"Risk_D", rx+rGap, ry, "当前回撤: " + DoubleToString(drawDown, 2) + "% (Max: " + DoubleToString(g_SessionMaxDD, 2) + "%)", 11, FONT_NAME, clrTextMain, 0);
+
+   // Row 2: Profit & WinRate
+   ry += 35;
+   CreateLabel(PANEL_PREFIX+"Risk_P", rx, ry, "今日盈亏: " + DoubleToString(profitToday, 2), 11, FONT_NAME, profitToday>=0?clrUp:clrDn, 0);
+   
+   double winRate = GetWinRate(20);
+   CreateLabel(PANEL_PREFIX+"Risk_W", rx+rGap, ry, "近期胜率(20): " + DoubleToString(winRate, 1) + "%", 11, FONT_NAME, clrTextMain, 0);
+   
+   y += 90; // Adjust total Y offset for next zone
+
+   // ===========================
+   // Zone 4: Strategy Prediction
+   // ===========================
+   // y is already updated
+   double nextBuyP=0, nextBuyL=0, nextSellP=0, nextSellL=0;
+   GetNextOrderInfo(OP_BUY, nextBuyP, nextBuyL);
+   GetNextOrderInfo(OP_SELL, nextSellP, nextSellL);
+   
+   CreateLabel(PANEL_PREFIX+"Pred_T", xL_Base, y, "[策略预测]", 10, "Arial Bold", clrTitle, 0);
+   CreateLabel(PANEL_PREFIX+"Pred_B", xL_Base+100, y, "Next Buy: " + DoubleToString(nextBuyL, 2) + " Lots @ " + DoubleToString(nextBuyP, _Digits), 9, "Arial", clrTextDim, 0);
+   CreateLabel(PANEL_PREFIX+"Pred_S", xR_Base, y, "Next Sell: " + DoubleToString(nextSellL, 2) + " Lots @ " + DoubleToString(nextSellP, _Digits), 9, "Arial", clrTextDim, 0);
+   
+   CreateLabel(PANEL_PREFIX+"Magic", xR_Base+300, y, "Magic: " + IntegerToString(MagicNumber), 9, "Arial", clrTextDim, 0);
+   
+   // --- 5. 底部按钮控制区 (取消原来的切换按钮，直接显示) ---
+   // 不再创建 OpenBoard 按钮
    
    ChartRedraw();
+   
+   // 强制在最后调用绘制按钮，确保位置正确且一直显示
+   if(g_IsPanelVisible) DrawButtonPanel();
 }
 
 void DrawButtonPanel() {
    // 宽版按钮面板: 3列布局 (适应 1040 宽度)
    // 面板左边缘 xBase = 10
    int xBase = 10;
-   // 修改起始高度以位于"显示/隐藏控制台"按钮下方
-   // UpdatePanel 结束位置约为 y(最后一行)+50. 
-   // 原 UpdatePanel 中 y最后约为 470-490. Button在 y+50. 所以 Show/Hide 按钮约在 540.
-   int startY = 580; // 留出足够空隙
+   // 修改起始高度以位于所有内容下方
+   // Zone 4 roughly ends at y (prev) which was ~550? 
+   // UpdatePanel y += 90 (Risk) + 30 (Strategy) -> 
+   // With 2-row risk bar, height is bigger. Let's push to 600 or 620.
+   int startY = 620; 
    
    int w = 120; // 按钮也加宽
    int h = 30;  // 按钮加高
