@@ -182,6 +182,7 @@ bool     g_BuyOverweight        = false; // 空单多，多单少 (原 Zong_40)
 datetime g_LastBuyOrderTime     = 0;
 datetime g_LastSellOrderTime    = 0;
 datetime g_GlobalResumeTime     = 0;    // NextTime 冷却
+double   g_TotalDeposits        = 0;    // 总入金 (用于计算回报率)
 
 // 挂单追踪缓存 (原代码 Zi_14/15, Zi_20/21)
 // 原代码中这些变量是在 start() 循环中实时更新的，这里我们每次 OnTick 重新计算
@@ -199,6 +200,19 @@ int OnInit()
    EventSetTimer(1);
    g_EAName = WindowExpertName();
    OrderTimeframe = (ENUM_TIMEFRAMES)GetHigherTimeframe();
+
+   // 计算总入金 (1:1 复刻 init 中的逻辑)
+   double deposits = 0;
+   int historyTotal = OrdersHistoryTotal();
+   for(int i = 0; i < historyTotal; i++)
+     {
+      if(OrderSelect(i, SELECT_BY_POS, MODE_HISTORY) && OrderType() == OP_BALANCE && OrderProfit() > 0)
+         deposits += OrderProfit();
+     }
+   if(deposits == 0) deposits = 100.0; // 防止除零
+   g_TotalDeposits = deposits;
+
+   // 滑点逻辑 1:1 (原代码 init)
 
    // 滑点逻辑 1:1 (原代码 init)
    if(_Digits == 5 || _Digits == 3) Slippage = 30;
@@ -981,25 +995,72 @@ void UpdateButtonColors(const OrderStats &s) {
 void UpdatePanel() {
    if(!g_IsPanelCollapsed) return;
    OrderStats s; CountOrders(s);
-   double total = s.buyProfit + s.sellProfit;
+   double totalFloating = s.buyProfit + s.sellProfit;
+   double returnRate = (g_TotalDeposits > 0) ? (totalFloating / g_TotalDeposits * 100.0) : 0.0;
+   
+   // 背景
    CreateRectLabel(PANEL_PREFIX+"bg", 308, 50, 300, 440, Snow, 8421376);
-   CreateLabel(PANEL_PREFIX+"1B", 230, 65, g_AllowBuy?"可以多":"禁止多", 10, FONT_NAME, g_AllowBuy?Green:Red, 1);
-   CreateLabel(PANEL_PREFIX+"1S", 130, 65, g_AllowSell?"可以空":"禁止空", 10, FONT_NAME, g_AllowSell?Green:Red, 1);
-   CreateLabel(PANEL_PREFIX+"Total", 150, 115, "盈亏: "+DoubleToString(total,2), 12, FONT_NAME, total>=0?C'139,69,0':C'60,60,60', 1);
    
-   int y=140; 
-   CreateLabel(PANEL_PREFIX+"BN", 255, y, "多单:", 10, FONT_NAME, Green, 1);
-   CreateLabel(PANEL_PREFIX+"BC", 180, y, IntegerToString(s.buyCount)+"单", 10, FONT_NAME, DarkBlue, 1);
-   CreateLabel(PANEL_PREFIX+"BL", 120, y, DoubleToString(s.buyLots,2)+"手", 10, FONT_NAME, DarkBlue, 1);
-   CreateLabel(PANEL_PREFIX+"BP", 25, y, DoubleToString(s.buyProfit,2), 10, FONT_NAME, s.buyProfit>=0?C'139,69,0':C'60,60,60', 1);
+   // 1. 状态区
+   int y = 65;
+   CreateLabel(PANEL_PREFIX+"1B", 230, y, g_AllowBuy?"[多单正常]":"[多单停止]", 10, FONT_NAME, g_AllowBuy?MediumSeaGreen:DimGray, 1);
+   CreateLabel(PANEL_PREFIX+"1S", 100, y, g_AllowSell?"[空单正常]":"[空单停止]", 10, FONT_NAME, g_AllowSell?Crimson:DimGray, 1);
    
-   y+=20;
-   CreateLabel(PANEL_PREFIX+"SN", 255, y, "空单:", 10, FONT_NAME, Green, 1);
-   CreateLabel(PANEL_PREFIX+"SC", 180, y, IntegerToString(s.sellCount)+"单", 10, FONT_NAME, DarkBlue, 1);
-   CreateLabel(PANEL_PREFIX+"SL", 120, y, DoubleToString(s.sellLots,2)+"手", 10, FONT_NAME, DarkBlue, 1);
-   CreateLabel(PANEL_PREFIX+"SP", 25, y, DoubleToString(s.sellProfit,2), 10, FONT_NAME, s.sellProfit>=0?C'139,69,0':C'60,60,60', 1);
+   // 2. 资金概览区 (新增)
+   y += 30;
+   CreateLabel(PANEL_PREFIX+"TITLE_ACC", 255, y, "--- 账户资金 ---", 10, FONT_NAME, Black, 1);
+   y += 20;
+   CreateLabel(PANEL_PREFIX+"L_BAL", 255, y, "余额:", 9, FONT_NAME, DimGray, 1);
+   CreateLabel(PANEL_PREFIX+"V_BAL", 180, y, DoubleToString(AccountBalance(), 2), 9, FONT_NAME, Black, 1);
+   CreateLabel(PANEL_PREFIX+"L_EQU", 120, y, "净值:", 9, FONT_NAME, DimGray, 1);
+   CreateLabel(PANEL_PREFIX+"V_EQU", 40, y, DoubleToString(AccountEquity(), 2), 9, FONT_NAME, Black, 1);
+   
+   y += 20;
+   double marginLevel = (AccountMargin() > 0) ? AccountEquity() / AccountMargin() * 100.0 : 0.0;
+   CreateLabel(PANEL_PREFIX+"L_MAR", 255, y, "预付款:", 9, FONT_NAME, DimGray, 1);
+   CreateLabel(PANEL_PREFIX+"V_MAR", 180, y, DoubleToString(AccountMargin(), 2), 9, FONT_NAME, Black, 1);
+   CreateLabel(PANEL_PREFIX+"L_ML", 120, y, "比例:", 9, FONT_NAME, DimGray, 1);
+   CreateLabel(PANEL_PREFIX+"V_ML", 40, y, DoubleToString(marginLevel, 2)+"%", 9, FONT_NAME, marginLevel<100?Red:Black, 1);
 
-   CreateButton(PANEL_PREFIX+"OpenBoard", 100, 480, 100, 25, "控制面板", 10, FONT_NAME);
+   // 3. EA 盈亏区
+   y += 30;
+   CreateLabel(PANEL_PREFIX+"TITLE_EA", 255, y, "--- EA 统计 ---", 10, FONT_NAME, Black, 1);
+   y += 25;
+   // EA浮盈
+   CreateLabel(PANEL_PREFIX+"TotalStr", 255, y, "EA总浮盈:", 11, FONT_NAME, Black, 1);
+   CreateLabel(PANEL_PREFIX+"Total", 150, y, DoubleToString(totalFloating, 2), 12, FONT_NAME, totalFloating>=0?BuyAvgPriceColor:SellAvgPriceColor, 1);
+   y += 20;
+   CreateLabel(PANEL_PREFIX+"RetStr", 255, y, "浮盈回报:", 9, FONT_NAME, DimGray, 1);
+   CreateLabel(PANEL_PREFIX+"Return", 150, y, DoubleToString(returnRate, 2)+"%", 10, FONT_NAME, returnRate>=0?BuyAvgPriceColor:SellAvgPriceColor, 1);
+   
+   // 4. 订单详情区
+   y += 30;
+   CreateLabel(PANEL_PREFIX+"TITLE_ORD", 255, y, "--- 订单详情 ---", 10, FONT_NAME, Black, 1);
+   
+   y += 25;
+   CreateLabel(PANEL_PREFIX+"BN", 255, y, "多单持仓:", 9, FONT_NAME, MediumSeaGreen, 1);
+   CreateLabel(PANEL_PREFIX+"BC", 180, y, IntegerToString(s.buyCount)+"单", 9, FONT_NAME, Black, 1);
+   CreateLabel(PANEL_PREFIX+"BL", 130, y, DoubleToString(s.buyLots, 2)+"手", 9, FONT_NAME, Black, 1);
+   CreateLabel(PANEL_PREFIX+"BP", 50, y, DoubleToString(s.buyProfit, 2), 9, FONT_NAME, s.buyProfit>=0?MediumSeaGreen:DimGray, 1);
+   
+   y += 20;
+   CreateLabel(PANEL_PREFIX+"SN", 255, y, "空单持仓:", 9, FONT_NAME, Crimson, 1);
+   CreateLabel(PANEL_PREFIX+"SC", 180, y, IntegerToString(s.sellCount)+"单", 9, FONT_NAME, Black, 1);
+   CreateLabel(PANEL_PREFIX+"SL", 130, y, DoubleToString(s.sellLots, 2)+"手", 9, FONT_NAME, Black, 1);
+   CreateLabel(PANEL_PREFIX+"SP", 50, y, DoubleToString(s.sellProfit, 2), 9, FONT_NAME, s.sellProfit>=0?Crimson:DimGray, 1);
+
+   // 5. 挂单统计 (新增)
+   y += 25;
+   if(s.buyPendingCount > 0 || s.sellPendingCount > 0) {
+      CreateLabel(PANEL_PREFIX+"PN", 255, y, "挂单统计:", 9, FONT_NAME, DimGray, 1);
+      CreateLabel(PANEL_PREFIX+"P_DT", 180, y, "B:"+IntegerToString(s.buyPendingCount)+" / S:"+IntegerToString(s.sellPendingCount), 9, FONT_NAME, Black, 1);
+   } else {
+      ObjectDelete(0, PANEL_PREFIX+"PN");
+      ObjectDelete(0, PANEL_PREFIX+"P_DT");
+   }
+
+   // 按钮始终在底部
+   CreateButton(PANEL_PREFIX+"OpenBoard", 100, 450, 100, 25, "控制面板", 9, FONT_NAME);
    ChartRedraw();
 }
 void DrawButtonPanel() {
