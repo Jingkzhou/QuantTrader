@@ -9,6 +9,10 @@
 #property strict
 
 //+------------------------------------------------------------------+
+//|                            函数原型                              |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
 //|                            枚举定义                              |
 //+------------------------------------------------------------------+
 enum ENUM_OPEN_MODE
@@ -17,6 +21,62 @@ enum ENUM_OPEN_MODE
    OPEN_MODE_INTERVAL  = 2,    // B: 开单时间间距(秒)模式
    OPEN_MODE_INSTANT   = 3     // C: 不延迟模式
   };
+
+//+------------------------------------------------------------------+
+//|                          订单统计结构体                          |
+//+------------------------------------------------------------------+
+struct OrderStats
+  {
+   int    buyCount;
+   int    sellCount;
+   int    buyPendingCount;
+   int    sellPendingCount;
+   double buyLots;
+   double sellLots;
+   double buyProfit;
+   double sellProfit;
+   double highestBuyPrice; // 多单最高开仓价 (原 Zi_16)
+   double lowestBuyPrice;  // 多单最低开仓价 (原 Zi_17)
+   double highestSellPrice;// 空单最高开仓价 (原 Zi_18)
+   double lowestSellPrice; // 空单最低开仓价 (原 Zi_19)
+   double avgBuyPrice;     // 多单平均价
+   double avgSellPrice;    // 空单平均价
+   
+   // 挂单追踪专用
+   int    lastBuyPendingTicket; // 原 Zi_14
+   double lastBuyPendingPrice;  // 原 Zi_20
+   int    lastSellPendingTicket;// 原 Zi_15
+   double lastSellPendingPrice; // 原 Zi_21
+  };
+
+void CountOrders(OrderStats &stats);
+void DrawPriceLimitLines();
+void CheckOverweightStatus(OrderStats &stats);
+bool CheckTradingEnvironment(const OrderStats &stats);
+bool IsWithinTradingHours();
+bool CheckOrderInterval(bool isBuy);
+void UpdatePanel();
+void DrawButtonPanel();
+void DeleteAllPanelObjects();
+void DeleteButtonPanelObjects();
+void HandleButtonClick(string name);
+void UpdateButtonColors(const OrderStats &stats);
+double CalculateProfitSum(int type, int magic, int count, int mode);
+int GetHigherTimeframe();
+bool CloseAllOrders(int dir);
+bool PartialClose(int orderType, int magic, int closeCount, int closeMode);
+bool CheckReverseProtection(const OrderStats &stats);
+bool CheckTrendProtection(const OrderStats &stats);
+bool CheckProfitTarget(const OrderStats &stats);
+bool CheckStopLoss(const OrderStats &stats);
+bool CheckSingleSideProfit(const OrderStats &stats);
+void ProcessBuyLogic(const OrderStats &stats);
+void ProcessSellLogic(const OrderStats &stats);
+void TrackPendingOrders(const OrderStats &stats, int direction);
+void ShowStopMessage(string msg);
+void ClearStopMessage();
+
+
 
 //+------------------------------------------------------------------+
 //|                            输入参数                              |
@@ -128,30 +188,7 @@ datetime g_GlobalResumeTime     = 0;    // NextTime 冷却
 
 string   g_EAName               = "QuantTrader Pro";
 
-//+------------------------------------------------------------------+
-//|                          订单统计结构体                          |
-//+------------------------------------------------------------------+
-struct OrderStats
-  {
-   int    buyCount;
-   int    sellCount;
-   int    buyPendingCount;
-   int    sellPendingCount;
-   double buyLots;
-   double sellLots;
-   double buyProfit;
-   double sellProfit;
-   double highestBuyPrice; // 多单最高开仓价 (原 Zi_16)
-   double lowestBuyPrice;  // 多单最低开仓价 (原 Zi_17)
-   double highestSellPrice;// 空单最高开仓价 (原 Zi_18)
-   double lowestSellPrice; // 空单最低开仓价 (原 Zi_19)
-   
-   // 挂单追踪专用
-   int    lastBuyPendingTicket; // 原 Zi_14
-   double lastBuyPendingPrice;  // 原 Zi_20
-   int    lastSellPendingTicket;// 原 Zi_15
-   double lastSellPendingPrice; // 原 Zi_21
-  };
+
 
 //+------------------------------------------------------------------+
 //|                          初始化函数                              |
@@ -164,7 +201,7 @@ int OnInit()
    OrderTimeframe = (ENUM_TIMEFRAMES)GetHigherTimeframe();
 
    // 滑点逻辑 1:1 (原代码 init)
-   if(Digits == 5 || Digits == 3) Slippage = 30;
+   if(_Digits == 5 || _Digits == 3) Slippage = 30;
 
    // 参数转负数 (内部逻辑统一使用 < -Value)
    MaxLossCloseThreshold  = -MathAbs(MaxLossCloseThreshold);
@@ -326,7 +363,7 @@ void CountOrders(OrderStats &stats)
 
       int type = OrderType();
       double lots = OrderLots();
-      double price = NormalizeDouble(OrderOpenPrice(), Digits);
+      double price = NormalizeDouble(OrderOpenPrice(), _Digits);
 
       if(type == OP_BUYSTOP)
         {
@@ -362,8 +399,8 @@ void CountOrders(OrderStats &stats)
         }
      }
    
-   if(stats.buyLots > 0) stats.avgBuyPrice = buyWeightedPrice / stats.buyLots;
-   if(stats.sellLots > 0) stats.avgSellPrice = sellWeightedPrice / stats.sellLots;
+   if(stats.buyLots > 0) stats.avgBuyPrice = NormalizeDouble(buyWeightedPrice / stats.buyLots, _Digits);
+   if(stats.sellLots > 0) stats.avgSellPrice = NormalizeDouble(sellWeightedPrice / stats.sellLots, _Digits);
   }
 
 double CalculateNextLot(int currentLayer, bool isBuy)
@@ -387,11 +424,11 @@ bool CheckTradingEnvironment(const OrderStats &stats)
      {
       double h = iHigh(Symbol(), PERIOD_M1, 0);
       double l = iLow(Symbol(), PERIOD_M1, 5);
-      if(int((h - l) / Point) >= MaxVolatilityPoints) return false;
+      if((int)MathRound((h - l) / _Point) >= MaxVolatilityPoints) return false;
       
       l = iLow(Symbol(), PERIOD_M1, 0);
       h = iHigh(Symbol(), PERIOD_M1, 5);
-      if(MathAbs((l - h) / Point) >= MaxVolatilityPoints) return false;
+      if((int)MathRound(MathAbs((l - h) / _Point)) >= MaxVolatilityPoints) return false;
      }
    return true;
   }
@@ -411,8 +448,58 @@ bool IsWithinTradingHours()
   }
 
 //+------------------------------------------------------------------+
-//|                      逻辑复刻核心函数                            |
+//|                      逻辑复刻辅助函数                            |
 //+------------------------------------------------------------------+
+
+void DrawPriceLimitLines()
+  {
+   if(BuyFirstOrderPriceLimit > 0)
+     {
+      ObjectCreate(0, "HLINE_LONG", OBJ_HLINE, 0, 0, BuyFirstOrderPriceLimit);
+      ObjectSetInteger(0, "HLINE_LONG", OBJPROP_STYLE, STYLE_DASH);
+      ObjectSetInteger(0, "HLINE_LONG", OBJPROP_COLOR, clrMagenta);
+     }
+   if(SellFirstOrderPriceLimit > 0)
+     {
+      ObjectCreate(0, "HLINE_SHORT", OBJ_HLINE, 0, 0, SellFirstOrderPriceLimit);
+      ObjectSetInteger(0, "HLINE_SHORT", OBJPROP_STYLE, STYLE_DASH);
+      ObjectSetInteger(0, "HLINE_SHORT", OBJPROP_COLOR, clrMagenta);
+     }
+   if(BuyAddOrderPriceLimit > 0)
+     {
+      ObjectCreate(0, "HLINE_LONGII", OBJ_HLINE, 0, 0, BuyAddOrderPriceLimit);
+      ObjectSetInteger(0, "HLINE_LONGII", OBJPROP_STYLE, STYLE_DASH);
+      ObjectSetInteger(0, "HLINE_LONGII", OBJPROP_COLOR, clrMagenta);
+     }
+   if(SellAddOrderPriceLimit > 0)
+     {
+      ObjectCreate(0, "HLINE_SHORTII", OBJ_HLINE, 0, 0, SellAddOrderPriceLimit);
+      ObjectSetInteger(0, "HLINE_SHORTII", OBJPROP_STYLE, STYLE_DASH);
+      ObjectSetInteger(0, "HLINE_SHORTII", OBJPROP_COLOR, clrMagenta);
+     }
+  }
+
+void CheckOverweightStatus(OrderStats &stats)
+  {
+   if(stats.buyLots > 0.0 && stats.sellLots / stats.buyLots > 3.0 && stats.sellLots - stats.buyLots > 0.2)
+      g_SellOverweight = true;
+   else
+      g_SellOverweight = false;
+
+   if(stats.sellLots > 0.0 && stats.buyLots / stats.sellLots > 3.0 && stats.buyLots - stats.sellLots > 0.2)
+      g_BuyOverweight = true;
+   else
+      g_BuyOverweight = false;
+  }
+
+bool CheckOrderInterval(bool isBuy)
+  {
+   if(OrderOpenMode == OPEN_MODE_INSTANT) return true;
+   datetime last = isBuy ? g_LastBuyOrderTime : g_LastSellOrderTime;
+   if(OrderOpenMode == OPEN_MODE_INTERVAL) return (TimeCurrent() - last >= OrderIntervalSeconds);
+   if(OrderOpenMode == OPEN_MODE_TIMEFRAME) return (last < iTime(NULL, OrderTimeframe, 0));
+   return true;
+  }
 
 // 1:1 复刻 CloseBuySell 的盈亏差值计算与对冲 (含重置逻辑)
 bool CheckReverseProtection(const OrderStats &stats)
@@ -656,7 +743,11 @@ void TrackPendingOrders(const OrderStats &stats, int direction)
                if(g_SellOverweight || (EnableLockTrend && stats.buyLots==stats.sellLots)) isAllow=true;
             }
             
-            if(isAllow) OrderModify(OrderTicket(), targetPrice, 0, 0, 0, Blue);
+            if(isAllow) 
+              {
+               if(!OrderModify(OrderTicket(), targetPrice, 0, 0, 0, Blue))
+                  Print("OrderModify Error: ", GetLastError());
+              }
            }
         }
      }
@@ -693,7 +784,11 @@ void TrackPendingOrders(const OrderStats &stats, int direction)
                if(g_BuyOverweight || (EnableLockTrend && stats.buyLots==stats.sellLots)) isAllow=true;
             }
             
-            if(isAllow) OrderModify(OrderTicket(), targetPrice, 0, 0, 0, Red);
+            if(isAllow) 
+              {
+               if(!OrderModify(OrderTicket(), targetPrice, 0, 0, 0, Red))
+                  Print("OrderModify Error: ", GetLastError());
+              }
            }
         }
      }
@@ -797,7 +892,11 @@ bool CloseAllOrders(int dir) // 1=Buy, -1=Sell, 0=All. 返回true如果全平了
          else if(dir==-1 && (type==OP_SELL || type==OP_SELLSTOP)) close = true;
          
          if(close) {
-            if(type > 1) OrderDelete(OrderTicket());
+            if(type > 1) 
+              {
+               if(!OrderDelete(OrderTicket()))
+                  Print("OrderDelete Error: ", GetLastError());
+              }
             else {
                double p = (type==OP_BUY) ? Bid : Ask;
                if(!OrderClose(OrderTicket(), OrderLots(), p, Slippage, clrNONE)) res = false;
