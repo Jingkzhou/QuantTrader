@@ -29,6 +29,7 @@ extern double BuyFirstOrderPriceLimit   = 0;           // B以上不开(首单)
 extern double SellFirstOrderPriceLimit  = 0;           // S以下不开(首单)
 extern double BuyAddOrderPriceLimit     = 0;           // B以上不开(补单)
 extern double SellAddOrderPriceLimit    = 0;           // S以下不开(补单)
+extern int    MaxVolatilityPoints       = 0;           // 波动限制 (原 Zong_32_in_130)
 extern string PriceLimitStartTime       = "00:00";     // 限价开始时间
 extern string PriceLimitEndTime         = "24:00";     // 限价结束时间
 
@@ -127,7 +128,7 @@ bool   g_BuyTradingEnabled    = true;             // 多单交易允许
 bool   g_SellTradingEnabled   = true;             // 空单交易允许
 
 //--- 滑点设置 (原 Zong_50_in_190，初始值0，init中设为30)
-int    Slippage               = 30;               // 滑点
+int    Slippage               = 0;                // 滑点
 
 //--- 仓位状态
 bool   g_SellOverweight       = false;            // 空单严重超仓 (空/多 > 3倍)
@@ -328,104 +329,81 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
 //+------------------------------------------------------------------+
 void OnTick()
   {
-   //--- 统计当前订单
+   // 1. 统计订单
    OrderStats stats;
    CountOrders(stats);
    
-   //--- [复刻 1] StopAfterClose (Over) 的单边停止逻辑
-   // 原代码: if(Over == 1 && Zi_9_in == 0) Zong_29_bo_128 = false;
-   if(StopAfterClose && stats.buyCount == 0)
-     {
-      g_AllowBuy = false;
-     }
-   // 原代码: if(Over == 1 && Zi_10_in == 0) Zong_30_bo_129 = false;
-   if(StopAfterClose && stats.sellCount == 0)
-     {
-      g_AllowSell = false;
-     }
+   // 2. 初始化本轮 Tick 的交易权限 (默认允许)
+   bool tickAllowBuy = g_AllowBuy;
+   bool tickAllowSell = g_AllowSell;
    
-   //--- 检查交易环境
-   if(!CheckTradingEnvironment())
+   // 3. 检查 StopAfterClose (Over) 单边停止逻辑
+   if(StopAfterClose)
      {
-      // 这里的 g_TradingEnabled 设置可能需要保留，但不能覆盖上面的单边逻辑
+      if(stats.buyCount == 0) tickAllowBuy = false;
+      if(stats.sellCount == 0) tickAllowSell = false;
+     }
+
+   // 4. 检查交易环境 (原版: 不符合环境时仅禁止开仓，不退出函数)
+   if(!CheckTradingEnvironment(stats))
+     {
+      tickAllowBuy = false;
+      tickAllowSell = false;
       ShowStopMessage("不符合设定环境，EA停止运行！");
-      UpdatePanel();
-      return;
      }
    else
      {
-      ClearStopMessage();
+      // 只有环境符合才清除，或者保持之前的显示? 原版是 else { Clear }
+      // 这里为了防止覆盖下面的 Time 提示，需由下文逻辑决定
+      ClearStopMessage(); 
      }
-   
-   //--- 检查是否在交易时间内
+
+   // 5. 检查交易时间
    if(!IsWithinTradingHours())
      {
-      UpdatePanel();
-      return;
+      tickAllowBuy = false;
+      tickAllowSell = false;
+      ShowStopMessage("非开仓时间区间，停止开仓！");
      }
-   
-   //--- 检查全局冷却时间 (NextTime 逻辑)
+
+   // 6. 检查冷却时间
    if(TimeCurrent() < g_GlobalResumeTime)
      {
-      UpdatePanel();
-      return;
+      tickAllowBuy = false;
+      tickAllowSell = false;
+      ShowStopMessage("EA停止运行 " + IntegerToString((int)(g_GlobalResumeTime - TimeCurrent())) + "秒!");
      }
-   
-   //--- 检查超仓状态
+
+   // --- 逻辑执行区 (不受权限影响的逻辑) ---
+
+   // A. 检查超仓状态
    CheckOverweightStatus(stats);
-   
-   //--- 更新按钮颜色（根据盈亏状态）
+
+   // B. 更新UI颜色
    UpdateButtonColors(stats);
-   
-   //--- 止盈止损检查
-   if(CheckProfitTarget(stats))
+
+   // C. 平仓保护逻辑 (始终运行)
+   bool protectionTriggered = false;
+   if(CheckTrendProtection(stats)) protectionTriggered = true;
+   // 只有上面没触发才继续查下一个 (原版逻辑链)
+   if(!protectionTriggered && CheckReverseProtection(stats)) protectionTriggered = true;
+   if(!protectionTriggered && CheckProfitTarget(stats)) protectionTriggered = true;
+   if(!protectionTriggered && CheckStopLoss(stats)) protectionTriggered = true;
+   if(!protectionTriggered && CheckSingleSideProfit(stats)) protectionTriggered = true;
+
+   // D. 开单逻辑 (受权限控制)
+   if(!protectionTriggered)
      {
-      UpdatePanel();
-      return;
+      if(tickAllowBuy && g_BuyTradingEnabled) ProcessBuyLogic(stats); // g_BuyTradingEnabled 是按钮控制
+      if(tickAllowSell && g_SellTradingEnabled) ProcessSellLogic(stats);
      }
-   
-   if(CheckStopLoss(stats))
-     {
-      UpdatePanel();
-      return;
-     }
-   
-   //--- 单边止盈检查
-   if(CheckSingleSideProfit(stats))
-     {
-      UpdatePanel();
-      return;
-     }
-   
-   //--- 顺势保护检查
-   if(CheckTrendProtection(stats))
-     {
-      UpdatePanel();
-      return;
-     }
-   
-   //--- 逆势保护检查
-   if(CheckReverseProtection(stats))
-     {
-      UpdatePanel();
-      return;
-     }
-   
-   //--- 开仓/加仓逻辑
-   if(g_AllowBuy && g_BuyTradingEnabled)
-     {
-      ProcessBuyLogic(stats);
-     }
-   
-   if(g_AllowSell && g_SellTradingEnabled)
-     {
-      ProcessSellLogic(stats);
-     }
-   
-   //--- 挂单追踪
-   TrackPendingOrders(stats);
-   
-   //--- 刷新面板
+
+   // E. 挂单追踪 (原版: 仅在允许交易时才追踪)
+   // 原代码: if(Zi_20_do != 0.0 && Zong_29_bo_128) ...
+   if(tickAllowBuy && g_BuyTradingEnabled) TrackPendingOrders(stats, 1); // 1=Buy
+   if(tickAllowSell && g_SellTradingEnabled) TrackPendingOrders(stats, -1); // -1=Sell
+
+   // F. 刷新面板
    UpdatePanel();
   }
 
@@ -1716,120 +1694,13 @@ int GetCurrentGridDistance(int orderCount)
 //| 功能: 将挂单追踪到当前价格附近，保持固定距离                      |
 //| 修正: Buy向下追踪, Sell向上追踪, 且需满足开仓限制                 |
 //+------------------------------------------------------------------+
-void TrackPendingOrders(const OrderStats &stats)
-  {
-   if(PendingOrderTrailPoints <= 0) return;
-   double trailGap = PendingOrderTrailPoints * Point();
 
-   double totalProfit = stats.buyProfit + stats.sellProfit;
-   bool useFirstParam = (SecondParamTriggerLoss == 0 || totalProfit > SecondParamTriggerLoss);
 
-   // 1. 追踪最新一张 BUYSTOP 挂单
-   if(stats.lastBuyPendingTicket > 0)
-     {
-      if(OrderSelect(stats.lastBuyPendingTicket, SELECT_BY_TICKET))
-        {
-         double orderPrice = OrderOpenPrice();
-         double targetPrice = 0;
-         
-         if(stats.buyCount == 0)
-            targetPrice = NormalizeDouble(Ask + FirstOrderDistance * Point(), Digits());
-         else
-           {
-            if(useFirstParam)
-               targetPrice = NormalizeDouble(Ask + MinGridDistance * Point(), Digits());
-            else
-               targetPrice = NormalizeDouble(Ask + SecondMinGridDistance * Point(), Digits());
 
-            // 距离调整 (同 ProcessBuyLogic)
-            double limitPrice = 0;
-            if(useFirstParam)
-               limitPrice = NormalizeDouble(stats.lowestBuyPrice - GridStep * Point(), Digits());
-            else if(stats.lowestBuyPrice != 0)
-               limitPrice = NormalizeDouble(stats.lowestBuyPrice - SecondGridStep * Point(), Digits());
-            
-            if(stats.lowestBuyPrice != 0 && targetPrice > limitPrice)
-              {
-               targetPrice = useFirstParam ? NormalizeDouble(Ask + GridStep * Point(), Digits()) : NormalizeDouble(Ask + SecondGridStep * Point(), Digits());
-              }
-           }
 
-         // [追踪触发条件] 挂单价太高，且满足开仓许可，则拉低
-         if(orderPrice - trailGap > targetPrice) 
-           {
-            bool isAllow = false;
-            if(stats.buyCount == 0) isAllow = true;
-            else
-              {
-               double step = useFirstParam ? GridStep : SecondGridStep;
-               // 逆势补单
-               if(stats.lowestBuyPrice != 0 && targetPrice <= NormalizeDouble(stats.lowestBuyPrice - step * Point(), Digits()))
-                  isAllow = true;
-               // 顺势追涨 (超仓/对锁)
-               if(stats.highestBuyPrice != 0 && targetPrice >= NormalizeDouble(stats.highestBuyPrice + step * Point(), Digits()))
-                 {
-                  if(g_SellOverweight || (EnableLockTrend && stats.buyLots == stats.sellLots)) isAllow = true;
-                 }
-              }
-            
-            if(isAllow) OrderModify(OrderTicket(), targetPrice, 0, 0, 0, Blue);
-           }
-        }
-     }
 
-   // 2. 追踪最新一张 SELLSTOP 挂单
-   if(stats.lastSellPendingTicket > 0)
-     {
-      if(OrderSelect(stats.lastSellPendingTicket, SELECT_BY_TICKET))
-        {
-         double orderPrice = OrderOpenPrice();
-         double targetPrice = 0;
 
-         if(stats.sellCount == 0)
-            targetPrice = NormalizeDouble(Bid - FirstOrderDistance * Point(), Digits());
-         else
-           {
-            if(useFirstParam)
-               targetPrice = NormalizeDouble(Bid - MinGridDistance * Point(), Digits());
-            else
-               targetPrice = NormalizeDouble(Bid - SecondMinGridDistance * Point(), Digits());
 
-            // 距离调整
-            double limitPrice = 0;
-            if(useFirstParam)
-               limitPrice = NormalizeDouble(stats.highestSellPrice + GridStep * Point(), Digits());
-            else if(stats.highestSellPrice != 0)
-               limitPrice = NormalizeDouble(stats.highestSellPrice + SecondGridStep * Point(), Digits());
-            
-            if(stats.highestSellPrice != 0 && targetPrice < limitPrice)
-              {
-               targetPrice = useFirstParam ? NormalizeDouble(Bid - GridStep * Point(), Digits()) : NormalizeDouble(Bid - SecondGridStep * Point(), Digits());
-              }
-           }
-
-         // [追踪触发条件] 挂单价太低，且满足开仓许可，则拉高
-         if(orderPrice + trailGap < targetPrice) 
-           {
-            bool isAllow = false;
-            if(stats.sellCount == 0) isAllow = true;
-            else
-              {
-               double step = useFirstParam ? GridStep : SecondGridStep;
-               // 逆势补单
-               if(stats.highestSellPrice != 0 && targetPrice >= NormalizeDouble(stats.highestSellPrice + step * Point(), Digits()))
-                  isAllow = true;
-               // 顺势追空 (超仓/对锁)
-               if(stats.lowestSellPrice != 0 && targetPrice <= NormalizeDouble(stats.lowestSellPrice - step * Point(), Digits()))
-                 {
-                  if(g_BuyOverweight || (EnableLockTrend && stats.buyLots == stats.sellLots)) isAllow = true;
-                 }
-              }
-            
-            if(isAllow) OrderModify(OrderTicket(), targetPrice, 0, 0, 0, Red);
-           }
-        }
-     }
-  }
 
 //+------------------------------------------------------------------+
 //|                       UI 函数                                     |
