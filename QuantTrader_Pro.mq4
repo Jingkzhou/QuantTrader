@@ -911,25 +911,20 @@ bool CheckTradingEnvironment(const OrderStats &stats)
       return false;
    
    // 波动检查 (原代码: Zong_32_in_130 != 0 && Zi_37_do >= Zong_32_in_130)
-   // 原代码逻辑:
-   // Zi_36_do = iHigh(Symbol(), Zong_31_in_12C, 0) - iLow(Symbol(), Zong_31_in_12C, 5);
-   // Zi_37_do = int(Zi_36_do / Point());
-   // 如果波动点数超过限制，停止交易
    if(MaxVolatilityPoints > 0)
      {
-      // 计算近期波动（5根K线内的高低点差）
-      int checkTimeframe = GetHigherTimeframe();  // 原代码使用 Zong_31_in_12C
+      // 计算近期波动 (原代码使用 Zong_31_in_12C = 1, 即 M1)
+      int checkTimeframe = PERIOD_M1;
       double highPoint = iHigh(Symbol(), checkTimeframe, 0);
       double lowPoint = iLow(Symbol(), checkTimeframe, 5);
       
       // 上涨波动
       double upVolatility = (highPoint - lowPoint) / Point();
-      // 下跌波动（取绝对值）
+      // 下跌波动
       double downVolatility = MathAbs((iLow(Symbol(), checkTimeframe, 0) - iHigh(Symbol(), checkTimeframe, 5)) / Point());
       
       if(upVolatility >= MaxVolatilityPoints || downVolatility >= MaxVolatilityPoints)
         {
-         // 波动过大，停止交易
          return false;
         }
      }
@@ -943,46 +938,61 @@ bool CheckTradingEnvironment(const OrderStats &stats)
 //+------------------------------------------------------------------+
 bool IsWithinTradingHours()
   {
-   datetime currentTime;  // Zi_47_da
-   
-   // 原代码: if(IsTesting()) Zi_47_da = TimeCurrent(); else Zi_47_da = TimeLocal();
+   datetime currentTime;
    if(IsTesting())
       currentTime = TimeCurrent();
    else
       currentTime = TimeLocal();
    
-   // 构建今天的开始和结束时间
-   // 原代码: Zong_91_da_2E0 = StringToTime(StringConcatenate(..., EA_StartTime))
-   string today = StringConcatenate(TimeYear(currentTime), ".", 
-                                    TimeMonth(currentTime), ".", 
-                                    TimeDay(currentTime), " ");
+   // 获取当天的开始和结束时间戳
+   MqlDateTime dt;
+   TimeToStruct(currentTime, dt);
    
-   g_TradingStartDT = StringToTime(today + TradingStartTime);  // Zong_91_da_2E0
-   g_TradingEndDT   = StringToTime(today + TradingEndTime);    // Zong_92_da_2E8
+   string todayStr = StringConcatenate(dt.year, ".", dt.mon, ".", dt.day, " ");
+   datetime startDT = StringToTime(todayStr + TradingStartTime);
+   datetime endDT = StringToTime(todayStr + TradingEndTime);
    
-   // 原代码逻辑:
-   // if(Zong_91_da_2E0 < Zong_92_da_2E8 && (Zi_47_da < Zong_91_da_2E0 || Zi_47_da > Zong_92_da_2E8))
-   //    Zi_48_bo = false;
-   // else if(Zong_91_da_2E0 > Zong_92_da_2E8 && Zi_47_da < Zong_91_da_2E0 && Zi_47_da > Zong_92_da_2E8)
-   //    Zi_48_bo = false;
-   // else Zi_48_bo = true;
-   
-   if(g_TradingStartDT < g_TradingEndDT)
+   if(startDT < endDT)
      {
-      // 正常情况（如 08:00 ~ 22:00）
-      if(currentTime < g_TradingStartDT || currentTime > g_TradingEndDT)
+      if(currentTime < startDT || currentTime > endDT)
          return false;
      }
-   else if(g_TradingStartDT > g_TradingEndDT)
+   else // 跨天逻辑
      {
-      // 跨夜情况（如 22:00 ~ 08:00）
-      if(currentTime < g_TradingStartDT && currentTime > g_TradingEndDT)
+      if(currentTime < startDT && currentTime > endDT)
          return false;
      }
    
    return true;
   }
 
+//+------------------------------------------------------------------+
+//| 显示停止语 (原代码 Stop 标签细节)                                  |
+//+------------------------------------------------------------------+
+void ShowStopMessage(string message)
+  {
+   if(ObjectFind(0, "Stop") == -1)
+     {
+      ObjectCreate(0, "Stop", OBJ_LABEL, 0, 0, 0);
+      // 原代码: Zong_74=1 (CORNER_RIGHT_UPPER), Zong_75=10 (X), Zong_76=260 (Y)
+      ObjectSetInteger(0, "Stop", OBJPROP_CORNER, CORNER_RIGHT_UPPER);
+      ObjectSetInteger(0, "Stop", OBJPROP_XDISTANCE, 10);
+      ObjectSetInteger(0, "Stop", OBJPROP_YDISTANCE, 260);
+     }
+   ObjectSetString(0, "Stop", OBJPROP_TEXT, message);
+   // 原代码: Zong_59 = 0xFFFF (Yellow), Zong_33 = 15 (Size)
+   ObjectSetInteger(0, "Stop", OBJPROP_COLOR, clrYellow);
+   ObjectSetInteger(0, "Stop", OBJPROP_FONTSIZE, 15);
+   ObjectSetString(0, "Stop", OBJPROP_FONT, "Arial");
+  }
+
+//+------------------------------------------------------------------+
+//| 清除停止语                                                        |
+//+------------------------------------------------------------------+
+void ClearStopMessage()
+  {
+   ShowStopMessage("");
+  }
 //+------------------------------------------------------------------+
 //| 检查超仓状态 (原代码约 920-940 行)                                |
 //| 原代码:                                                           |
@@ -1425,7 +1435,7 @@ void ProcessSellLogic(const OrderStats &stats)
       double minDistFromHighest = useFirstParam ? GridStep : SecondGridStep;
       double maxEntryPrice = NormalizeDouble(stats.highestSellPrice + minDistFromHighest * Point(), Digits());
       
-      if(pendingPrice < maxEntryPrice)
+      if(pendingPrice > maxEntryPrice)
         {
          pendingPrice = NormalizeDouble(Bid - (useFirstParam ? GridStep : SecondGridStep) * Point(), Digits());
         }
