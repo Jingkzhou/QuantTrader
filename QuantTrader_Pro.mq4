@@ -602,7 +602,7 @@ int OpenBuyOrder(double lots, string comment = "")
    int slippage = 30;
    
    int ticket = OrderSend(Symbol(), OP_BUY, lots, price, slippage, 0, 0, 
-                          comment, MagicNumber, 0, BuyAvgPriceColor);
+                          comment, MagicNumber, 0, Blue);
    
    if(ticket > 0)
      {
@@ -629,7 +629,7 @@ int OpenSellOrder(double lots, string comment = "")
    int slippage = 30;
    
    int ticket = OrderSend(Symbol(), OP_SELL, lots, price, slippage, 0, 0,
-                          comment, MagicNumber, 0, SellAvgPriceColor);
+                          comment, MagicNumber, 0, Red);
    
    if(ticket > 0)
      {
@@ -1215,26 +1215,26 @@ bool CheckReverseProtection(const OrderStats &stats)
    if(!EnableReverseProtection)
       return false;
 
-   // 1. 更新历史最大盈亏差值 (原代码 Zong_51/52 逻辑)
-   // 原代码计算的是: (前1个盈利单利润) - (前2个亏损单利润绝对值)
-   // 注意: 原代码参数是 Zong_56_in_1CC(1) 和 Zong_57_in_1D0(2)
+   // --- 多单侧 ---
+   // 计算盈亏差: (前1个盈利单总和) - (前2个亏损单总和)
+   // 原版参数：lizong_17(..., Zong_56_in_1CC, ...) - lizong_17(..., Zong_57_in_1D0, ...)
+   // 默认 Zong_56=1, Zong_57=2
    double profitDiffBuy = CalculateProfitSum(OP_BUY, MagicNumber, 1, 1) - CalculateProfitSum(OP_BUY, MagicNumber, 2, 2);
    static double maxDiffBuy = 0.0;
+   
+   // 更新历史最大值
    if(maxDiffBuy < profitDiffBuy) maxDiffBuy = profitDiffBuy;
 
-   double profitDiffSell = CalculateProfitSum(OP_SELL, MagicNumber, 1, 1) - CalculateProfitSum(OP_SELL, MagicNumber, 2, 2);
-   static double maxDiffSell = 0.0;
-   if(maxDiffSell < profitDiffSell) maxDiffSell = profitDiffSell;
-
-   // 2. 检查多单侧逆势 (原代码 1775行左右)
+   // 检查触发条件
    if(maxDiffBuy > 0.0 && profitDiffBuy > 0.0)
      {
-      // 寻找该方向盈利最大的一单的手数 (Zi_150_do)
+      // 寻找多单最大盈利单的手数
       double maxProfitLot = 0;
       double maxProfitVal = 0;
       for(int i = OrdersTotal() - 1; i >= 0; i--)
         {
-         if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES) && OrderSymbol() == Symbol() && OrderMagicNumber() == MagicNumber && OrderType() == OP_BUY)
+         if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES) && OrderSymbol() == Symbol() && 
+            OrderMagicNumber() == MagicNumber && OrderType() == OP_BUY)
            {
             if(OrderProfit() > maxProfitVal)
               {
@@ -1244,27 +1244,35 @@ bool CheckReverseProtection(const OrderStats &stats)
            }
         }
 
-      // [核心触发条件] 多单总手 > (最大盈利单手数 * 3.0) + 空单总手
-      // 且多单数量 > 3
+      // 手数失衡判断
       if(stats.buyLots > (maxProfitLot * 3.0 + stats.sellLots) && stats.buyCount > 3)
         {
-         // 执行 lizong_16: 平掉1个盈利单(1)，平掉2个亏损单(2)
-         PartialClose(OP_BUY, MagicNumber, 1, 1); // 平1个盈利
-         PartialClose(OP_BUY, MagicNumber, 2, 2); // 平2个亏损
-         maxDiffBuy = 0.0; // 重置
+         // 执行对冲: 平1个盈利，平2个亏损 (对应原版: lizong_16(..., 1) 和 lizong_16(..., 2))
+         PartialClose(OP_BUY, MagicNumber, 1, 1); 
+         PartialClose(OP_BUY, MagicNumber, 2, 2);
+         
+         // [关键修正] 平仓后必须重置最大差值记录，否则会连续误触发
+         maxDiffBuy = 0.0; 
+         
          Print("逆势保护触发（多单侧）: 仓位对冲平仓");
          return true;
         }
      }
 
-   // 3. 检查空单侧逆势
+   // --- 空单侧 ---
+   double profitDiffSell = CalculateProfitSum(OP_SELL, MagicNumber, 1, 1) - CalculateProfitSum(OP_SELL, MagicNumber, 2, 2);
+   static double maxDiffSell = 0.0;
+   
+   if(maxDiffSell < profitDiffSell) maxDiffSell = profitDiffSell;
+
    if(maxDiffSell > 0.0 && profitDiffSell > 0.0)
      {
       double maxProfitLot = 0;
       double maxProfitVal = 0;
       for(int i = OrdersTotal() - 1; i >= 0; i--)
         {
-         if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES) && OrderSymbol() == Symbol() && OrderMagicNumber() == MagicNumber && OrderType() == OP_SELL)
+         if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES) && OrderSymbol() == Symbol() && 
+            OrderMagicNumber() == MagicNumber && OrderType() == OP_SELL)
            {
             if(OrderProfit() > maxProfitVal)
               {
@@ -1274,21 +1282,20 @@ bool CheckReverseProtection(const OrderStats &stats)
            }
         }
 
-      // [核心触发条件]
       if(stats.sellLots > (maxProfitLot * 3.0 + stats.buyLots) && stats.sellCount > 3)
         {
          PartialClose(OP_SELL, MagicNumber, 1, 1);
          PartialClose(OP_SELL, MagicNumber, 2, 2);
+         
+         // [关键修正] 重置记录
          maxDiffSell = 0.0;
+         
          Print("逆势保护触发（空单侧）: 仓位对冲平仓");
          return true;
         }
      }
 
    return false;
-  }
-      
-
   }
 
 //+------------------------------------------------------------------+
@@ -2296,6 +2303,79 @@ int GetHigherTimeframe(int currentTF)
       return Period();
    
    return 0;
+  }
+
+//+------------------------------------------------------------------+
+//| 计算盈亏总和 (用于计算前N个盈利单或M个亏损单的盈亏)               |
+//| type: 订单类型 (OP_BUY/OP_SELL)                                   |
+//| magic: 魔术号                                                     |
+//| count: 计数 (前N个)                                               |
+//| mode: 模式 (1=盈利单, 2=亏损单)                                   |
+//+------------------------------------------------------------------+
+double CalculateProfitSum(int type, int magic, int count, int mode)
+  {
+   double totalProfit = 0;
+   
+   // 临时数组存储符合条件的利润
+   // 假设最大订单数为100，避免动态数组复杂性
+   double profits[100];
+   int profitCount = 0;
+   
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+     {
+      if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES) && 
+         OrderSymbol() == Symbol() && 
+         OrderMagicNumber() == magic && 
+         OrderType() == type)
+        {
+         double p = OrderProfit(); // 原版逻辑用 OrderProfit
+         
+         if(mode == 1 && p > 0)
+           {
+             if(profitCount < 100) profits[profitCount++] = p;
+           }
+         else if(mode == 2 && p < 0)
+           {
+             if(profitCount < 100) profits[profitCount++] = p;
+           }
+        }
+     }
+   
+   // 原版 lizong_17 逻辑：
+   // mode=1: 找最大的前count个正数 (降序)
+   // mode=2: 找最小的前count个负数 (升序, 绝对值最大)
+   
+   // 冒泡排序
+   for(int i=0; i<profitCount-1; i++)
+     {
+      for(int j=0; j<profitCount-i-1; j++)
+        {
+         bool swap = false;
+         if(mode == 1) // 降序
+           {
+            if(profits[j] < profits[j+1]) swap = true;
+           }
+         else // 升序 (负数越小，绝对值越大)
+           {
+            if(profits[j] > profits[j+1]) swap = true;
+           }
+         
+         if(swap)
+           {
+            double temp = profits[j];
+            profits[j] = profits[j+1];
+            profits[j+1] = temp;
+           }
+        }
+     }
+   
+   // 累加
+   for(int k=0; k<count && k<profitCount; k++)
+     {
+      totalProfit += profits[k];
+     }
+     
+   return totalProfit;
   }
 
 //+------------------------------------------------------------------+
