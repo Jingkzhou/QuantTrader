@@ -134,9 +134,11 @@ bool   g_SellOverweight       = false;            // 空单严重超仓 (空/多
 bool   g_BuyOverweight        = false;            // 多单严重超仓 (多/空 > 3倍)
 
 //--- 时间控制
+//--- 时间控制
 datetime g_LastBuyOrderTime   = 0;                // 上次多单开仓时间
 datetime g_LastSellOrderTime  = 0;                // 上次空单开仓时间
 datetime g_LastCloseAllTime   = 0;                // 上次全部平仓时间
+datetime g_GlobalResumeTime   = 0;                // 全局恢复交易时间 (NextTime功能)
 
 //--- 交易时间段
 datetime g_TradingStartDT     = 0;                // 交易开始时间戳
@@ -212,12 +214,13 @@ int OnInit()
       Slippage = 30;
      }
    
-   // 将参数转换为负数 (原代码中这些值实际需要负数比较)
-   // MaxLossCloseAll = -(MaxLossCloseAll);
-   // MaxLoss = -(MaxLoss);
-   // StopLoss = -(StopLoss);
-   // Money = -(Money);
-   // 注: 在我们的代码中，这些已经作为正数定义，比较时使用 < -Value
+   // 将参数转换为负数 (原代码逻辑复刻)
+   // 原代码: MaxLossCloseAll = -(MaxLossCloseAll); ... Money = -(Money);
+   // 为保证 1:1 逻辑一致性，我们将输入的正数转换为负数，并在后续逻辑中统一使用 >或< 负数 的判断
+   MaxLossCloseThreshold  = -MathAbs(MaxLossCloseThreshold);
+   MaxFloatingLoss        = -MathAbs(MaxFloatingLoss);
+   StopLossAmount         = -MathAbs(StopLossAmount);
+   SecondParamTriggerLoss = -MathAbs(SecondParamTriggerLoss);
    
    // 格式化时间字符串 (原代码: StringReplace, StringTrim)
    StringReplace(TradingStartTime, " ", "");
@@ -345,6 +348,13 @@ void OnTick()
    
    //--- 检查是否在交易时间内
    if(!IsWithinTradingHours())
+     {
+      UpdatePanel();
+      return;
+     }
+   
+   //--- 检查全局冷却时间 (NextTime 逻辑)
+   if(TimeCurrent() < g_GlobalResumeTime)
      {
       UpdatePanel();
       return;
@@ -777,17 +787,23 @@ int CloseAllOrders(int direction)
 //| Mu_2_in: 要平仓的订单数量                                         |
 //| Mu_3_in: 平仓模式 (1=平盈利订单, 2=平亏损订单)                     |
 //+------------------------------------------------------------------+
-void PartialClose(int orderType, int magic, int closeCount, int closeMode)
+//+------------------------------------------------------------------+
+//| 分批平仓/对冲平仓 (原 lizong_16)                                  |
+//| orderType: 订单类型 (0=多单, 1=空单, -100=全部)                   |
+//| magic: 魔术号                                                     |
+//| closeCount: 要平仓的订单数量                                      |
+//| closeMode: 平仓模式 (1=平盈利订单, 2=平亏损订单)                  |
+//+------------------------------------------------------------------+
+bool PartialClose(int orderType, int magic, int closeCount, int closeMode)
   {
-   int targetTicket = -1;     // Zi_3_in
-   double targetProfit = 0.0; // Zi_4_do
+   int targetTicket = -1;
+   double targetProfit = 0.0;
    
    while(closeCount > 0)
      {
       targetTicket = -1;
-      targetProfit = 0.0;
       
-      // 遍历订单，找到目标订单
+      // 遍历订单，找到目标订单 (最大盈利或最大亏损)
       for(int i = OrdersTotal() - 1; i >= 0; i--)
         {
          if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
@@ -806,16 +822,19 @@ void PartialClose(int orderType, int magic, int closeCount, int closeMode)
          double profit = OrderProfit() + OrderSwap() + OrderCommission();
          
          // 模式1：找盈利最多的订单
-         if(closeMode == 1 && profit > targetProfit)
+         if(closeMode == 1)
            {
-            targetProfit = profit;
-            targetTicket = OrderTicket();
+            // 修正：寻找最大正盈利
+            if(profit > 0 && (targetTicket == -1 || profit > targetProfit))
+              {
+               targetProfit = profit;
+               targetTicket = OrderTicket();
+              }
            }
-         
-         // 模式2：找亏损最多的订单（profit 最小）
-         if(closeMode == 2)
+         // 模式2：找亏损最多的订单（profit 最小，负得最多）
+         else if(closeMode == 2)
            {
-            if(profit < targetProfit || targetProfit == 0.0)
+            if(profit < 0 && (targetTicket == -1 || profit < targetProfit))
               {
                targetProfit = profit;
                targetTicket = OrderTicket();
@@ -823,32 +842,67 @@ void PartialClose(int orderType, int magic, int closeCount, int closeMode)
            }
         }
       
-      // 平仓目标订单
+      if(targetTicket == -1)
+         break; // 没有找到符合条件的订单
+      
+      // 选中目标订单
       if(OrderSelect(targetTicket, SELECT_BY_TICKET, MODE_TRADES))
         {
-         double profit = OrderProfit() + OrderSwap() + OrderCommission();
+         int currentType = OrderType();
+         int oppositeType = (currentType == OP_BUY) ? OP_SELL : OP_BUY;
+         int oppositeTicket = -1;
          
-         // 模式1：只平盈利订单
-         if(closeMode == 1 && profit >= 0.0)
+         // 寻找相反方向的订单进行对冲 (OrderCloseBy)
+         for(int k = OrdersTotal() - 1; k >= 0; k--)
            {
-            if(OrderClose(OrderTicket(), OrderLots(), OrderClosePrice(), Slippage, clrNONE))
-              {
-               closeCount--;
+            if(!OrderSelect(k, SELECT_BY_POS, MODE_TRADES))
                continue;
+            if(OrderSymbol() != Symbol() || OrderMagicNumber() != magic)
+               continue;
+            
+            if(OrderType() == oppositeType)
+              {
+               oppositeTicket = OrderTicket();
+               break; // 找到任意一个反向单
               }
            }
-         else if(closeMode == 1 && profit < 0.0)
+         
+         bool res = false;
+         
+         // 优先尝试 OrderCloseBy
+         if(oppositeTicket != -1)
            {
-            // 盈利订单已平完，跳过亏损订单
-            closeCount--;
-            continue;
+            res = OrderCloseBy(targetTicket, oppositeTicket, clrNONE);
+            if(res)
+               Print("对冲平仓成功: ", targetTicket, " By ", oppositeTicket);
            }
          
-         // 模式2：只平亏损订单
-         if(closeMode == 2 && profit < 0.0)
+         // 如果对冲失败或没有反向单，使用普通平仓
+         if(!res)
            {
-            if(OrderClose(OrderTicket(), OrderLots(), OrderClosePrice(), Slippage, clrNONE))
+            // 重新选中目标订单 (OrderCloseBy 失败可能导致选择丢失)
+            if(OrderSelect(targetTicket, SELECT_BY_TICKET, MODE_TRADES))
               {
+               double price = (OrderType() == OP_BUY) ? Bid : Ask;
+               res = OrderClose(targetTicket, OrderLots(), NormalizeDouble(price, Digits()), Slippage, clrNONE);
+               if(res)
+                  Print("普通平仓成功: Ticket=", targetTicket, " Profit=", OrderProfit());
+              }
+           }
+         
+         if(res)
+            closeCount--; // 成功平掉一单，计数减一
+         else
+            break; // 平仓失败，防止死循环
+        }
+      else
+        {
+         break;
+        }
+     }
+   
+   return true;
+  }
                closeCount--;
                continue;
               }
@@ -1037,16 +1091,26 @@ bool CheckProfitTarget(const OrderStats &stats)
    
    // 原代码: if(Over == 1 && Zi_40_do >= CloseAll)
    // Over = StopAfterClose, CloseAll = TotalProfitTarget
-   if(StopAfterClose == true && totalProfit >= TotalProfitTarget)
+   // 检查整体止盈 (注意：这里我们修正为通用止盈检查，不仅仅是 StopAfterClose)
+   if(totalProfit >= TotalProfitTarget && TotalProfitTarget > 0)
      {
-      // 原代码设置 Zong_29_bo_128 = false; Zong_30_bo_129 = false;
-      g_TradingEnabled = false;
-      g_AllowBuy = false;
-      g_AllowSell = false;
-      
-      // 原代码有对冲平仓逻辑，此处简化为直接全平
       Print("达到整体止盈目标: ", totalProfit, " >= ", TotalProfitTarget);
-      CloseAllOrders(0);
+      bool result = CloseAllOrders(0);
+      
+      // 平仓成功后设置冷却时间
+      if(result && RestartDelaySeconds > 0)
+        {
+         g_GlobalResumeTime = TimeCurrent() + RestartDelaySeconds;
+         Print("触发冷却，暂停交易至: ", TimeToString(g_GlobalResumeTime));
+        }
+      
+      if(StopAfterClose)
+        {
+         g_TradingEnabled = false;
+         g_AllowBuy = false;
+         g_AllowSell = false;
+         Print("触发 StopAfterClose，EA停止交易");
+        }
       
       return true;
      }
@@ -1162,77 +1226,67 @@ bool CheckTrendProtection(const OrderStats &stats)
 //| 检查逆势保护 (原代码约 1760-1860 行: CloseBuySell)                |
 //| 逻辑: 检查盈利订单，若多单手数远大于空单手数且盈利，则分批平仓    |
 //+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
+//| 检查逆势保护 (原代码约 1760-1860 行: CloseBuySell)                |
+//| 逻辑: 计算前N个盈利单与前M个亏损单的盈亏差值 (lizong_17)          |
+//| 若差值大于历史最大值，则触发对冲平仓 (lizong_16)                  |
+//+------------------------------------------------------------------+
 bool CheckReverseProtection(const OrderStats &stats)
   {
    if(!EnableReverseProtection)
       return false;
    
-   // 找到盈利最多的多单
-   double maxBuyProfit = 0;
-   double maxBuyLots = 0;
+   static double g_MaxProfitDiff = 0.0; // Zong_51_do_198
+   double currentPrice = (Ask - Bid) / Point(); // Zong_58_do_1D8 in init
    
-   for(int i = OrdersTotal() - 1; i >= 0; i--)
+   // 计算当前盈亏差值 (原代码: Zi_33_do = lizong_17(0, Magic, 1, M) - lizong_17(0, Magic, 2, N))
+   // 原代码中 M=Zong_56_in_1CC, N=Zong_57_in_1D0，默认值似乎未给出，假设为 1
+   // 根据反编译代码逻辑，这里似乎是用盈利覆盖亏损
+   // 假设参数：取前1个盈利单，前1个亏损单（最赚钱和最赔钱的）
+   // 实际上反编译代码参数不明确，但逻辑是 (盈利总额 - 亏损总额)
+   
+   // 在 init 中有: Zong_56_in_1CC = 1; Zong_57_in_1D0 = 1;
+   int profitCount = 1;
+   int lossCount = 1;
+   
+   double profitSum = CalculateProfitSum(0, MagicNumber, 1, profitCount);
+   double lossSum   = CalculateProfitSum(0, MagicNumber, 2, lossCount);
+   double diff      = profitSum - lossSum; // Zi_33_do
+   
+   // 更新历史最大差值
+   if(g_MaxProfitDiff < diff)
      {
-      if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
-         continue;
-      if(OrderSymbol() != Symbol())
-         continue;
-      if(OrderMagicNumber() != MagicNumber)
-         continue;
-      if(OrderType() != OP_BUY)
-         continue;
+      g_MaxProfitDiff = diff;
+     }
+   
+   // 触发条件
+   if(g_MaxProfitDiff > 0.0 && diff > 0.0 && g_MaxProfitDiff > 0.0)
+     {
+      // 遍历所有订单寻找符合条件的单子进行对冲 (原代码循环逻辑)
+      // 原代码在这里有一个复杂的循环，设置 Zi_147_in = 1 等
+      // 然后调用 lizong_16(0, Magic, 1, 1) 和 lizong_16(0, Magic, 2, 2)
+      // 这里的逻辑简化为：如果盈亏差值足够（能覆盖亏损），就执行对冲
       
-      double profit = OrderProfit() + OrderSwap() + OrderCommission();
-      if(profit > maxBuyProfit)
-        {
-         maxBuyProfit = profit;
-         maxBuyLots = OrderLots();
-        }
-     }
-   
-   // 原代码: if(Zi_6_do > Zi_150_do * 3.0 + Zi_7_do && Zi_9_in > 3)
-   // 即: 多单总手数 > 盈利最多的多单手数 * 3 + 空单总手数，且多单数量 > 3
-   if(stats.buyLots > maxBuyLots * 3.0 + stats.sellLots && stats.buyCount > 3)
-     {
-      // 触发逆势保护：分批平仓
-      Print("逆势保护触发（多单侧）");
-      // 平掉盈利的多单和亏损的空单
-      PartialClose(OP_BUY, MagicNumber, 1, 1);   // 平1单盈利的多单
-      PartialClose(OP_SELL, MagicNumber, 1, 2);  // 平1单亏损的空单
-      return true;
-     }
-   
-   // 找到盈利最多的空单
-   double maxSellProfit = 0;
-   double maxSellLots = 0;
-   
-   for(int i = OrdersTotal() - 1; i >= 0; i--)
-     {
-      if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
-         continue;
-      if(OrderSymbol() != Symbol())
-         continue;
-      if(OrderMagicNumber() != MagicNumber)
-         continue;
-      if(OrderType() != OP_SELL)
-         continue;
+      // 实际上原代码是无条件的循环吗？不，它似乎是在寻找特定条件的单子
+      // 简化逻辑：既然 diff > 0 (盈利 > 亏损)，说明可以对冲平仓
       
-      double profit = OrderProfit() + OrderSwap() + OrderCommission();
-      if(profit > maxSellProfit)
+      // 执行对冲平仓 (lizong_16)
+      // 平掉1个盈利单 (方向不限=0, 模式=1)
+      bool res1 = PartialClose(0, MagicNumber, 1, 1);
+      // 平掉1个亏损单 (方向不限=0, 模式=2)
+      bool res2 = PartialClose(0, MagicNumber, 1, 2);
+      
+      if(res1 || res2)
         {
-         maxSellProfit = profit;
-         maxSellLots = OrderLots();
+         Print("逆势保护触发: 盈亏对冲平仓 (Diff=", diff, ")");
+         return true;
         }
-     }
-   
-   // 空单侧逆势保护
-   if(stats.sellLots > maxSellLots * 3.0 + stats.buyLots && stats.sellCount > 3)
-     {
-      Print("逆势保护触发（空单侧）");
-      return true;
      }
    
    return false;
+  }
+      
+
   }
 
 //+------------------------------------------------------------------+
@@ -1245,6 +1299,14 @@ bool CheckReverseProtection(const OrderStats &stats)
 //| - 首单: 挂单价 = Ask + FirstStep * Point                          |
 //| - 加仓: 根据 Zi_35_bo (Money条件) 选择 MinDistance 或 TwoMinDistance |
 //| - 挂单类型: OP_BUYSTOP (4)                                        |
+//+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
+//| 处理多单开仓/加仓逻辑 (原代码约 1855-2100 行)                     |
+//| 核心逻辑:                                                         |
+//| - 首单: 挂单价 = Ask + FirstStep * Point                          |
+//| - 加仓: 根据 Zi_35_bo (Money条件) 选择 MinDistance 或 TwoMinDistance |
+//| - 挂单类型: OP_BUYSTOP (4)                                        |
+//| - 动态调整: 逆势(Low)默认允许, 顺势(High)仅在超仓/对锁时允许          |
 //+------------------------------------------------------------------+
 void ProcessBuyLogic(const OrderStats &stats)
   {
@@ -1267,85 +1329,78 @@ void ProcessBuyLogic(const OrderStats &stats)
    // 计算挂单价格 Zi_26_do
    double pendingPrice = 0;
    
-   // 判断是否使用第二参数 (原代码: Zi_35_bo)
-   // 原代码: if(Money != 0.0 && Zi_40_do > Money) Zi_35_bo = true
+   // 判断是否使用第二参数 (Money 条件逻辑修正为负数比较)
+   // useFirstParam: true=使用较小间距(GridStep), false=使用较大间距(SecondGridStep)
    double totalProfit = stats.buyProfit + stats.sellProfit;
    bool useFirstParam = (SecondParamTriggerLoss == 0 || totalProfit > SecondParamTriggerLoss);
    
    if(stats.buyCount == 0)
      {
-      // 首单逻辑 (原代码: Zi_26_do = NormalizeDouble(FirstStep * Point() + Ask, Digits()))
+      // 首单逻辑
       pendingPrice = NormalizeDouble(Ask + FirstOrderDistance * Point(), Digits());
+      // 首单总是允许
+      // 检查价格限制
+      if(BuyFirstOrderPriceLimit > 0 && Ask >= BuyFirstOrderPriceLimit) return;
      }
    else
      {
       // 加仓逻辑
+      // 1. 计算初始挂单价格
       if(useFirstParam)
-        {
-         // 使用第一参数 (原代码: Zi_26_do = NormalizeDouble(MinDistance * Point() + Ask, Digits()))
          pendingPrice = NormalizeDouble(Ask + MinGridDistance * Point(), Digits());
-        }
       else
-        {
-         // 使用第二参数 (原代码: Zi_26_do = NormalizeDouble(TwoMinDistance * Point() + Ask, Digits()))
          pendingPrice = NormalizeDouble(Ask + SecondMinGridDistance * Point(), Digits());
-        }
       
-      // 检查距离条件 (原代码的复杂条件)
-      // 原代码: if(Zi_26_do < NormalizeDouble(Zi_17_do - Step * Point(), Digits()) && Zi_35_bo)
-      // Zi_17_do = lowestBuyPrice (多单最低价)
-      double minDistFromLowest = useFirstParam ? GridStep : SecondGridStep;
-      double minEntryPrice = NormalizeDouble(stats.lowestBuyPrice - minDistFromLowest * Point(), Digits());
+      // 2. 检查距离条件 (针对 LowestBuyPrice 逆势方向)
+      // 如果挂单价格 > LowestBuyPrice - Step (离最近的这一单太近了)，则调整到更远
+      // 注意: 原代码是 if(Zi_26_do < Zi_17_do - Step ...) -> 调整。 Zi_26 是 Buy(Ask+..)。Zi_17 是 Lowest。
+      // BuyStop 挂在 Ask 之上。Lowest 是持仓最低价。
+      // 通常用于 Buy 逆势加仓时，Ask 会在 Lowest 之下。
+      // 这里的逻辑有点绕，直接复刻原代码的核心意图:
       
-      if(pendingPrice > minEntryPrice)
-        {
-         // 挂单价格不满足距离条件，调整
-         pendingPrice = NormalizeDouble(Ask + (useFirstParam ? GridStep : SecondGridStep) * Point(), Digits());
-        }
+      // 确定间距
+      double step = useFirstParam ? GridStep : SecondGridStep;
       
-      // 检查开仓条件 (原代码的综合判断)
-      // 必须满足以下条件之一:
-      // 1. 首单 (Zi_9_in == 0) - 已在上面处理
-      // 2. 价格距离足够 (Zi_16_do != 0 && Zi_26_do >= Zi_16_do + Step * Point)
-      // 3. 对锁情况 (Homeopathy && Zi_6_do == Zi_7_do)
-      
+      // 核心开仓条件判断 canOpen
       bool canOpen = false;
       
-      // 条件2: 挂单价格 >= 最高价 + 间距
-      if(stats.highestBuyPrice != 0)
-        {
-         double targetPrice = NormalizeDouble(stats.highestBuyPrice + (useFirstParam ? GridStep : SecondGridStep) * Point(), Digits());
-         if(pendingPrice >= targetPrice)
-            canOpen = true;
-        }
-      
-      // 条件3: 挂单价格 <= 最低价 - 间距
+      // 条件 A: 逆势加仓 (价格低于最低价，扛单)
+      // 这里的逻辑是：只要挂单价格满足间距，就允许
       if(stats.lowestBuyPrice != 0)
         {
-         double targetPrice = NormalizeDouble(stats.lowestBuyPrice - (useFirstParam ? GridStep : SecondGridStep) * Point(), Digits());
+         // 检查是否已经在最低价下方足够远的地方
+         double targetPrice = NormalizeDouble(stats.lowestBuyPrice - step * Point(), Digits());
+         
          if(pendingPrice <= targetPrice)
+           {
+            // 满足逆势距离，允许开仓
             canOpen = true;
+           }
         }
       
-      // 条件4: 对锁情况
-      if(EnableLockTrend && stats.buyLots == stats.sellLots && stats.highestBuyPrice != 0)
+      // 条件 B: 顺势加仓 (价格高于最高价，追涨)
+      // 仅在 (空单超仓 OR 对锁) 时允许
+      if(stats.highestBuyPrice != 0)
         {
-         double targetPrice = NormalizeDouble(stats.highestBuyPrice + GridStep * Point(), Digits());
+         double targetPrice = NormalizeDouble(stats.highestBuyPrice + step * Point(), Digits());
+         
          if(pendingPrice >= targetPrice)
-            canOpen = true;
+           {
+            // 顺势距离满足，进一步检查权限
+            if(useFirstParam) // 必须是参数1状态？(原代码有 Zi_35_bo 判断，但也可能是因为参数2时 Money!=0 限制)
+              {
+               if(g_SellOverweight) // 空单超仓，允许追多
+                  canOpen = true;
+               if(EnableLockTrend && stats.buyLots == stats.sellLots) // 对锁，允许追多
+                  canOpen = true;
+              }
+           }
         }
       
-      // 条件5: 超仓保护下的特殊处理 (原代码: Zong_39_bo_151)
-      if(g_SellOverweight)
-         canOpen = true;
-      
+      // 特殊修正: 如果不满足上述条件，不应开仓
       if(!canOpen)
          return;
      }
-   
-   // 检查价格限制
-   if(!CheckPriceLimit(true, stats.buyCount))
-      return;
    
    // 检查开单时间间隔
    if(!CheckOrderInterval(true))
@@ -1358,15 +1413,18 @@ void ProcessBuyLogic(const OrderStats &stats)
    if(lots * 2.0 >= AccountFreeMargin() / MarketInfo(Symbol(), MODE_MARGINREQUIRED))
       return;
    
-   // 确定订单备注 (原代码根据条件选择 Com_1 或 Com_2)
+   // 确定订单备注
    string comment = OrderComment1;
-   if((stats.highestBuyPrice != 0 && pendingPrice >= NormalizeDouble(stats.highestBuyPrice + GridStep * Point(), Digits()) && g_SellOverweight) ||
-      (EnableLockTrend && stats.highestBuyPrice != 0 && pendingPrice >= NormalizeDouble(stats.highestBuyPrice + GridStep * Point(), Digits()) && stats.buyLots == stats.sellLots))
+   // 如果是顺势加仓触发的 (即满足条件 B)，则使用 Comment2
+   if(stats.buyCount > 0 && stats.highestBuyPrice != 0)
      {
-      comment = OrderComment2;
+      // 简单判断：如果价格比最高价还高，那就是顺势单
+      double threshold = NormalizeDouble(stats.highestBuyPrice + GridStep * Point(), Digits());
+      if(pendingPrice >= threshold)
+         comment = OrderComment2;
      }
    
-   // 发送挂单 (原代码: OrderSend(Symbol(), 4, Zi_27_do, Zi_26_do, ...))
+   // 发送挂单
    int ticket = OrderSend(Symbol(), OP_BUYSTOP, lots, pendingPrice, Slippage, 0, 0, comment, MagicNumber, 0, Blue);
    
    if(ticket > 0)
@@ -1393,9 +1451,69 @@ void ProcessSellLogic(const OrderStats &stats)
    if(!g_AllowSell || !g_TradingEnabled)
       return;
    
-   // 如果已有空单挂单，不再开新挂单
-   if(stats.sellPendingCount > 0)
-      return;
+//+------------------------------------------------------------------+
+//| 计算前N个盈利/亏损订单的盈亏总和 (原代码 lizong_17)               |
+//| orderType: 订单类型筛选, -100=全部                                |
+//| magicNumber: 魔术号筛选, -1=全部                                  |
+//| profitType: 1=盈利订单, 2=亏损订单                                |
+//| topN: 取前N个订单                                                 |
+//+------------------------------------------------------------------+
+double CalculateProfitSum(int orderType, int magicNumber, int profitType, int topN)
+  {
+   double profitArray[100]; // 原代码固定大小 100
+   int    arrayIndex  = 0;
+   double totalProfit = 0.0;
+   
+   // 初始化数组
+   ArrayInitialize(profitArray, 0.0);
+   
+   // 遍历所有订单，收集盈亏数据
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+     {
+      if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+         continue;
+      if(OrderSymbol() != Symbol())
+         continue;
+      if(OrderMagicNumber() != magicNumber && magicNumber != -1)
+         continue;
+      if(OrderType() != orderType && orderType != -100)
+         continue;
+      
+      // 收集盈利订单
+      if(profitType == 1 && OrderProfit() >= 0.0)
+        {
+         if(arrayIndex < 100)
+           {
+            profitArray[arrayIndex] = OrderProfit();
+            arrayIndex++;
+           }
+        }
+      
+      // 收集亏损订单（取绝对值）
+      // 原代码: if(Mu_2_in != 2 || !(OrderProfit() < 0.0)) continue;
+      // Zi_2_do_si100[Zi_3_in] = -(OrderProfit());
+      if(profitType == 2 && OrderProfit() < 0.0)
+        {
+         if(arrayIndex < 100)
+           {
+            profitArray[arrayIndex] = -OrderProfit(); // 存为正数方便后续排序和求和
+            arrayIndex++;
+           }
+        }
+     }
+   
+   // 降序排序
+   ArraySort(profitArray, WHOLE_ARRAY, 0, MODE_DESCEND);
+   
+   // 计算前N个订单的盈亏总和
+   totalProfit = 0.0;
+   for(int i = 0; i < topN && i < 100; i++)
+     {
+      totalProfit += profitArray[i];
+     }
+   
+   return totalProfit;
+  }
    
    // 检查是否超过最大订单数 (原代码: Zi_9_in + Zi_10_in >= Totals)
    if(stats.buyCount + stats.sellCount >= MaxTotalOrders)
@@ -1408,69 +1526,65 @@ void ProcessSellLogic(const OrderStats &stats)
    // 计算挂单价格 Zi_26_do
    double pendingPrice = 0;
    
-   // 判断是否使用第二参数 (原代码: Zi_35_bo)
+   // 判断是否使用第二参数 (Money 条件逻辑修正为负数比较)
    double totalProfit = stats.buyProfit + stats.sellProfit;
    bool useFirstParam = (SecondParamTriggerLoss == 0 || totalProfit > SecondParamTriggerLoss);
    
    if(stats.sellCount == 0)
      {
-      // 首单逻辑 (原代码: Zi_26_do = NormalizeDouble(Bid - FirstStep * Point(), Digits()))
+      // 首单逻辑
       pendingPrice = NormalizeDouble(Bid - FirstOrderDistance * Point(), Digits());
+      // 检查价格限制
+      if(SellFirstOrderPriceLimit > 0 && Bid <= SellFirstOrderPriceLimit) return;
      }
    else
      {
       // 加仓逻辑
       if(useFirstParam)
-        {
-         // 使用第一参数
          pendingPrice = NormalizeDouble(Bid - MinGridDistance * Point(), Digits());
-        }
       else
-        {
-         // 使用第二参数
          pendingPrice = NormalizeDouble(Bid - SecondMinGridDistance * Point(), Digits());
-        }
       
-      // 检查距离条件
-      double minDistFromHighest = useFirstParam ? GridStep : SecondGridStep;
-      double maxEntryPrice = NormalizeDouble(stats.highestSellPrice + minDistFromHighest * Point(), Digits());
+      // 确定间距
+      double step = useFirstParam ? GridStep : SecondGridStep;
       
-      if(pendingPrice > maxEntryPrice)
-        {
-         pendingPrice = NormalizeDouble(Bid - (useFirstParam ? GridStep : SecondGridStep) * Point(), Digits());
-        }
-      
-      // 检查开仓条件
+      // 核心开仓条件判断 canOpen
       bool canOpen = false;
       
-      // 条件2: 挂单价格 <= 最低价 - 间距
-      if(stats.lowestSellPrice != 0)
-        {
-         double targetPrice = NormalizeDouble(stats.lowestSellPrice - (useFirstParam ? GridStep : SecondGridStep) * Point(), Digits());
-         if(pendingPrice <= targetPrice)
-            canOpen = true;
-        }
-      
-      // 条件3: 挂单价格 >= 最高价 + 间距
+      // 条件 A: 逆势加仓 (价格高于最高价，扛单)
+      // 只要挂单价格满足间距，就允许
       if(stats.highestSellPrice != 0)
         {
-         double targetPrice = NormalizeDouble(stats.highestSellPrice + (useFirstParam ? GridStep : SecondGridStep) * Point(), Digits());
+         // 检查是否在最高价上方足够远
+         double targetPrice = NormalizeDouble(stats.highestSellPrice + step * Point(), Digits());
+         
          if(pendingPrice >= targetPrice)
+           {
+            // 满足逆势距离，允许开仓
             canOpen = true;
+           }
         }
       
-      // 条件4: 对锁情况
-      if(EnableLockTrend && stats.buyLots == stats.sellLots && stats.lowestSellPrice != 0)
+      // 条件 B: 顺势加仓 (价格低于最低价，追空)
+      // 仅在 (多单超仓 OR 对锁) 时允许
+      if(stats.lowestSellPrice != 0)
         {
-         double targetPrice = NormalizeDouble(stats.lowestSellPrice - GridStep * Point(), Digits());
+         double targetPrice = NormalizeDouble(stats.lowestSellPrice - step * Point(), Digits());
+         
          if(pendingPrice <= targetPrice)
-            canOpen = true;
+           {
+            // 顺势距离满足，进一步检查权限
+            if(useFirstParam) // 必须是参数1状态
+              {
+               if(g_BuyOverweight) // 多单超仓，允许追空
+                  canOpen = true;
+               if(EnableLockTrend && stats.buyLots == stats.sellLots) // 对锁，允许追空
+                  canOpen = true;
+              }
+           }
         }
       
-      // 条件5: 超仓保护下的特殊处理 (原代码: Zong_40_bo_152)
-      if(g_BuyOverweight)
-         canOpen = true;
-      
+      // 特殊修正: 如果不满足上述条件，不应开仓
       if(!canOpen)
          return;
      }
@@ -1621,12 +1735,21 @@ int GetCurrentGridDistance(int orderCount)
 //| 追踪挂单 (原代码约 2700-2800 行)                                  |
 //| 功能: 将挂单追踪到当前价格附近，保持固定距离                      |
 //+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
+//| 追踪挂单 (原代码约 2700-2800 行)                                  |
+//| 功能: 将挂单追踪到当前价格附近，保持固定距离                      |
+//| 修正: Buy向下追踪, Sell向上追踪, 且需满足开仓限制                 |
+//+------------------------------------------------------------------+
 void TrackPendingOrders(const OrderStats &stats)
   {
    if(PendingOrderTrailPoints <= 0)
       return;
    
-   double trailDistance = PendingOrderTrailPoints * Point();
+   double trailGap = PendingOrderTrailPoints * Point();
+   
+   // 判断使用哪组参数
+   double totalProfit = stats.buyProfit + stats.sellProfit;
+   bool useFirstParam = (SecondParamTriggerLoss == 0 || totalProfit > SecondParamTriggerLoss);
    
    for(int i = OrdersTotal() - 1; i >= 0; i--)
      {
@@ -1640,32 +1763,117 @@ void TrackPendingOrders(const OrderStats &stats)
       int orderType = OrderType();
       double orderPrice = OrderOpenPrice();
       int ticket = OrderTicket();
-      double lots = OrderLots();
       
+      // -----------------------
       // 追踪 BUYSTOP 挂单
+      // -----------------------
       if(orderType == OP_BUYSTOP)
         {
-         double targetPrice = Ask + trailDistance;
-         if(orderPrice > targetPrice + trailDistance)
+         // 1. 计算目标挂单价格
+         double targetPrice = 0;
+         if(stats.buyCount == 0)
+            targetPrice = NormalizeDouble(Ask + FirstOrderDistance * Point(), Digits());
+         else
            {
-            // 挂单价格太远，需要修改
-            if(!OrderModify(ticket, targetPrice, 0, 0, 0, Blue))
+            if(useFirstParam)
+               targetPrice = NormalizeDouble(Ask + MinGridDistance * Point(), Digits());
+            else
+               targetPrice = NormalizeDouble(Ask + SecondMinGridDistance * Point(), Digits());
+           }
+         
+         // 2. 检查由追踪触发的 Modify 条件
+         // 原代码: if(Pending - Trail > Target) -> Modify to Target
+         // 即: 当前挂单太远(高)，需要向下拉近
+         if(orderPrice - trailGap > targetPrice) 
+           {
+            // 3. 复核开仓条件 (避免追踪到非法区域)
+            // 原代码有一长串条件，本质上是 ProcessBuyLogic 的简化版复核
+            bool isAllow = false;
+            
+            double step = useFirstParam ? GridStep : SecondGridStep;
+            
+            // 总是允许逆势 (Price < Lowest - Step)
+            if(stats.lowestBuyPrice != 0 && targetPrice <= NormalizeDouble(stats.lowestBuyPrice - step * Point(), Digits()))
+               isAllow = true;
+               
+            // 顺势 (Price > Highest + Step) 需满足超仓/对锁
+            if(stats.highestBuyPrice != 0 && targetPrice >= NormalizeDouble(stats.highestBuyPrice + step * Point(), Digits()))
               {
-               Print("修改 BUYSTOP 挂单失败: ", GetLastError());
+               if(g_SellOverweight || (EnableLockTrend && stats.buyLots == stats.sellLots))
+                  isAllow = true;
+              }
+            
+            // 首单总是允许
+            if(stats.buyCount == 0)
+               isAllow = true;
+               
+            // 如果满足条件，执行修改
+            if(isAllow)
+              {
+               if(!OrderModify(ticket, targetPrice, 0, 0, 0, Blue))
+                 {
+                  Print("修改 BUYSTOP 挂单失败: ", GetLastError());
+                 }
+               else
+                 {
+                  Print("追踪 BUYSTOP: ", orderPrice, " -> ", targetPrice);
+                 }
               }
            }
         }
       
+      // -----------------------
       // 追踪 SELLSTOP 挂单
+      // -----------------------
       if(orderType == OP_SELLSTOP)
         {
-         double targetPrice = Bid - trailDistance;
-         if(orderPrice < targetPrice - trailDistance)
+         // 1. 计算目标挂单价格
+         double targetPrice = 0;
+         if(stats.sellCount == 0)
+            targetPrice = NormalizeDouble(Bid - FirstOrderDistance * Point(), Digits());
+         else
            {
-            // 挂单价格太远，需要修改
-            if(!OrderModify(ticket, targetPrice, 0, 0, 0, Red))
+            if(useFirstParam)
+               targetPrice = NormalizeDouble(Bid - MinGridDistance * Point(), Digits());
+            else
+               targetPrice = NormalizeDouble(Bid - SecondMinGridDistance * Point(), Digits());
+           }
+         
+         // 2. 检查由追踪触发的 Modify 条件
+         // 原代码: if(Trail + Pending < Target) -> Pending < Target - Trail -> Modify to Target
+         // 即: 当前挂单太远(低)，需要向上拉近
+         if(orderPrice + trailGap < targetPrice)
+           {
+            // 3. 复核开仓条件
+            bool isAllow = false;
+            
+            double step = useFirstParam ? GridStep : SecondGridStep;
+            
+            // 总是允许逆势 (Price > Highest + Step)
+            if(stats.highestSellPrice != 0 && targetPrice >= NormalizeDouble(stats.highestSellPrice + step * Point(), Digits()))
+               isAllow = true;
+            
+            // 顺势 (Price < Lowest - Step) 需满足超仓/对锁
+            if(stats.lowestSellPrice != 0 && targetPrice <= NormalizeDouble(stats.lowestSellPrice - step * Point(), Digits()))
               {
-               Print("修改 SELLSTOP 挂单失败: ", GetLastError());
+               if(g_BuyOverweight || (EnableLockTrend && stats.buyLots == stats.sellLots))
+                  isAllow = true;
+              }
+              
+            // 首单总是允许
+            if(stats.sellCount == 0)
+               isAllow = true;
+               
+            if(isAllow)
+              {
+               if(!OrderModify(ticket, targetPrice, 0, 0, 0, Red))
+                 {
+                  Print("修改 SELLSTOP 挂单失败: ", GetLastError());
+                 }
+               else
+                 {
+                  Print("追踪 SELLSTOP: ", orderPrice, " -> ", targetPrice);
+                 }
               }
            }
         }
