@@ -171,7 +171,7 @@ const color  COLOR_DISABLED    = DimGray;
 //+------------------------------------------------------------------+
 //|                            全局变量                              |
 //+------------------------------------------------------------------+
-bool     g_IsPanelCollapsed     = true;
+bool     g_IsPanelVisible       = true;
 bool     g_IsButtonPanelVisible = false;
 
 // 交易权限标志
@@ -248,7 +248,7 @@ int OnInit()
 
    g_AllowBuy = true;
    g_AllowSell = true;
-   g_IsPanelCollapsed = true;
+   g_IsPanelVisible = true;
 
    DrawPriceLimitLines();
    UpdatePanel();
@@ -969,25 +969,46 @@ void ShowStopMessage(string msg) {
 void ClearStopMessage() { ShowStopMessage(""); }
 
 void CreateLabel(string name, int x, int y, string text, int size, string font, color clr, int corner) {
-   if(ObjectFind(0,name)<0) { ObjectCreate(0,name,OBJ_LABEL,0,0,0); ObjectSetInteger(0,name,OBJPROP_CORNER,corner); ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x); ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y); }
-   ObjectSetString(0,name,OBJPROP_TEXT,text); ObjectSetInteger(0,name,OBJPROP_FONTSIZE,size); ObjectSetInteger(0,name,OBJPROP_COLOR,clr); ObjectSetString(0,name,OBJPROP_FONT,font);
+   if(ObjectFind(0,name)<0) { ObjectCreate(0,name,OBJ_LABEL,0,0,0); }
+   ObjectSetInteger(0,name,OBJPROP_CORNER,corner); 
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x); 
+   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y);
+   ObjectSetString(0,name,OBJPROP_TEXT,text); 
+   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,size); 
+   ObjectSetInteger(0,name,OBJPROP_COLOR,clr); 
+   ObjectSetString(0,name,OBJPROP_FONT,font);
 }
 void CreateRectLabel(string name, int x, int y, int w, int h, color bg, color border) {
-   if(ObjectFind(0,name)<0) { ObjectCreate(0,name,OBJ_RECTANGLE_LABEL,0,0,0); ObjectSetInteger(0,name,OBJPROP_CORNER,1); ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x); ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y); ObjectSetInteger(0,name,OBJPROP_XSIZE,w); ObjectSetInteger(0,name,OBJPROP_YSIZE,h); ObjectSetInteger(0,name,OBJPROP_BACK,false); }
-   ObjectSetInteger(0,name,OBJPROP_BGCOLOR,bg); ObjectSetInteger(0,name,OBJPROP_COLOR,border);
+   if(ObjectFind(0,name)<0) { ObjectCreate(0,name,OBJ_RECTANGLE_LABEL,0,0,0); ObjectSetInteger(0,name,OBJPROP_BACK,false); }
+   ObjectSetInteger(0,name,OBJPROP_CORNER,0); // 默认为左上角，外面若需修改可再调用
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x); 
+   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y); 
+   ObjectSetInteger(0,name,OBJPROP_XSIZE,w); 
+   ObjectSetInteger(0,name,OBJPROP_YSIZE,h);
+   ObjectSetInteger(0,name,OBJPROP_BGCOLOR,bg); 
+   ObjectSetInteger(0,name,OBJPROP_COLOR,border);
 }
 void CreateButton(string name, int x, int y, int w, int h, string text, int size, string font) {
-   if(ObjectFind(0,name)<0) { ObjectCreate(0,name,OBJ_BUTTON,0,0,0); ObjectSetInteger(0,name,OBJPROP_CORNER,1); ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x); ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y); ObjectSetInteger(0,name,OBJPROP_XSIZE,w); ObjectSetInteger(0,name,OBJPROP_YSIZE,h); ObjectSetInteger(0,name,OBJPROP_HIDDEN,true); }
-   ObjectSetString(0,name,OBJPROP_TEXT,text); ObjectSetString(0,name,OBJPROP_FONT,font); ObjectSetInteger(0,name,OBJPROP_FONTSIZE,size);
+   if(ObjectFind(0,name)<0) { ObjectCreate(0,name,OBJ_BUTTON,0,0,0); ObjectSetInteger(0,name,OBJPROP_HIDDEN,true); }
+   ObjectSetInteger(0,name,OBJPROP_CORNER,0); // 默认为左上角
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x); 
+   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y); 
+   ObjectSetInteger(0,name,OBJPROP_XSIZE,w); 
+   ObjectSetInteger(0,name,OBJPROP_YSIZE,h);
+   ObjectSetString(0,name,OBJPROP_TEXT,text); 
+   ObjectSetString(0,name,OBJPROP_FONT,font); 
+   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,size);
 }
 void CreateControlButton(string name, int x, int y, int w, int h, string text, int size, string font, color txtClr, color bgClr) {
    CreateButton(name, x, y, w, h, text, size, font);
-   ObjectSetInteger(0,name,OBJPROP_COLOR,txtClr); ObjectSetInteger(0,name,OBJPROP_BGCOLOR,bgClr);
+   ObjectSetInteger(0,name,OBJPROP_COLOR,txtClr); 
+   ObjectSetInteger(0,name,OBJPROP_BGCOLOR,bgClr);
 }
 void DeleteAllPanelObjects() { for(int i=ObjectsTotal()-1; i>=0; i--) { string n=ObjectName(0,i); if(StringFind(n,PANEL_PREFIX)>=0) ObjectDelete(0,n); } }
 void DeleteButtonPanelObjects() { for(int i=ObjectsTotal()-1; i>=0; i--) { string n=ObjectName(0,i); if(StringFind(n,BUTTON_PREFIX)>=0) ObjectDelete(0,n); } }
 void HandleButtonClick(string n) {
    if(n==PANEL_PREFIX+"OpenBoard") { g_IsButtonPanelVisible=!g_IsButtonPanelVisible; if(g_IsButtonPanelVisible) DrawButtonPanel(); else DeleteButtonPanelObjects(); ChartRedraw(); }
+   else if(n==PANEL_PREFIX+"Toggle") { g_IsPanelVisible=!g_IsPanelVisible; UpdatePanel(); if(g_IsPanelVisible && g_IsButtonPanelVisible) DrawButtonPanel(); }
    else if(n==BUTTON_PREFIX+"StopAll") { g_AllowBuy=false; g_AllowSell=false; UpdatePanel(); DrawButtonPanel(); }
    else if(n==BUTTON_PREFIX+"StopBuy") { g_AllowBuy=!g_AllowBuy; UpdatePanel(); DrawButtonPanel(); }
    else if(n==BUTTON_PREFIX+"StopSell") { g_AllowSell=!g_AllowSell; UpdatePanel(); DrawButtonPanel(); }
@@ -1004,36 +1025,57 @@ void UpdateButtonColors(const OrderStats &s) {
 //|                          UI 核心绘制逻辑                         |
 //+------------------------------------------------------------------+
 void UpdatePanel() {
-   if(!g_IsPanelCollapsed) return;
+   // --- 切换按钮始终显示 (Corner=0) ---
+   int toggleX = 10;
+   int toggleY = 10;
+   string toggleText = g_IsPanelVisible ? "◀ 隐藏面板" : "▶ 显示面板";
+   CreateButton(PANEL_PREFIX+"Toggle", toggleX, toggleY, 80, 25, toggleText, 9, FONT_NAME);
    
+   if(!g_IsPanelVisible) {
+      // 如果隐藏，删除除了Toggle按钮以外的所有面板对象
+      // 注意：DeleteAllPanelObjects 会删掉所有含 PANEL_PREFIX 的，所以我们需要小心
+      // 这里简单处理：先全删，再画Toggle
+      // 为了避免闪烁和逻辑复杂，我们修改 DeleteAllPanelObjects 或在此处硬编码处理
+      // 更好的方式：Panel对象加后缀，Toggle单独命名? 
+      // 鉴于现有架构，我们直接遍历删除非Toggle对象
+      for(int i=ObjectsTotal()-1; i>=0; i--) { 
+         string n=ObjectName(0,i); 
+         if(StringFind(n,PANEL_PREFIX)>=0 && StringFind(n,"Toggle")<0) ObjectDelete(0,n); 
+         if(StringFind(n,BUTTON_PREFIX)>=0) ObjectDelete(0,n); // 面板隐藏时也隐藏按钮区
+      }
+      return;
+   }
+
    // 1. 数据准备
    OrderStats s; CountOrders(s);
    double totalFloating = s.buyProfit + s.sellProfit;
    double returnRate = (g_TotalDeposits > 0) ? (totalFloating / g_TotalDeposits * 100.0) : 0.0;
    double marginLevel = (AccountMargin() > 0) ? AccountEquity() / AccountMargin() * 100.0 : 0.0;
    
-   // 2. 布局参数 (锚点为右上角 Corner=1)
-   // 宽度翻倍: 260 * 2 = 520
-   int panelW = 520; 
-   int xBase  = 530; // 面板左边缘距离屏幕右侧的距离 (XDistance)
-   int startY = 40;  
-   int rowH   = 22;  
+   // 2. 布局参数 (锚点为左上角 Corner=0)
+   // 用户要求再扩大一倍 -> 520 * 2 = 1040
+   int panelW = 1040; 
+   int xBase  = 10;   // 面板左边缘距离屏幕左侧的距离
+   int startY = 40;   // Top offset
+   int rowH   = 32;   // 增加行高 (22 -> 32)
    
-   // 列定义 (XDistance 越大越靠左)
-   // 左半区 (多头/资产)
-   int xL_Label  = xBase - 20;        // 左区标签对齐线
-   int xL_Value  = xBase - 80;        // 左区数值对齐线
-   int xL_Label2 = xBase - 140;       // 左区第二列标签
-   int xL_Value2 = xBase - 190;       // 左区第二列数值 (左半区结束)
+   // 列定义 (极宽模式)
+   // 左半区 (多头/资产) [0-520]
+   int xL_Label  = xBase + 50;        
+   int xL_Value  = xBase + 250; // Gap 200
    
-   // 右半区 (空头/统计) -> 跨度 xBase-260 ~ xBase-520
-   int centerGap = 260; // 中轴线偏移量
-   int xR_Label  = xBase - centerGap - 20;  // 右区标签
-   int xR_Value  = xBase - centerGap - 80;  // 右区数值
-   int xR_Label2 = xBase - centerGap - 140; 
-   int xR_Value2 = xBase - centerGap - 190;
+   // 右半区 (空头/统计) [520-1040]
+   int centerGap = 520; 
+   int xR_Label  = xBase + centerGap + 50;  
+   int xR_Value  = xBase + centerGap + 250; // Gap 200
    
-   
+   // 顶部 Header 统计
+   int xH_Label1 = xR_Label;
+   int xH_Value1 = xR_Label + 80;
+   int xH_Label2 = xR_Label + 250; 
+   int xH_Value2 = xR_Label + 330;
+
+
    // 颜色定义
    color clrTextMain = C'40,40,40';      
    color clrTextDim  = C'100,100,100';   
@@ -1042,156 +1084,165 @@ void UpdatePanel() {
    color clrTitle    = C'60,60,60';
 
    // --- 背景绘制 ---
-   CreateRectLabel(PANEL_PREFIX+"bg", xBase, startY, panelW, 500, C'252,252,252', C'200,200,200');
+   CreateRectLabel(PANEL_PREFIX+"bg", xBase, startY, panelW, 700, C'252,252,252', C'200,200,200'); // 高度增加到 700
+   ObjectSetInteger(0,PANEL_PREFIX+"bg",OBJPROP_CORNER,0);
+   
    // 标题栏背景
    CreateRectLabel(PANEL_PREFIX+"head_bg", xBase, startY, panelW, 35, C'240,240,240', C'210,210,210');
+   ObjectSetInteger(0,PANEL_PREFIX+"head_bg",OBJPROP_CORNER,0);
    
    // --- 1. 顶部标题与汇总 ---
    int y = startY + 10;
-   CreateLabel(PANEL_PREFIX+"App", xL_Label, y, "QuantTrader Pro", 11, "Impact", clrTextMain, 1);
-   CreateLabel(PANEL_PREFIX+"Ver", xL_Label-110, y+2, "v1.0 Plus", 8, FONT_NAME, clrTextDim, 1);
+   CreateLabel(PANEL_PREFIX+"App", xL_Label, y, "QuantTrader Pro", 14, "Impact", clrTextMain, 0); // 字体加大
+   CreateLabel(PANEL_PREFIX+"Ver", xL_Label+180, y+4, "v1.0 Plus", 9, FONT_NAME, clrTextDim, 0);
    
-   // 顶部核心数据 (居中/右侧)
-   CreateLabel(PANEL_PREFIX+"H_EqL", xR_Label, y, "净值:", 9, FONT_NAME, clrTextDim, 1);
-   CreateLabel(PANEL_PREFIX+"H_EqV", xR_Value, y, DoubleToString(AccountEquity(), 0), 10, "Arial Bold", clrTextMain, 1);
+   // 顶部核心数据
+   CreateLabel(PANEL_PREFIX+"H_EqL", xH_Label1, y, "净值:", 10, FONT_NAME, clrTextDim, 0);
+   CreateLabel(PANEL_PREFIX+"H_EqV", xH_Value1, y, DoubleToString(AccountEquity(), 0), 12, "Arial Bold", clrTextMain, 0);
    
-   CreateLabel(PANEL_PREFIX+"H_TPL", xR_Label2, y, "总浮亏:", 9, FONT_NAME, clrTextDim, 1);
+   CreateLabel(PANEL_PREFIX+"H_TPL", xH_Label2, y, "总浮亏:", 10, FONT_NAME, clrTextDim, 0);
    color profitColor = totalFloating >= 0 ? clrUp : clrDn;
-   CreateLabel(PANEL_PREFIX+"H_TPV", xR_Value2, y, DoubleToString(totalFloating, 2), 10, "Arial Bold", profitColor, 1);
+   CreateLabel(PANEL_PREFIX+"H_TPV", xH_Value2, y, DoubleToString(totalFloating, 2), 12, "Arial Bold", profitColor, 0);
    
    // --- 2. 左右分栏标题 ---
-   y += 40;
+   y += 50; // 增加间距 40 -> 50
    // 垂直分割线
-   CreateRectLabel(PANEL_PREFIX+"v_sep", xBase - 260, y, 1, 350, C'230,230,230', clrNONE);
+   CreateRectLabel(PANEL_PREFIX+"v_sep", xBase + centerGap, y, 1, 450, C'230,230,230', clrNONE); // 高度增加
+   ObjectSetInteger(0,PANEL_PREFIX+"v_sep",OBJPROP_CORNER,0);
    
    // 左侧标题: 多头
-   CreateRectLabel(PANEL_PREFIX+"L_HeadBg", xBase-10, y, 240, 20, g_AllowBuy?C'235,250,235':C'245,245,245', clrNONE);
-   CreateLabel(PANEL_PREFIX+"L_Title", xBase-120, y+3, "::: 多头 (BUY) :::", 9, "Arial Bold", g_AllowBuy?clrUp:clrTextDim, 1);
+   CreateRectLabel(PANEL_PREFIX+"L_HeadBg", xBase+20, y, 480, 20, g_AllowBuy?C'235,250,235':C'245,245,245', clrNONE);
+   ObjectSetInteger(0,PANEL_PREFIX+"L_HeadBg",OBJPROP_CORNER,0);
+   CreateLabel(PANEL_PREFIX+"L_Title", xBase+200, y+3, "::: 多头 (BUY) :::", 10, "Arial Bold", g_AllowBuy?clrUp:clrTextDim, 0);
    
    // 右侧标题: 空头
-   CreateRectLabel(PANEL_PREFIX+"R_HeadBg", xBase-270, y, 240, 20, g_AllowSell?C'250,235,235':C'245,245,245', clrNONE);
-   CreateLabel(PANEL_PREFIX+"R_Title", xBase-380, y+3, "::: 空头 (SELL) :::", 9, "Arial Bold", g_AllowSell?clrDn:clrTextDim, 1);
+   CreateRectLabel(PANEL_PREFIX+"R_HeadBg", xBase+centerGap+20, y, 480, 20, g_AllowSell?C'250,235,235':C'245,245,245', clrNONE);
+   ObjectSetInteger(0,PANEL_PREFIX+"R_HeadBg",OBJPROP_CORNER,0);
+   CreateLabel(PANEL_PREFIX+"R_Title", xBase+centerGap+200, y+3, "::: 空头 (SELL) :::", 10, "Arial Bold", g_AllowSell?clrDn:clrTextDim, 0);
 
    // --- 3. 详细数据对比 (Left vs Right) ---
-   y += 25;
+   y += 35; // 稍微增加间距 30 -> 35
    
    // Row 1: 持仓与状态
-   CreateLabel(PANEL_PREFIX+"L_StL", xL_Label, y, "状态:", 9, FONT_NAME, clrTextDim, 1);
-   CreateLabel(PANEL_PREFIX+"L_StV", xL_Value, y, g_AllowBuy?"运行中":"已暂停", 9, FONT_NAME, g_AllowBuy?clrUp:clrTextDim, 1);
+   CreateLabel(PANEL_PREFIX+"L_StL", xL_Label, y, "状态:", 10, FONT_NAME, clrTextDim, 0);
+   CreateLabel(PANEL_PREFIX+"L_StV", xL_Value, y, g_AllowBuy?"运行中":"已暂停", 10, FONT_NAME, g_AllowBuy?clrUp:clrTextDim, 0);
    
-   CreateLabel(PANEL_PREFIX+"R_StL", xR_Label, y, "状态:", 9, FONT_NAME, clrTextDim, 1);
-   CreateLabel(PANEL_PREFIX+"R_StV", xR_Value, y, g_AllowSell?"运行中":"已暂停", 9, FONT_NAME, g_AllowSell?clrDn:clrTextDim, 1);
+   CreateLabel(PANEL_PREFIX+"R_StL", xR_Label, y, "状态:", 10, FONT_NAME, clrTextDim, 0);
+   CreateLabel(PANEL_PREFIX+"R_StV", xR_Value, y, g_AllowSell?"运行中":"已暂停", 10, FONT_NAME, g_AllowSell?clrDn:clrTextDim, 0);
    
    y += rowH; // Row 2: 订单数
-   CreateLabel(PANEL_PREFIX+"L_CntL", xL_Label, y, "持仓单:", 9, FONT_NAME, clrTextDim, 1);
-   CreateLabel(PANEL_PREFIX+"L_CntV", xL_Value, y, IntegerToString(s.buyCount), 9, FONT_NAME, clrTextMain, 1);
+   CreateLabel(PANEL_PREFIX+"L_CntL", xL_Label, y, "持仓单:", 10, FONT_NAME, clrTextDim, 0);
+   CreateLabel(PANEL_PREFIX+"L_CntV", xL_Value, y, IntegerToString(s.buyCount), 10, FONT_NAME, clrTextMain, 0);
    
-   CreateLabel(PANEL_PREFIX+"R_CntL", xR_Label, y, "持仓单:", 9, FONT_NAME, clrTextDim, 1);
-   CreateLabel(PANEL_PREFIX+"R_CntV", xR_Value, y, IntegerToString(s.sellCount), 9, FONT_NAME, clrTextMain, 1);
-
+   CreateLabel(PANEL_PREFIX+"R_CntL", xR_Label, y, "持仓单:", 10, FONT_NAME, clrTextDim, 0);
+   CreateLabel(PANEL_PREFIX+"R_CntV", xR_Value, y, IntegerToString(s.sellCount), 10, FONT_NAME, clrTextMain, 0);
+   
    y += rowH; // Row 3: 手数
-   CreateLabel(PANEL_PREFIX+"L_LotL", xL_Label, y, "总手数:", 9, FONT_NAME, clrTextDim, 1);
-   CreateLabel(PANEL_PREFIX+"L_LotV", xL_Value, y, DoubleToString(s.buyLots, 2), 9, FONT_NAME, clrTextMain, 1);
+   CreateLabel(PANEL_PREFIX+"L_LotL", xL_Label, y, "总手数:", 10, FONT_NAME, clrTextDim, 0);
+   CreateLabel(PANEL_PREFIX+"L_LotV", xL_Value, y, DoubleToString(s.buyLots, 2), 10, FONT_NAME, clrTextMain, 0);
    
-   CreateLabel(PANEL_PREFIX+"R_LotL", xR_Label, y, "总手数:", 9, FONT_NAME, clrTextDim, 1);
-   CreateLabel(PANEL_PREFIX+"R_LotV", xR_Value, y, DoubleToString(s.sellLots, 2), 9, FONT_NAME, clrTextMain, 1);
+   CreateLabel(PANEL_PREFIX+"R_LotL", xR_Label, y, "总手数:", 10, FONT_NAME, clrTextDim, 0);
+   CreateLabel(PANEL_PREFIX+"R_LotV", xR_Value, y, DoubleToString(s.sellLots, 2), 10, FONT_NAME, clrTextMain, 0);
    
    y += rowH; // Row 4: 均价
-   CreateLabel(PANEL_PREFIX+"L_AvgL", xL_Label, y, "持仓均价:", 9, FONT_NAME, clrTextDim, 1);
-   CreateLabel(PANEL_PREFIX+"L_AvgV", xL_Value, y, DoubleToString(s.avgBuyPrice, _Digits), 8, "Arial", clrTextDim, 1);
+   CreateLabel(PANEL_PREFIX+"L_AvgL", xL_Label, y, "持仓均价:", 10, FONT_NAME, clrTextDim, 0);
+   CreateLabel(PANEL_PREFIX+"L_AvgV", xL_Value, y, DoubleToString(s.avgBuyPrice, _Digits), 9, "Arial", clrTextDim, 0);
    
-   CreateLabel(PANEL_PREFIX+"R_AvgL", xR_Label, y, "持仓均价:", 9, FONT_NAME, clrTextDim, 1);
-   CreateLabel(PANEL_PREFIX+"R_AvgV", xR_Value, y, DoubleToString(s.avgSellPrice, _Digits), 8, "Arial", clrTextDim, 1);
+   CreateLabel(PANEL_PREFIX+"R_AvgL", xR_Label, y, "持仓均价:", 10, FONT_NAME, clrTextDim, 0);
+   CreateLabel(PANEL_PREFIX+"R_AvgV", xR_Value, y, DoubleToString(s.avgSellPrice, _Digits), 9, "Arial", clrTextDim, 0);
    
    y += rowH; // Row 5: 挂单
-   CreateLabel(PANEL_PREFIX+"L_PenL", xL_Label, y, "挂单(Stop):", 9, FONT_NAME, clrTextDim, 1);
-   CreateLabel(PANEL_PREFIX+"L_PenV", xL_Value, y, IntegerToString(s.buyPendingCount), 9, FONT_NAME, clrTextMain, 1);
+   CreateLabel(PANEL_PREFIX+"L_PenL", xL_Label, y, "挂单(Stop):", 10, FONT_NAME, clrTextDim, 0);
+   CreateLabel(PANEL_PREFIX+"L_PenV", xL_Value, y, IntegerToString(s.buyPendingCount), 10, FONT_NAME, clrTextMain, 0);
    
-   CreateLabel(PANEL_PREFIX+"R_PenL", xR_Label, y, "挂单(Stop):", 9, FONT_NAME, clrTextDim, 1);
-   CreateLabel(PANEL_PREFIX+"R_PenV", xR_Value, y, IntegerToString(s.sellPendingCount), 9, FONT_NAME, clrTextMain, 1);
+   CreateLabel(PANEL_PREFIX+"R_PenL", xR_Label, y, "挂单(Stop):", 10, FONT_NAME, clrTextDim, 0);
+   CreateLabel(PANEL_PREFIX+"R_PenV", xR_Value, y, IntegerToString(s.sellPendingCount), 10, FONT_NAME, clrTextMain, 0);
    
-   y += rowH + 5; // Row 6: 盈亏 (大字体)
-   CreateLabel(PANEL_PREFIX+"L_PfL", xL_Label, y+2, "多单浮动:", 9, FONT_NAME, clrTextDim, 1);
-   CreateLabel(PANEL_PREFIX+"L_PfV", xL_Value, y, DoubleToString(s.buyProfit, 2), 11, "Arial Bold", s.buyProfit>=0?clrUp:clrTextDim, 1);
+   y += rowH + 8; // Row 6: 盈亏 (特大字体)
+   CreateLabel(PANEL_PREFIX+"L_PfL", xL_Label, y+2, "多单浮动:", 10, FONT_NAME, clrTextDim, 0);
+   CreateLabel(PANEL_PREFIX+"L_PfV", xL_Value, y, DoubleToString(s.buyProfit, 2), 14, "Arial Bold", s.buyProfit>=0?clrUp:clrTextDim, 0);
    
-   CreateLabel(PANEL_PREFIX+"R_PfL", xR_Label, y+2, "空单浮动:", 9, FONT_NAME, clrTextDim, 1);
-   CreateLabel(PANEL_PREFIX+"R_PfV", xR_Value, y, DoubleToString(s.sellProfit, 2), 11, "Arial Bold", s.sellProfit>=0?clrDn:clrTextDim, 1);
-   
-   // --- 4. 账户详情补充 (跨列显示) ---
-   y += 40;
-   CreateRectLabel(PANEL_PREFIX+"sep_h", xBase-10, y, panelW-20, 1, C'230,230,230', clrNONE);
-   y += 10;
+   CreateLabel(PANEL_PREFIX+"R_PfL", xR_Label, y+2, "空单浮动:", 10, FONT_NAME, clrTextDim, 0);
+   CreateLabel(PANEL_PREFIX+"R_PfV", xR_Value, y, DoubleToString(s.sellProfit, 2), 14, "Arial Bold", s.sellProfit>=0?clrDn:clrTextDim, 0);
+
+   // --- 4. 账户详情补充 ---
+   y += 50; // 40 -> 50
+   CreateRectLabel(PANEL_PREFIX+"sep_h", xBase+20, y, panelW-40, 1, C'230,230,230', clrNONE);
+   ObjectSetInteger(0,PANEL_PREFIX+"sep_h",OBJPROP_CORNER,0);
+   y += 15;
    
    // 第一行补充信息
-   CreateLabel(PANEL_PREFIX+"A_BalL", xL_Label, y, "账户余额:", 9, FONT_NAME, clrTextDim, 1);
-   CreateLabel(PANEL_PREFIX+"A_BalV", xL_Label-60, y, DoubleToString(AccountBalance(), 2), 9, FONT_NAME, clrTextMain, 1);
+   CreateLabel(PANEL_PREFIX+"A_BalL", xL_Label, y, "账户余额:", 10, FONT_NAME, clrTextDim, 0);
+   CreateLabel(PANEL_PREFIX+"A_BalV", xL_Value, y, DoubleToString(AccountBalance(), 2), 10, FONT_NAME, clrTextMain, 0);
    
-   CreateLabel(PANEL_PREFIX+"A_MarL", xL_Label2, y, "已用预付:", 9, FONT_NAME, clrTextDim, 1);
-   CreateLabel(PANEL_PREFIX+"A_MarV", xL_Label2-60, y, DoubleToString(AccountMargin(), 2), 9, FONT_NAME, clrTextMain, 1);
-   
-   CreateLabel(PANEL_PREFIX+"A_RatL", xR_Label, y, "EA回报率:", 9, FONT_NAME, clrTextDim, 1);
-   CreateLabel(PANEL_PREFIX+"A_RatV", xR_Label-60, y, DoubleToString(returnRate, 2)+"%", 9, FONT_NAME, profitColor, 1);
+   CreateLabel(PANEL_PREFIX+"A_MarL", xR_Label, y, "已用预付:", 10, FONT_NAME, clrTextDim, 0);
+   CreateLabel(PANEL_PREFIX+"A_MarV", xR_Value, y, DoubleToString(AccountMargin(), 2), 10, FONT_NAME, clrTextMain, 0);
    
    // 第二行补充信息
-   y += 20;
-   CreateLabel(PANEL_PREFIX+"A_FreL", xL_Label, y, "可用资金:", 9, FONT_NAME, clrTextDim, 1);
-   CreateLabel(PANEL_PREFIX+"A_FreV", xL_Label-60, y, DoubleToString(AccountFreeMargin(), 2), 9, FONT_NAME, clrTextMain, 1);
+   y += 30; // 25 -> 30
+   CreateLabel(PANEL_PREFIX+"A_FreL", xL_Label, y, "可用资金:", 10, FONT_NAME, clrTextDim, 0);
+   CreateLabel(PANEL_PREFIX+"A_FreV", xL_Value, y, DoubleToString(AccountFreeMargin(), 2), 10, FONT_NAME, clrTextMain, 0);
    
-   CreateLabel(PANEL_PREFIX+"A_LevL", xL_Label2, y, "风险比例:", 9, FONT_NAME, clrTextDim, 1);
-   CreateLabel(PANEL_PREFIX+"A_LevV", xL_Label2-60, y, DoubleToString(marginLevel, 2)+"%", 9, FONT_NAME, marginLevel<150?clrDn:clrUp, 1);
+   CreateLabel(PANEL_PREFIX+"A_LevL", xR_Label, y, "风险比例:", 10, FONT_NAME, clrTextDim, 0);
+   CreateLabel(PANEL_PREFIX+"A_LevV", xR_Value, y, DoubleToString(marginLevel, 2)+"%", 10, FONT_NAME, marginLevel<150?clrDn:clrUp, 0);
+
+   // 第三行
+   y += 30; // 25 -> 30
+   CreateLabel(PANEL_PREFIX+"A_RatL", xL_Label, y, "EA回报率:", 10, FONT_NAME, clrTextDim, 0);
+   CreateLabel(PANEL_PREFIX+"A_RatV", xL_Value, y, DoubleToString(returnRate, 2)+"%", 10, FONT_NAME, profitColor, 0);
    
    // --- 5. 底部按钮控制区 (留白给 DrawButtonPanel) ---
-   CreateButton(PANEL_PREFIX+"OpenBoard", xBase-210, y+45, 120, 25, "显示/隐藏控制台", 9, FONT_NAME);
+   CreateButton(PANEL_PREFIX+"OpenBoard", xBase+460, y+50, 120, 25, "显示/隐藏控制台", 9, FONT_NAME);
+   ObjectSetInteger(0,PANEL_PREFIX+"OpenBoard",OBJPROP_CORNER,0);
    
    ChartRedraw();
 }
 
 void DrawButtonPanel() {
-   // 宽版按钮面板: 3列布局
-   // 这里 X 也是距离屏幕右侧的距离
-   // 面板总宽 520. 中心线 260.
-   // 左侧按钮 X 约 450, 右侧 X 约 50.
+   // 宽版按钮面板: 3列布局 (适应 1040 宽度)
+   // 面板左边缘 xBase = 10
+   int xBase = 10;
+   // 修改起始高度以位于"显示/隐藏控制台"按钮下方
+   // UpdatePanel 结束位置约为 y(最后一行)+50. 
+   // 原 UpdatePanel 中 y最后约为 470-490. Button在 y+50. 所以 Show/Hide 按钮约在 540.
+   int startY = 580; // 留出足够空隙
    
-   int xRightBase = 530; // 对应 PanelX
-   int startY = 320; // 按钮区起始 Y
-   startY = 350;     // 下移一点避免遮挡
-   
-   int w = 90; 
-   int h = 25;
-   int gap = 15;
+   int w = 120; // 按钮也加宽
+   int h = 30;  // 按钮加高
    int y = startY;
    
-   // 我们的坐标系是 XDistance (距右)。
-   // 左列(多头控制) X: xBase - 20 (padding) - w
-   // 右列(空头控制) X: xBase - 260 (center) - 20 - w
+   // 分布在 1040 宽度的左中右
+   int centerGap = 520;
    
-   // 重新规划：
-   // 左柱(多): [暂停多][平多]
-   // 中柱(全): [暂停全][全平]
-   // 右柱(空): [暂停空][平空]
+   // 左区中心: 260 -> 按钮 x = 260 - w/2 左右
+   int xL = xBase + 150; 
    
-   int col1_x = xRightBase - 40 - w;         // 左列 (多)
-   int col2_x = xRightBase - 260 + (w/2);    // 中列 (全) -> 居中
-   int col3_x = xRightBase - 520 + 40 + w;   // 右列 (空) ?? 
+   // 中区中心: 520 -> 按钮 x = 520 - w/2
+   int xM = xBase + 520 - (160/2); // 中间按钮特别宽 160
    
-   // 修正坐标: XDistance 是距离右边的距离
-   // Col 1 (Left side of panel): Distance ~ 530 - 40 = 490
-   // Col 3 (Right side of panel): Distance ~ 530 - 480 = 50
-   
-   int xL = 440;
-   int xM = 240;
-   int xR = 40;
+   // 右区中心: 780 -> 按钮 x = 520 + 260 + ...
+   int xR = xBase + 520 + 250;
    
    // 第一排：暂停控制
-   CreateControlButton(BUTTON_PREFIX+"StopBuy", xL, y, w, h, g_AllowBuy?"[暂停多头]":"[恢复多头]", 9, FONT_NAME, clrWhite, g_AllowBuy?MediumSeaGreen:DimGray);
-   CreateControlButton(BUTTON_PREFIX+"StopAll", xM, y, 140, h, "=== 暂停全部 ===", 9, FONT_NAME, clrWhite, (g_AllowBuy||g_AllowSell)?DimGray:clrRed);
-   CreateControlButton(BUTTON_PREFIX+"StopSell", xR, y, w, h, g_AllowSell?"[暂停空头]":"[恢复空头]", 9, FONT_NAME, clrWhite, g_AllowSell?Crimson:DimGray);
+   CreateControlButton(BUTTON_PREFIX+"StopBuy", xL, y, w, h, g_AllowBuy?"[暂停多头]":"[恢复多头]", 10, FONT_NAME, clrWhite, g_AllowBuy?MediumSeaGreen:DimGray);
+   ObjectSetInteger(0,BUTTON_PREFIX+"StopBuy",OBJPROP_CORNER,0);
    
-   y += h + 8;
+   CreateControlButton(BUTTON_PREFIX+"StopAll", xM, y, 160, h, "=== 暂停全部 ===", 10, FONT_NAME, clrWhite, (g_AllowBuy||g_AllowSell)?DimGray:clrRed);
+   ObjectSetInteger(0,BUTTON_PREFIX+"StopAll",OBJPROP_CORNER,0);
+   
+   CreateControlButton(BUTTON_PREFIX+"StopSell", xR, y, w, h, g_AllowSell?"[暂停空头]":"[恢复空头]", 10, FONT_NAME, clrWhite, g_AllowSell?Crimson:DimGray);
+   ObjectSetInteger(0,BUTTON_PREFIX+"StopSell",OBJPROP_CORNER,0);
+   
+   y += h + 10;
    // 第二排：平仓控制
-   CreateControlButton(BUTTON_PREFIX+"CloseBuy", xL, y, w, h, "平多单", 9, FONT_NAME, clrWhite, RoyalBlue);
-   CreateControlButton(BUTTON_PREFIX+"CloseAll", xM, y, 140, h, "!!! 一键全平 !!!", 9, "Arial Bold", clrWhite, clrRed);
-   CreateControlButton(BUTTON_PREFIX+"CloseSell", xR, y, w, h, "平空单", 9, FONT_NAME, clrWhite, Chocolate);
+   CreateControlButton(BUTTON_PREFIX+"CloseBuy", xL, y, w, h, "平多单", 10, FONT_NAME, clrWhite, RoyalBlue);
+   ObjectSetInteger(0,BUTTON_PREFIX+"CloseBuy",OBJPROP_CORNER,0);
+   
+   CreateControlButton(BUTTON_PREFIX+"CloseAll", xM, y, 160, h, "!!! 一键全平 !!!", 10, "Arial Bold", clrWhite, clrRed);
+   ObjectSetInteger(0,BUTTON_PREFIX+"CloseAll",OBJPROP_CORNER,0);
+   
+   CreateControlButton(BUTTON_PREFIX+"CloseSell", xR, y, w, h, "平空单", 10, FONT_NAME, clrWhite, Chocolate);
+   ObjectSetInteger(0,BUTTON_PREFIX+"CloseSell",OBJPROP_CORNER,0);
 }
 
 //+------------------------------------------------------------------+
