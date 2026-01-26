@@ -38,12 +38,12 @@ pub struct LogEntry {
     pub message: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default, sqlx::FromRow)]
 pub struct TradeHistory {
     pub ticket: i32,
     pub symbol: String,
-    pub open_time: u64,
-    pub close_time: u64,
+    pub open_time: i64,
+    pub close_time: i64,
     pub open_price: f64,
     pub close_price: f64,
     pub lots: f64,

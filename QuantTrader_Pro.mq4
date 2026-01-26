@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "QuantTrader Pro"
 #property link      ""
-#property version   "1.20"
+#property version   "1.21"
 #property strict
 
 //+------------------------------------------------------------------+
@@ -355,7 +355,7 @@ void OnTimer()
    if(EnableDataLoop && !IsTradeContextBusy())
      {
       static datetime lastReportTime = 0;
-      static datetime lastReportTime = 0;
+
       // Frequency Limiter: Max 1 request per 3 seconds to prevent thread blocking
       if(TimeCurrent() - lastReportTime > 3 && IsConnected())
         {

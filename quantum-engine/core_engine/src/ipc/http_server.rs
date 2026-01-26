@@ -41,6 +41,7 @@ pub async fn start_server(db_pool: PgPool) {
         .route("/api/v1/account", post(handle_account_status))
         .route("/api/v1/logs", post(handle_logs))
         .route("/api/v1/history", post(handle_trade_history))
+        .route("/api/v1/trades", get(get_trade_history))
         .layer(cors)
         .with_state(shared_state);
 
@@ -156,4 +157,13 @@ async fn handle_trade_history(State(state): State<Arc<CombinedState>>, Json(payl
             tracing::error!("DB Error (history): {}", e);
         }
     }
+}
+
+async fn get_trade_history(State(state): State<Arc<CombinedState>>) -> Json<Vec<TradeHistory>> {
+    let trades = sqlx::query_as::<_, TradeHistory>("SELECT * FROM trade_history ORDER BY close_time DESC LIMIT 50")
+        .fetch_all(&state.db)
+        .await
+        .unwrap_or_default();
+    
+    Json(trades)
 }
