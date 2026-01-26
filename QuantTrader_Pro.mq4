@@ -158,7 +158,7 @@ extern string OrderComment1             = "备注1";        // 订单备注1
 extern string OrderComment2             = "备注2";        // 订单备注2
 
 //--- 数据上报参数
-extern string RustServerUrl             = "http://172.16.88.121:3001"; // Rust 引擎地址
+extern string RustServerUrl             = "http://172.16.196.1:3001"; // Rust 引擎地址
 extern bool   EnableDataLoop            = true;                    // 是否启用数据上报
 extern int    AccountReportInterval     = 10;                      // 账户状态上报间隔(秒)
 

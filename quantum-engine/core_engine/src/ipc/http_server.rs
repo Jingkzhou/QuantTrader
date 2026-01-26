@@ -8,6 +8,7 @@ use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
 use serde::{Serialize, Deserialize};
 use tower_http::cors::{Any, CorsLayer};
+use tower_http::trace::TraceLayer;
 use sqlx::PgPool;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -43,6 +44,7 @@ pub async fn start_server(db_pool: PgPool) {
         .route("/api/v1/history", post(handle_trade_history))
         .route("/api/v1/trades", get(get_trade_history))
         .layer(cors)
+        .layer(TraceLayer::new_for_http())
         .with_state(shared_state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3001)); // Changed to 0.0.0.0 to allow external connections
