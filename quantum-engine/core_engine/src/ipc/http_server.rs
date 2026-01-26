@@ -40,10 +40,11 @@ pub async fn start_server(db_pool: PgPool) {
         .route("/api/v1/market", post(handle_market_data))
         .route("/api/v1/account", post(handle_account_status))
         .route("/api/v1/logs", post(handle_logs))
+        .route("/api/v1/history", post(handle_trade_history))
         .layer(cors)
         .with_state(shared_state);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3001)); // Changed to 3001
+    let addr = SocketAddr::from(([0, 0, 0, 0], 3001)); // Changed to 0.0.0.0 to allow external connections
     tracing::info!("Starting HTTP server on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
@@ -94,8 +95,10 @@ async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(pay
     }
 
     // Persist to DB
+    let positions_json = serde_json::to_string(&payload.positions).unwrap_or_default();
+    
     let res = sqlx::query(
-        "INSERT INTO account_status (balance, equity, margin, free_margin, floating_profit, timestamp) VALUES ($1, $2, $3, $4, $5, $6)"
+        "INSERT INTO account_status (balance, equity, margin, free_margin, floating_profit, timestamp, positions_snapshot) VALUES ($1, $2, $3, $4, $5, $6, $7)"
     )
     .bind(payload.balance)
     .bind(payload.equity)
@@ -103,6 +106,7 @@ async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(pay
     .bind(payload.free_margin)
     .bind(payload.floating_profit)
     .bind(chrono::Utc::now().timestamp())
+    .bind(positions_json)
     .execute(&state.db)
     .await;
 
@@ -120,6 +124,36 @@ async fn handle_logs(State(state): State<Arc<CombinedState>>, Json(payload): Jso
         s.recent_logs.insert(0, payload);
         if s.recent_logs.len() > 50 {
             s.recent_logs.truncate(50);
+        }
+    }
+}
+
+use crate::data_models::TradeHistory;
+
+async fn handle_trade_history(State(state): State<Arc<CombinedState>>, Json(payload): Json<Vec<TradeHistory>>) {
+    tracing::info!("Received {} trade history records", payload.len());
+
+    for trade in payload {
+        let res = sqlx::query(
+            "INSERT INTO trade_history (ticket, symbol, open_time, close_time, open_price, close_price, lots, profit, trade_type, magic) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+             ON CONFLICT (ticket) DO NOTHING"
+        )
+        .bind(trade.ticket)
+        .bind(&trade.symbol)
+        .bind(trade.open_time as i64)
+        .bind(trade.close_time as i64)
+        .bind(trade.open_price)
+        .bind(trade.close_price)
+        .bind(trade.lots)
+        .bind(trade.profit)
+        .bind(&trade.trade_type)
+        .bind(trade.magic)
+        .execute(&state.db)
+        .await;
+
+        if let Err(e) = res {
+            tracing::error!("DB Error (history): {}", e);
         }
     }
 }

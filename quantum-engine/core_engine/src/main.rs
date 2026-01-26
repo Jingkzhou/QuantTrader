@@ -49,12 +49,36 @@ async fn main() {
             margin DOUBLE PRECISION,
             free_margin DOUBLE PRECISION,
             floating_profit DOUBLE PRECISION,
-            timestamp BIGINT NOT NULL
+            timestamp BIGINT NOT NULL,
+            positions_snapshot TEXT
         )"
     )
     .execute(&pool)
     .await
     .expect("Failed to create account_status table");
+
+    // Migration: Ensure positions_snapshot column exists for existing tables
+    let _ = sqlx::query("ALTER TABLE account_status ADD COLUMN IF NOT EXISTS positions_snapshot TEXT")
+        .execute(&pool)
+        .await;
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS trade_history (
+            ticket INTEGER PRIMARY KEY,
+            symbol TEXT NOT NULL,
+            open_time BIGINT NOT NULL,
+            close_time BIGINT NOT NULL,
+            open_price DOUBLE PRECISION,
+            close_price DOUBLE PRECISION,
+            lots DOUBLE PRECISION,
+            profit DOUBLE PRECISION,
+            trade_type TEXT NOT NULL,
+            magic INTEGER
+        )"
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to create trade_history table");
 
     // Start HTTP server for MT4 data ingestion
     ipc::http_server::start_server(pool).await;

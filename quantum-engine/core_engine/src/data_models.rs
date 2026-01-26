@@ -37,3 +37,17 @@ pub struct LogEntry {
     pub level: String,
     pub message: String,
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct TradeHistory {
+    pub ticket: i32,
+    pub symbol: String,
+    pub open_time: u64,
+    pub close_time: u64,
+    pub open_price: f64,
+    pub close_price: f64,
+    pub lots: f64,
+    pub profit: f64,
+    pub trade_type: String, // "BUY" or "SELL"
+    pub magic: i32,
+}

@@ -450,6 +450,7 @@ void OnTick()
       if(TimeCurrent() - lastAccountReport >= AccountReportInterval)
         {
          ReportAccountStatus();
+         ReportTradeHistory(); // [NEW] Report closed trades
          lastAccountReport = TimeCurrent();
         }
      }
@@ -1390,6 +1391,54 @@ void RemoteLog(string level, string message) {
    string json = StringFormat("{\"timestamp\":%lld,\"level\":\"%s\",\"message\":\"%s\"}", (long)TimeCurrent(), level, message);
    SendData("/api/v1/logs", json);
    Print(StringFormat("[%s] %s", level, message));
+}
+
+void ReportTradeHistory() {
+   string json_body = "[";
+   int historyTotal = OrdersHistoryTotal();
+   bool hasData = false;
+   
+   // 仅扫描最近 60 秒平仓的订单，防止重复上报压力过大
+   // 数据库端有 UPSERT 保护，但减少网络传输总是好的
+   datetime scanTime = TimeCurrent() - 60; 
+
+   for(int i = 0; i < historyTotal; i++)
+     {
+      if(OrderSelect(i, SELECT_BY_POS, MODE_HISTORY))
+        {
+         if(OrderMagicNumber() == MagicNumber && OrderSymbol() == Symbol() && OrderCloseTime() >= scanTime)
+           {
+            if(hasData) json_body += ",";
+            
+            string typeStr = (OrderType() == OP_BUY) ? "BUY" : (OrderType() == OP_SELL) ? "SELL" : "OTHER";
+            
+            string entry = StringFormat(
+               "{\"ticket\":%d,\"symbol\":\"%s\",\"open_time\":%d,\"close_time\":%d,\"open_price\":%.5f,\"close_price\":%.5f,\"lots\":%.2f,\"profit\":%.2f,\"trade_type\":\"%s\",\"magic\":%d}",
+               OrderTicket(),
+               OrderSymbol(),
+               OrderOpenTime(),
+               OrderCloseTime(),
+               OrderOpenPrice(),
+               OrderClosePrice(),
+               OrderLots(),
+               OrderProfit() + OrderSwap() + OrderCommission(),
+               typeStr,
+               OrderMagicNumber()
+            );
+            
+            json_body += entry;
+            hasData = true;
+           }
+        }
+     }
+   
+   json_body += "]";
+   
+   if(hasData)
+     {
+      int res = SendData("/api/v1/history", json_body);
+      if(res != 200) Print("History report failed: ", res);
+     }
 }
 
 int SendData(string path, string json_body) {
