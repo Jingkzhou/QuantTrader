@@ -349,6 +349,27 @@ void OnTimer()
   {
    UpdatePanel();
    if(g_IsButtonPanelVisible) DrawButtonPanel();
+
+   // [OPTIMIZATION] Network Reporting in Timer (non-blocking for OnTick)
+   // Checks: 1. EnableDataLoop 2. !IsTradeContextBusy 3. 1s Interval limit (implicit by OnTimer)
+   if(EnableDataLoop && !IsTradeContextBusy())
+     {
+      static datetime lastReportTime = 0;
+      // Frequency Limiter: Max 1 request per second (though OnTimer(1) handles this naturally)
+      if(TimeCurrent() > lastReportTime)
+        {
+         ReportMarketData();
+         
+         static datetime lastAccountReport = 0;
+         if(TimeCurrent() - lastAccountReport >= AccountReportInterval)
+           {
+            ReportAccountStatus();
+            ReportTradeHistory();
+            lastAccountReport = TimeCurrent();
+           }
+         lastReportTime = TimeCurrent();
+        }
+     }
   }
 
 void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
@@ -443,17 +464,7 @@ void OnTick()
    UpdatePanel();
 
    // G. 数据上报
-   if(EnableDataLoop)
-     {
-      ReportMarketData();
-      static datetime lastAccountReport = 0;
-      if(TimeCurrent() - lastAccountReport >= AccountReportInterval)
-        {
-         ReportAccountStatus();
-         ReportTradeHistory(); // [NEW] Report closed trades
-         lastAccountReport = TimeCurrent();
-        }
-     }
+   // [OPTIMIZATION] Moved to OnTimer to avoid blocking OnTick
   }
 
 //+------------------------------------------------------------------+
