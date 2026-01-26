@@ -355,8 +355,9 @@ void OnTimer()
    if(EnableDataLoop && !IsTradeContextBusy())
      {
       static datetime lastReportTime = 0;
-      // Frequency Limiter: Max 1 request per second (though OnTimer(1) handles this naturally)
-      if(TimeCurrent() > lastReportTime)
+      static datetime lastReportTime = 0;
+      // Frequency Limiter: Max 1 request per 3 seconds to prevent thread blocking
+      if(TimeCurrent() - lastReportTime > 3 && IsConnected())
         {
          ReportMarketData();
          
@@ -1456,7 +1457,8 @@ int SendData(string path, string json_body) {
    char data[], result[];
    string headers = "Content-Type: application/json\r\n";
    StringToCharArray(json_body, data, 0, WHOLE_ARRAY, CP_UTF8);
-   int res = WebRequest("POST", RustServerUrl + path, headers, 1000, data, result, headers);
+   // [OPTIMIZATION] Timeout reduced to 500ms to prevent hanging the EA thread
+   int res = WebRequest("POST", RustServerUrl + path, headers, 500, data, result, headers);
    if(res == -1) {
       // 只有第一次报错时打印，避免刷屏
       static datetime lastError = 0;
