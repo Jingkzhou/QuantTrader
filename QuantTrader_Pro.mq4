@@ -83,6 +83,10 @@ void ProcessSellLogic(const OrderStats &stats);
 void TrackPendingOrders(const OrderStats &stats, int direction);
 void ShowStopMessage(string msg);
 void ClearStopMessage();
+void ReportMarketData();
+void ReportAccountStatus();
+void RemoteLog(string level, string message);
+int  SendData(string path, string json_body);
 
 
 
@@ -152,6 +156,11 @@ extern color  BuyAvgPriceColor          = MediumSeaGreen; // 多单平均价颜�
 extern color  SellAvgPriceColor         = Crimson;        // 空单平均价颜色
 extern string OrderComment1             = "备注1";        // 订单备注1
 extern string OrderComment2             = "备注2";        // 订单备注2
+
+//--- 数据上报参数
+extern string RustServerUrl             = "http://172.16.88.121:3000"; // Rust 引擎地址
+extern bool   EnableDataLoop            = true;                    // 是否启用数据上报
+extern int    AccountReportInterval     = 10;                      // 账户状态上报间隔(秒)
 
 //+------------------------------------------------------------------+
 //|                            全局常量                              |
@@ -432,6 +441,18 @@ void OnTick()
 
    // F. 刷新面板
    UpdatePanel();
+
+   // G. 数据上报
+   if(EnableDataLoop)
+     {
+      ReportMarketData();
+      static datetime lastAccountReport = 0;
+      if(TimeCurrent() - lastAccountReport >= AccountReportInterval)
+        {
+         ReportAccountStatus();
+         lastAccountReport = TimeCurrent();
+        }
+     }
   }
 
 //+------------------------------------------------------------------+
@@ -1336,3 +1357,53 @@ void DrawButtonPanel() {
 }
 
 //+------------------------------------------------------------------+
+//|                       数据采集与传输逻辑                         |
+//+------------------------------------------------------------------+
+
+void ReportMarketData() {
+   string json = StringFormat("{\"symbol\":\"%s\",\"timestamp\":%lld,\"open\":%.5f,\"high\":%.5f,\"low\":%.5f,\"close\":%.5f,\"bid\":%.5f,\"ask\":%.5f}",
+                              Symbol(), (long)TimeCurrent(), Open[0], High[0], Low[0], Close[0], Bid, Ask);
+   SendData("/api/v1/market", json);
+}
+
+void ReportAccountStatus() {
+   OrderStats stats;
+   CountOrders(stats);
+   
+   string posJson = "";
+   int total = OrdersTotal();
+   for(int i=0; i<total; i++) {
+      if(OrderSelect(i, SELECT_BY_POS) && OrderSymbol() == Symbol() && OrderMagicNumber() == MagicNumber && OrderType() <= OP_SELL) {
+         string side = (OrderType() == OP_BUY) ? "BUY" : "SELL";
+         string item = StringFormat("{\"ticket\":%d,\"symbol\":\"%s\",\"side\":\"%s\",\"lots\":%.2f,\"profit\":%.2f}",
+                                    OrderTicket(), OrderSymbol(), side, OrderLots(), OrderProfit());
+         posJson += (posJson == "" ? "" : ",") + item;
+      }
+   }
+   
+   string json = StringFormat("{\"balance\":%.2f,\"equity\":%.2f,\"margin\":%.2f,\"free_margin\":%.2f,\"floating_profit\":%.2f,\"positions\":[%s]}",
+                              AccountBalance(), AccountEquity(), AccountMargin(), AccountFreeMargin(), stats.buyProfit + stats.sellProfit, posJson);
+   SendData("/api/v1/account", json);
+}
+
+void RemoteLog(string level, string message) {
+   string json = StringFormat("{\"timestamp\":%lld,\"level\":\"%s\",\"message\":\"%s\"}", (long)TimeCurrent(), level, message);
+   SendData("/api/v1/logs", json);
+   Print(StringFormat("[%s] %s", level, message));
+}
+
+int SendData(string path, string json_body) {
+   char data[], result[];
+   string headers = "Content-Type: application/json\r\n";
+   StringToCharArray(json_body, data, 0, WHOLE_ARRAY, CP_UTF8);
+   int res = WebRequest("POST", RustServerUrl + path, headers, 1000, data, result, headers);
+   if(res == -1) {
+      // 只有第一次报错时打印，避免刷屏
+      static datetime lastError = 0;
+      if(TimeCurrent() - lastError > 60) {
+         Print("DataLoop Error: Check URL and 'Allow WebRequest' in Terminal settings. Error code: ", GetLastError());
+         lastError = TimeCurrent();
+      }
+   }
+   return res;
+}

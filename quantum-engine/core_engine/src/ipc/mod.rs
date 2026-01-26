@@ -1,2 +1,2 @@
-pub mod redis_client;
 pub mod zmq_pub;
+pub mod http_server;
