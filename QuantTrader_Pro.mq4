@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "QuantTrader Pro"
 #property link      ""
-#property version   "1.21"
+#property version   "1.24"
 #property strict
 
 //+------------------------------------------------------------------+
@@ -1458,7 +1458,7 @@ int SendData(string path, string json_body) {
    string headers = "Content-Type: application/json\r\n";
    StringToCharArray(json_body, data, 0, WHOLE_ARRAY, CP_UTF8);
    // [OPTIMIZATION] Timeout reduced to 500ms to prevent hanging the EA thread
-   int res = WebRequest("POST", RustServerUrl + path, headers, 500, data, result, headers);
+   int res = WebRequest("POST", RustServerUrl + path, headers, 3000, data, result, headers);
    if(res == -1) {
       // 只有第一次报错时打印，避免刷屏
       static datetime lastError = 0;

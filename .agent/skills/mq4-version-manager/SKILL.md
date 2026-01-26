@@ -23,7 +23,7 @@ python3 .agent/skills/mq4-version-manager/scripts/update_version.py --type [majo
     - `major`: Increments the major version (e.g., 1.0 -> 2.0).
     - `minor`: Increments the minor version (e.g., 1.0 -> 1.1). Use for new features.
     - `patch`: Increments the patch version (e.g., 1.0 -> 1.01). Use for bug fixes.
-- `--desc`: A brief description of the changes. This will be added to `README.md`.
+- `--desc`: A brief description of the changes. This will be added to `README.md`. **MUST be in Chinese (Simplified).**
 - `--path`: The root directory of the project (usually `.`).
 
 ## Examples
@@ -32,12 +32,12 @@ python3 .agent/skills/mq4-version-manager/scripts/update_version.py --type [majo
 User: "I fixed the web request timeout bug."
 Action:
 ```bash
-python3 .agent/skills/mq4-version-manager/scripts/update_version.py --type patch --desc "Fixed WebRequest timeout issue by optimization" --path .
+python3 .agent/skills/mq4-version-manager/scripts/update_version.py --type patch --desc "修复: 优化了网络请求超时问题" --path .
 ```
 
 **Example 2: New Feature (Minor)**
 User: "Added a new RSI filter."
 Action:
 ```bash
-python3 .agent/skills/mq4-version-manager/scripts/update_version.py --type minor --desc "Added RSI filter for entry logic" --path .
+python3 .agent/skills/mq4-version-manager/scripts/update_version.py --type minor --desc "新增: 添加 RSI 过滤逻辑" --path .
 ```
