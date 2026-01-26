@@ -1,204 +1,123 @@
-# QuantTrader Pro V4.2 需求规格说明书
+# QuantTrader Pro (Version 1.0 Final)
 
-## 1. 项目概述
-QuantTrader Pro 是一款面向 XAUUSD 及主流外汇品种的 MT4 全自动量化交易系统。V4.2 在多产品适配体系基础上新增**智能双模网格**（固定间距与 ATR 取最大值），配合三重风险防火墙与 ATR 波动率适配，使 EA 能够在震荡与单边行情间自动切换节奏。
+## 项目概述
+**QuantTrader Pro** 是一款基于 MT4 平台的自动化网格交易系统。本项目已升级至 **Version 1.0 Final**，核心逻辑基于反编译代码 1:1 精确复刻，专注于高频交易环境下的策略稳定性与风控能力。系统集成了智能双阶段网格、多重风控保护（逆势/顺势/对锁）、UI 可视化面板以及实时数据上报功能。
 
-目标：在保持顺势收割效率的同时，降低单边压力，提供可控的风险边界、智能产品适配与更细致的人工干预能力。
+## 核心功能
 
-## 2. 版本功能要点
+### 1. 灵活的开单模式 (Order Open Logic)
+系统支持三种开单模式，适应不同的市场节奏：
+*   **Timeframe (A模式)**: 依据 K 线收盘价开单 (`OPEN_MODE_TIMEFRAME`)。
+*   **Interval (B模式)**: 按照固定的时间间隔（秒）开单 (`OPEN_MODE_INTERVAL`)。
+*   **Instant (C模式)**: 满足条件立即开单，无延迟 (`OPEN_MODE_INSTANT`)。
 
-### 2.0 V4.2 智能双模网格 (Smart Hybrid Grid) `NEW`
-- **双模择优**：固定间距与 ATR 间距同时计算，最终取较大值。
-- **震荡保底**：ATR 过小时回落到固定间距，保证开单频率与收益来源。
-- **单边防御**：ATR 飙升时自动拉大间距，降低逆势加仓压力。
-- **与动态扩距兼容**：第 4 层起每层再扩距 20%。
+### 2. 双阶段网格策略 (Dual-Stage Grid)
+根据账户盈亏状态，自动切换网格参数，实现进攻与防御的平衡：
+*   **第一阶段**: 正常状态下，使用标准的 `GridStep` 和 `MinGridDistance`。
+*   **第二阶段**: 当浮亏超过 `SecondParamTriggerLoss` 时触发，启用 `SecondGridStep` 和 `SecondMinGridDistance`，通常用于扩大间距以缓解亏损压力。
 
-### 2.1 V4.1 多产品适配体系 (Product Adaptive)
-- **产品预设配置**：内置 6 种产品优化参数（黄金/白银/欧美/镑美/美日/比特币）
-- **自动产品识别**：根据交易品种代码自动识别产品类型并加载对应配置
-- **交易时段过滤**：根据产品特性自动控制交易时段，避开低流动性时段
-- **周末控制**：支持加密货币 24/7 交易，传统品种自动周末休市
-- **UI 面板增强**：显示当前产品类型与交易时段状态
+### 3. 多重风控保护体系 (Risk Protection)
+系统内置多层级的保护机制，确保资金安全：
 
-### 2.1.1 资金层级体系 (Capital Tier System)
-基于资金规模的 4 级"地质层级"配置，每一层级对应完全不同的策略逻辑和参数：
+#### 3.1 逆势保护 (Reverse Protection)
+*   **原理**: 当检测到“1个盈利单 vs 2个亏损单”且满足特定的手数比例（通常是多空严重失衡）时触发。
+*   **动作**: 利用大额盈利单的利润，对冲平仓掉两个亏损单，实现“断臂求生”并释放保证金。
 
-| 层级 | 资金范围 | 代号 | 风险等级 | 核心特征 |
-|:---:|:---|:---|:---:|:---|
-| Lv.1 | $100 - $2,000 | 实验室 Laboratory | 9/10 | 高杠杆测试，建议美分账户，追求高 ROE |
-| Lv.2 | $2,000 - $10,000 | 特种兵 Soldier | 6/10 | 单兵作战主战场，斐波那契均衡策略 |
-| Lv.3 | $10,000 - $50,000 | 指挥官 Commander | 4/10 | 组合对冲，多品种分散，月化 5-10% |
-| Lv.4 | $100,000+ | 鲸鱼 Whale | 2/10 | 机构级保守，线性加仓，年化 20-30% |
+#### 3.2 顺势保护 (Trend Protection)
+*   **原理**: 针对标记为 "SS"（顺势）的特定订单。
+*   **动作**: 当整体利润达标时，优先平仓此类订单，锁定胜局。
 
-**自动检测**：EA 根据 `AccountBalance()` 自动识别当前层级并应用对应参数。
+#### 3.3 仓位失衡监控 (Overweight Status)
+*   实时监控多空持仓对比，当一方手数显著大于另一方（例如 >3 倍且差值 >0.2 手）时，标记为超仓状态，作为策略调整的信号。
 
-### 2.2 V4 三重风险防火墙
-- **账户级硬止损 (Circuit Breaker)**：当净值回撤达到 `InpEquityStopPct`，强制全平并关机。
-- **单日风控 (Daily Loss Limit)**：当日已实现亏损 + 当前浮亏 >= 余额 × `InpDailyLossPct`，强制全平并当日停机。
-- **技术性断裂 (Technical Breakdown)**：单边层数达到 `InpMaxLayerPerSide` 或浮亏点数 >= `InpMaxAdversePoints`，强制平掉该方向并关闭该方向开关。
+#### 3.4 价格限制 (Price Limits)
+*   **首单限制**: `Buy/SellFirstOrderPriceLimit`，价格超过此线不进行首单开仓。
+*   **补单限制**: `Buy/SellAddOrderPriceLimit`，价格超过此线不进行补单。
 
-### 2.3 V3.9 ATR 动态波动率适配 (Volatility Adaptive)
-- **动态网格**：ATR 计算为动态间距，V4.2 中与固定间距择优取大值。
-- **两种模式**：
-  - **直接模式**：`GridDist = InpATRMultiplier * ATR(Period)`
-  - **缩放模式**：`GridDist = BaseDist * (CurrentATR / InpBaseATRPoints)`
-- **层级保持**：后续层仍沿用 `GridDistLayer2 / GridMinDist` 的间距比例。
+### 4. 交互式 UI 面板
+内置高性能 GDI 绘图面板：
+*   **StatisticsPanel**: 实时显示账户资金、保证金率、多空持仓详情（单数/手数/均价/保本价/浮盈）。
+*   **ButtonPanel**: 提供快捷操作按钮：
+    *   **暂停/恢复**: 独立控制多头或空头开仓。
+    *   **一键平仓**: 平多、平空、全平。
 
-### 2.4 V3.8 低压加仓优化
-- **多模式加仓**：指数、斐波那契、线性三种模式可选。
-- **衰减机制**：达到指定层数后使用衰减倍率，避免手数指数爆炸。
-- **单笔封顶**：单笔最大手数限制。
-- **动态扩距**：第 4 层起每加一层，补仓间距 +20%。
-- **单边独立止盈**：按多/空总手数与目标点数换算的金额进行分开止盈。
+### 5. 数据集成 (Data Reporting)
+内置 HTTP 通信模块，支持与外部系统（如 Rust 后端）交互：
+*   **行情上报**: 推送当前 ASK/BID 及 K 线数据。
+*   **账户/持仓上报**: 实时推送账户净值与持仓状态。
+*   **交易历史**: 平仓后自动上报交易记录。
 
-### 2.5 V3.7 面板交互增强
-- 交易状态与数据可视化面板。
-- 按钮式多空开关、全平、暂停/恢复。
+---
 
-### 2.6 V3.6 机构级功能
-- **双向启动**：可自动补齐多/空首单。
-- **保本/锁盈**：达到指定盈利点数后自动推移止损。
+## 详细参数说明
 
-### 2.7 V3.5 首尾对冲减仓
-- 当同侧订单层数达到阈值，若最早单 + 最新单合计盈利达标，则同时平仓减压。
+### 1. 价格限制 (Price Limit)
+| 参数名                     | 默认值  | 说明                        |
+| :------------------------- | :------ | :-------------------------- |
+| `BuyFirstOrderPriceLimit`  | 0       | 多单首单价格上限（0为不限） |
+| `SellFirstOrderPriceLimit` | 0       | 空单首单价格下限（0为不限） |
+| `BuyAddOrderPriceLimit`    | 0       | 多单补单价格上限            |
+| `SellAddOrderPriceLimit`   | 0       | 空单补单价格下限            |
+| `PriceLimitStartTime`      | "00:00" | 限制生效开始时间            |
+| `PriceLimitEndTime`        | "24:00" | 限制生效结束时间            |
 
-## 3. 交易逻辑说明
+### 2. 保护开关 (Protection)
+| 参数名                    | 默认值 | 说明                     |
+| :------------------------ | :----- | :----------------------- |
+| `EnableReverseProtection` | true   | 开启逆势对冲保护         |
+| `EnableTrendProtection`   | true   | 开启顺势保护             |
+| `EnableLockTrend`         | false  | 启用完全对锁时的顺势开关 |
+| `StopAfterClose`          | false  | 整体平仓后停止 EA 运行   |
+| `RestartDelaySeconds`     | 0      | 整体平仓后冷却时间（秒） |
 
-### 3.1 OnTick 主流程
-1. 执行 V4 三重风控检查（可能强平并停机）。
-2. 若系统暂停或触发风险锁定，仅刷新面板并返回。
-3. 若启用首尾对冲，执行减仓检测。
-4. 执行保本/锁盈检查。
-5. 若启用双向模式，确保多/空首单存在。
-6. 执行马丁网格逻辑（独立止盈 + 加仓）。
-7. 刷新面板数据。
+### 3. 网格距离 (Grid Distance)
+| 参数名                    | 默认值 | 说明                                 |
+| :------------------------ | :----- | :----------------------------------- |
+| `SecondParamTriggerLoss`  | 0      | 启用第二组参数的浮亏阈值（自动转负） |
+| `FirstOrderDistance`      | 30     | 首单开仓距离（点）                   |
+| `MinGridDistance`         | 60     | 第一组最小间距                       |
+| `SecondMinGridDistance`   | 60     | 第二组最小间距                       |
+| `GridStep`                | 100    | 第一组补单步长                       |
+| `SecondGridStep`          | 100    | 第二组补单步长                       |
+| `PendingOrderTrailPoints` | 5      | 挂单追踪距离                         |
 
-### 3.2 账户级硬止损 (Circuit Breaker)
-- 当净值回撤达到 `InpEquityStopPct`（如 25%）时，强制全平并关机。
-- 触发后保持停机，需人工重新启动策略。
+### 4. 开单控制 (Order Control)
+| 参数名                 | 默认值      | 说明                               |
+| :--------------------- | :---------- | :--------------------------------- |
+| `OrderOpenMode`        | 3 (Instant) | 1=Timeframe, 2=Interval, 3=Instant |
+| `OrderTimeframe`       | PERIOD_M1   | 开单参考周期                       |
+| `OrderIntervalSeconds` | 30          | Mode 2 的开单间隔秒数              |
 
-### 3.3 单日风控 (Daily Loss Limit)
-- 计算公式：`当日已实现盈亏 + 当前浮动盈亏`（净值日内变化）。
-- 当净值下降达到 `余额 × InpDailyLossPct` 时，强制全平并当日停机，次日自动解除。
+### 5. 资金管理 (Money Management)
+| 参数名          | 默认值 | 说明                               |
+| :-------------- | :----- | :--------------------------------- |
+| `BaseLotSize`   | 0.01   | 起始手数                           |
+| `LotMultiplier` | 1.3    | 加仓倍率                           |
+| `LotIncrement`  | 0      | 手数累加值（Lot = Prev*Mul + Inc） |
+| `MaxLotSize`    | 10     | 单笔最大手数                       |
 
-### 3.4 技术性断裂 (Technical Breakdown)
-- 单边层数达到 `InpMaxLayerPerSide` 或单边浮亏点数 >= `InpMaxAdversePoints` 时，强制平掉该方向所有持仓。
-- 触发后关闭该方向开关，需手动重新开启。
+### 6. 止盈止损 (TP/SL)
+| 参数名                | 默认值 | 说明                       |
+| :-------------------- | :----- | :------------------------- |
+| `TotalProfitTarget`   | 0.5    | 整体金额止盈               |
+| `EnableLayeredProfit` | true   | 是否开启单边金额按层数累加 |
+| `SingleSideProfit`    | 2      | 单边金额止盈（基数）       |
+| `StopLossAmount`      | 0      | 整体金额止损（0为不设）    |
 
-### 3.5 独立止盈
-- 多头目标金额 = 多头总手数 × `InpTargetPips` × 单位点值。
-- 空头目标金额 = 空头总手数 × `InpTargetPips` × 单位点值。
-- 任一方向浮盈达到目标则只平该方向持仓。
+### 7. 其他设置
+| 参数名           | 默认值   | 说明               |
+| :--------------- | :------- | :----------------- |
+| `MagicNumber`    | 9527     | EA 识别码          |
+| `MaxTotalOrders` | 50       | 最大总单量限制     |
+| `RustServerUrl`  | ...:3001 | 数据上报服务器地址 |
+| `EnableDataLoop` | true     | 开启数据上报循环   |
 
-### 3.6 加仓触发与间距
-- 基础间距采用固定间距与 ATR 动态间距择优取大值：
-  - 固定间距：`FixedDist = (orderCount==1 ? GridMinDist : GridDistLayer2)`
-  - ATR 间距（直接模式）：`AtrDist = InpATRMultiplier * ATR(Period)`
-  - ATR 间距（缩放模式）：`AtrDist = FixedDist * (CurrentATR / InpBaseATRPoints)`
-  - 最终间距：`FinalDist = max(FixedDist, AtrDist)`
-- ATR 模式下仍保持 `GridDistLayer2 / GridMinDist` 的层级比例。
-- ATR 计算周期由 `InpATRTF` 与 `InpATRPeriod` 决定。
-- 启用动态扩距后，层数 >= 4 时每层间距扩大 20%。
+## 安装与使用
+1.  将 `QuantTrader_Pro.mq4` 放入 MT4 的 `Experts` 文件夹。
+2.  确保开启 "允许自动交易 (Allow Auto Trading)" 和 "允许 DLL 导入 (Allow DLL imports)"。
+3.  若需使用数据上报功能，请在 `工具 -> 选项 -> 智能交易系统` 中勾选 "允许 WebRequest"，并添加 `RustServerUrl` 到白名单。
+4.  加载 EA 到任意图表（建议 M1 或 M5 周期）。
+5.  在面板上检查网络连接状态与各项参数。
 
-### 3.7 低压手数算法
-- **指数模式**：手数 = 上一单手数 × 倍率；达到衰减层后改用 `InpDecayMulti`。
-- **斐波那契模式**：手数 = 最近两单手数之和（首单回退至初始手数）。
-- **线性模式**：手数 = 上一单手数 + 初始手数。
-- 手数最终受 `InpMaxSingleLot` 封顶。
-
-### 3.8 单边浮亏限制
-- `InpSingleSideMaxLoss` > 0 时，若该方向浮盈 < -最大值，则禁止继续加仓。
-- 设为 0 则不限制。
-
-### 3.9 保本/锁盈
-- 多单盈利达到 `InpBEProfitPips` 后，止损上移到开仓价 + `InpBELockPips`。
-- 空单盈利达到 `InpBEProfitPips` 后，止损下移到开仓价 - `InpBELockPips`。
-
-### 3.10 首尾对冲减仓
-- 达到 `InpDestockMinLayer` 层数后，若最早单 + 最新单合计盈亏 >= `InpDestockProfit`，则同时平仓。
-
-## 4. 参数定义
-
-| 分组 | 参数名 | 默认值 | 说明 |
-| :--- | :--- | :--- | :--- |
-| **V4.2 产品配置** | `InpUsePreset` | true | 是否使用产品预设配置。 |
-| | `InpProductType` | `PRODUCT_GOLD` | 产品类型选择（黄金/白银/欧美/镑美/美日/比特币）。 |
-| | `InpEnableSession` | true | 是否启用交易时段过滤。 |
-| **V4.2 资金层级** | `InpAutoTier` | true | 自动检测资金层级（根据余额）。 |
-| | `InpCapitalTier` | `TIER_SOLDIER` | 手动选择层级（实验室/特种兵/指挥官/鲸鱼）。 |
-| **V4 风控防火墙** | `InpEquityStopPct` | 25.0 | 账户级硬止损回撤比例 (%)。 |
-| | `InpDailyLossPct` | 5.0 | 单日亏损限制比例 (%)。 |
-| | `InpMaxLayerPerSide` | 12 | 单边最大层数。 |
-| | `InpMaxAdversePoints` | 2000 | 单边最大浮亏点数。 |
-| **V3.9 ATR 动态适配** | `InpUseATRGrid` | true | 是否启用 ATR 动态网格（V4.2 与固定间距择优）。 |
-| | `InpATRMode` | `ATR_DIRECT` | 动态模式：直接/缩放。 |
-| | `InpATRTF` | `PERIOD_H1` | ATR 计算周期。 |
-| | `InpATRPeriod` | 14 | ATR 周期。 |
-| | `InpATRMultiplier` | 0.5 | 直接模式倍率。 |
-| | `InpBaseATRPoints` | 1000 | 缩放模式基准 ATR 点数。 |
-| **V3.8 低压加仓设置** | `InpMartinMode` | `MODE_FIBONACCI` | 加仓模式：指数/斐波那契/线性。 |
-| | `InpMaxSingleLot` | 0.50 | 单笔最大手数。 |
-| | `InpDecayStep` | 6 | 从第几层开始衰减倍率（指数模式）。 |
-| | `InpDecayMulti` | 1.1 | 衰减后的倍率（指数模式）。 |
-| | `InpGridExpansion` | true | 是否开启动态间距扩张。 |
-| **V3.7 UI 面板设置** | `UI_X_Offset` | 50 | 面板 X 轴偏移。 |
-| | `UI_Y_Offset` | 50 | 面板 Y 轴偏移。 |
-| | `UI_ThemeColor` | `C'0,128,128'` | 面板主题色。 |
-| **V3.6 机构级设置** | `InpEnableDualMode` | true | 是否启用双向启动。 |
-| | `InpBEProfitPips` | 80 | 触发保本的盈利点数。 |
-| | `InpBELockPips` | 10 | 保本后锁定点数。 |
-| **V3.5 首尾对冲设置** | `InpEnableDualHedge` | true | 是否启用首尾对冲减仓。 |
-| | `InpDestockMinLayer` | 6 | 触发减仓的最少层数。 |
-| | `InpDestockProfit` | 1.0 | 首尾合计盈利门槛（货币）。 |
-| **风控与核心参数** | `InpUseDynamicTP` | true | 预留开关，当前逻辑未使用。 |
-| | `InpTargetPips` | 150 | 单边目标点数（用于独立止盈）。 |
-| | `InpSingleSideMaxLoss` | 500.0 | 单边最大浮亏限制（货币）。 |
-| | `InpMagicNum` | 999008 | 魔术号。 |
-| | `InpInitialLots` | 0.01 | 初始手数。 |
-| | `MartinMulti` | 1.5 | 指数模式默认倍率。 |
-| | `GridMinDist` | 100 | 首次补仓基准间距（点），作为固定间距下限并用于 ATR 缩放。 |
-| | `GridDistLayer2` | 300 | 后续补仓基准间距（点），作为固定间距下限并用于层级比例。 |
-
-### 4.1 产品预设参数对比
-
-| 产品 | ATR倍率 | 马丁模式 | 最大层数 | 封顶手数 | 目标点数 | 交易时段 (GMT) |
-|:---|:---:|:---:|:---:|:---:|:---:|:---|
-| **XAUUSD** 黄金 | 0.5 | 斐波那契 | 12 | 0.50 | 150 | 08:00-22:00 |
-| **XAGUSD** 白银 | 0.8 | 指数衰减 | 8 | 0.30 | 250 | 08:00-20:00 |
-| **EURUSD** 欧美 | 0.3 | 线性 | 18 | 1.00 | 80 | 07:00-16:00 |
-| **GBPUSD** 镑美 | 0.6 | 斐波那契 | 10 | 0.30 | 120 | 08:00-17:00 |
-| **USDJPY** 美日 | 0.4 | 线性 | 15 | 0.50 | 100 | 06:00-15:00 |
-| **BTCUSD** 比特币 | 0.8 | 线性 | 5 | 0.10 | 300 | 24H + 周末 |
-
-## 5. UI 交互设计 (Dashboard)
-面板风格：深色战术仪表盘风格，左侧主题色竖条 + 顶部标题栏，数值采用等宽字体强调精度。
-
-布局分区：
-1. **产品配置** `V4.1+`：当前产品类型 + 交易时段状态（显示"时段: HH:MM-HH:MM"或"休市中"）
-2. **策略状态**：多/空状态芯片 + 当前加仓模式。
-3. **收益表现**：今日获利金额/百分比（正负变色）+ 双向目标金额。
-4. **账户数据**：余额、已用保证金、保证金率。
-5. **手动控制**：
-   - [多头开关] / [空头开关]
-   - [全平清仓]
-   - [系统运行中/暂停]（按钮颜色随状态切换）
-
-## 6. 逻辑流程图 (Mermaid)
-
-```mermaid
-graph TD
-    Start[OnTick] --> Risk{三重风控}
-    Risk -- 触发熔断/单日止损 --> Stop[全平并停机]
-    Risk -- 触发断裂 --> SideClose[单边强平并关停方向]
-    Risk -- 通过 --> Pause{系统暂停?}
-    Pause -- Yes --> UIOnly[刷新面板]
-    Pause -- No --> Hedge{首尾对冲减仓}
-    Hedge --> BE{保本/锁盈检查}
-    BE --> Dual{双向启动?}
-    Dual --> Martingale{马丁逻辑}
-    Martingale --> TP{单边独立止盈}
-    TP --> Add{加仓判定}
-    Add --> UI[刷新面板]
-    Stop --> UI
-    SideClose --> UI
-```
+## 版本历史
+*   **v1.0 Final**: 初始重构版本，完整复刻核心逻辑与 UI 系统。
