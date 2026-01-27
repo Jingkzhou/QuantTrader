@@ -28,9 +28,14 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
                 background: { type: ColorType.Solid, color: 'transparent' },
                 textColor: '#94a3b8',
             },
+            handleScroll: false,
+            handleScale: false,
             grid: {
                 vertLines: { color: '#1e293b' },
                 horzLines: { color: '#1e293b' },
+            },
+            crosshair: {
+                mode: 0, // CrosshairMode.Hidden
             },
             width: chartContainerRef.current.clientWidth,
             height: 200,
@@ -178,7 +183,7 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
                     资金曲线
                 </h3>
             </div>
-            <div ref={chartContainerRef} className="w-full flex-1" />
+            <div ref={chartContainerRef} className="w-full flex-1 pointer-events-none" />
         </div>
     );
 };
