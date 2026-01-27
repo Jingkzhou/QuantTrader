@@ -355,6 +355,13 @@ void OnDeinit(const int reason)
 void OnTimer()
   {
    UpdatePanel();
+   
+   static bool firstRunLogged = false;
+   if(!firstRunLogged && IsConnected()) {
+      RemoteLog("INFO", "EA Started: " + g_EAName + " (Ready)");
+      firstRunLogged = true;
+   }
+
    if(g_IsButtonPanelVisible) DrawButtonPanel();
 
    // [OPTIMIZATION] Network Reporting in Timer (non-blocking for OnTick)
@@ -761,8 +768,14 @@ void ProcessBuyLogic(const OrderStats &stats)
       pendingPrice >= NormalizeDouble(stats.highestBuyPrice + GridStep * Point, Digits)) comment = OrderComment2;
 
    int ticket = OrderSend(Symbol(), OP_BUYSTOP, lots, pendingPrice, Slippage, 0, 0, comment, MagicNumber, 0, Blue);
-   if(ticket > 0) CaptureSignalContext(ticket);
-   if(ticket > 0) g_LastBuyOrderTime = TimeCurrent();
+   if(ticket > 0) {
+      CaptureSignalContext(ticket);
+      g_LastBuyOrderTime = TimeCurrent();
+      RemoteLog("INFO", "OPEN BUY #" + IntegerToString(ticket) + " Lots:" + DoubleToString(lots, 2) + " @" + DoubleToString(pendingPrice, _Digits));
+   } else {
+      int err = GetLastError();
+      RemoteLog("ERROR", "OPEN BUY FAILED: " + IntegerToString(err));
+   }
   }
 
 void ProcessSellLogic(const OrderStats &stats)
@@ -826,8 +839,14 @@ void ProcessSellLogic(const OrderStats &stats)
       pendingPrice <= NormalizeDouble(stats.lowestSellPrice - GridStep * Point, Digits)) comment = OrderComment2;
 
    int ticket = OrderSend(Symbol(), OP_SELLSTOP, lots, pendingPrice, Slippage, 0, 0, comment, MagicNumber, 0, Red);
-   if(ticket > 0) CaptureSignalContext(ticket);
-   if(ticket > 0) g_LastSellOrderTime = TimeCurrent();
+   if(ticket > 0) {
+      CaptureSignalContext(ticket);
+      g_LastSellOrderTime = TimeCurrent();
+      RemoteLog("INFO", "OPEN SELL #" + IntegerToString(ticket) + " Lots:" + DoubleToString(lots, 2) + " @" + DoubleToString(pendingPrice, _Digits));
+   } else {
+      int err = GetLastError();
+      RemoteLog("ERROR", "OPEN SELL FAILED: " + IntegerToString(err));
+   }
   }
 
 // 1:1 复刻 TrackPendingOrders (包含流控制检查)
@@ -1060,7 +1079,12 @@ bool CloseAllOrders(int dir) // 1=Buy, -1=Sell, 0=All. 返回true如果全平了
               }
             else {
                double p = (type==OP_BUY) ? Bid : Ask;
-               if(!OrderClose(OrderTicket(), OrderLots(), p, Slippage, clrNONE)) res = false;
+               if(!OrderClose(OrderTicket(), OrderLots(), p, Slippage, clrNONE)) {
+                  res = false;
+                  Print("OrderClose Error: ", GetLastError());
+               } else {
+                  RemoteLog("INFO", "CLOSE #" + IntegerToString(OrderTicket()) + " PnL:" + DoubleToString(OrderProfit(), 2));
+               }
             }
          }
       }
@@ -1491,8 +1515,13 @@ string EscapeJSONString(string val) {
 }
 
 void RemoteLog(string level, string message) {
+   if(ConnectionMode == MODE_OFFLINE) return;
+   
    string json = StringFormat("{\"timestamp\":%lld,\"level\":\"%s\",\"message\":\"%s\",\"mt4_account\":%d,\"broker\":\"%s\"}", 
                               (long)TimeCurrent(), level, message, AccountNumber(), AccountCompany());
+                              
+   // 使用 WebRequest 发送日志
+   // 注意：如果在 OnTick 中频繁调用会阻塞。请只在关键事件调用。
    SendData("/api/v1/logs", json);
    Print(StringFormat("[%s] %s", level, message));
 }

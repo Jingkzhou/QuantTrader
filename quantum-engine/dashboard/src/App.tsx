@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
-  TrendingUp, TrendingDown, Activity, Terminal, Plus, ChevronDown, Check
+  TrendingUp, TrendingDown, Activity, Terminal
 } from 'lucide-react';
 import { Navbar } from './components/Navbar';
 import { ChartWidget } from './components/ChartWidget';
