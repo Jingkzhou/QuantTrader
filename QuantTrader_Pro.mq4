@@ -1419,8 +1419,8 @@ void ReportAccountStatus() {
    for(int i=0; i<total; i++) {
       if(OrderSelect(i, SELECT_BY_POS) && OrderSymbol() == Symbol() && OrderMagicNumber() == MagicNumber && OrderType() <= OP_SELL) {
          string side = (OrderType() == OP_BUY) ? "BUY" : "SELL";
-         string item = StringFormat("{\"ticket\":%d,\"symbol\":\"%s\",\"side\":\"%s\",\"lots\":%.2f,\"profit\":%.2f}",
-                                    OrderTicket(), OrderSymbol(), side, OrderLots(), OrderProfit());
+         string item = StringFormat("{\"ticket\":%d,\"symbol\":\"%s\",\"side\":\"%s\",\"lots\":%.2f,\"open_price\":%.5f,\"open_time\":%d,\"profit\":%.2f}",
+                                    OrderTicket(), OrderSymbol(), side, OrderLots(), OrderOpenPrice(), (long)OrderOpenTime(), OrderProfit());
          posJson += (posJson == "" ? "" : ",") + item;
       }
    }

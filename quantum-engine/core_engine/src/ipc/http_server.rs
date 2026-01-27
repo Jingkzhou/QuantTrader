@@ -11,12 +11,16 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use sqlx::PgPool;
 
+use std::collections::HashMap;
+
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct AppState {
-    pub market_data: MarketData,
+    pub market_data: HashMap<String, MarketData>,
     pub account_status: AccountStatus,
+    pub positions_map: HashMap<String, Vec<crate::data_models::Position>>,
     pub recent_logs: Vec<LogEntry>,
     pub pending_commands: Vec<Command>,
+    pub active_symbols: Vec<String>,
 }
 
 pub struct CombinedState {
@@ -61,6 +65,7 @@ pub async fn start_server(db_pool: PgPool) {
 
 async fn get_state(State(state): State<Arc<CombinedState>>) -> Json<AppState> {
     let s = state.memory.read().unwrap();
+    tracing::debug!("Get State: Active Symbols: {:?}", s.active_symbols);
     Json(s.clone())
 }
 
@@ -70,7 +75,10 @@ async fn handle_market_data(State(state): State<Arc<CombinedState>>, Json(payloa
     // Update Memory
     {
         let mut s = state.memory.write().unwrap();
-        s.market_data = payload.clone();
+        s.market_data.insert(payload.symbol.clone(), payload.clone());
+        if !s.active_symbols.contains(&payload.symbol) {
+            s.active_symbols.push(payload.symbol.clone());
+        }
     }
 
     // Persist to DB
@@ -99,7 +107,35 @@ async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(pay
     // Update Memory
     {
         let mut s = state.memory.write().unwrap();
-        s.account_status = payload.clone();
+        
+        // Update global account status info
+        s.account_status.balance = payload.balance;
+        s.account_status.equity = payload.equity;
+        s.account_status.margin = payload.margin;
+        s.account_status.free_margin = payload.free_margin;
+        s.account_status.floating_profit = payload.floating_profit;
+        s.account_status.timestamp = payload.timestamp;
+
+        // Update positions for this symbol specifically
+        // Assume all positions in this payload are for the same symbol (MQL4 reports per chart)
+        if let Some(first_pos) = payload.positions.first() {
+            let sym = first_pos.symbol.clone();
+            s.positions_map.insert(sym, payload.positions.clone());
+        } else {
+             // If payload is empty, we don't know which symbol it's for, 
+             // but EA usually sends an empty list for the symbol it's running on.
+             // This is a limitation of the current endpoint. 
+             // Ideally the payload should include the reporting symbol.
+        }
+
+        // Re-merge all positions for the global view
+        let all_positions: Vec<_> = s.positions_map.values().flatten().cloned().collect();
+        s.account_status.positions = all_positions;
+
+        // Debug: Log if positions have open_price
+        if let Some(pos) = payload.positions.first() {
+             tracing::debug!("Position Ticket: {} OpenPrice: {}", pos.ticket, pos.open_price);
+        }
     }
 
     // Persist to DB

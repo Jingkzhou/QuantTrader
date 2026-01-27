@@ -45,22 +45,30 @@ interface TradeHistory {
 }
 
 interface AppState {
-  market_data: MarketData;
+  market_data: Record<string, MarketData>;
   account_status: AccountStatus;
   recent_logs: LogEntry[];
+  active_symbols: string[];
 }
 
 const App = () => {
   const [data, setData] = useState<AppState | null>(null);
   const [history, setHistory] = useState<TradeHistory[]>([]);
   const [activeTab, setActiveTab] = useState<'positions' | 'history'>('positions');
+  const [selectedSymbol, setSelectedSymbol] = useState<string>('');
 
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         const response = await axios.get(`${API_BASE}/state`);
-        setData(response.data);
+        const newState = response.data;
+        setData(newState);
+
+        // Auto-select first symbol if none selected
+        if (!selectedSymbol && newState.active_symbols && newState.active_symbols.length > 0) {
+          setSelectedSymbol(newState.active_symbols[0]);
+        }
 
         // Fetch History
         try {
@@ -78,7 +86,7 @@ const App = () => {
 
     const interval = setInterval(fetchData, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [selectedSymbol]);
 
   if (!data) return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400">
@@ -88,6 +96,8 @@ const App = () => {
       </div>
     </div>
   );
+
+  const currentMarketData = selectedSymbol ? data.market_data[selectedSymbol] : null;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6 font-sans">
@@ -99,6 +109,23 @@ const App = () => {
           </div>
           <h1 className="text-2xl font-bold tracking-tight">QuantTrader <span className="text-cyan-500">专业版</span></h1>
         </div>
+
+        {/* Symbol Selector */}
+        <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 p-1 rounded-xl">
+          {(data.active_symbols || []).map(sym => (
+            <button
+              key={sym}
+              onClick={() => setSelectedSymbol(sym)}
+              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${selectedSymbol === sym ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-900/20' : 'text-slate-500 hover:text-slate-300'}`}
+            >
+              {sym}
+            </button>
+          ))}
+          {(!data.active_symbols || data.active_symbols.length === 0) && (
+            <span className="px-4 py-2 text-sm text-slate-600 italic">正在等待 EA 信号...</span>
+          )}
+        </div>
+
         <div className="flex items-center gap-6">
           <div className="flex flex-col items-end">
             <span className="text-xs text-slate-500 uppercase font-bold tracking-widest">引擎状态</span>
@@ -122,25 +149,30 @@ const App = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <MarketCard
               label="交易品种"
-              value={data.market_data.symbol || "---"}
+              value={selectedSymbol || "---"}
               icon={<Activity className="text-slate-400" />}
             />
             <MarketCard
               label="买入价 (Bid)"
-              value={data.market_data.bid?.toFixed(5) || "0.00000"}
+              value={currentMarketData?.bid?.toFixed(5) || "0.00000"}
               icon={<TrendingDown className="text-rose-500" />}
               subValue="实时报价"
             />
             <MarketCard
               label="卖出价 (Ask)"
-              value={data.market_data.ask?.toFixed(5) || "0.00000"}
+              value={currentMarketData?.ask?.toFixed(5) || "0.00000"}
               icon={<TrendingUp className="text-emerald-500" />}
               subValue="实时报价"
             />
           </div>
 
           {/* Price Evolution Chart */}
-          <ChartWidget symbol={data.market_data.symbol} currentData={data.market_data} history={history} />
+          <ChartWidget
+            symbol={selectedSymbol}
+            currentData={currentMarketData}
+            history={history.filter(h => h.symbol === selectedSymbol)}
+            positions={data.account_status.positions.filter(p => p.symbol === selectedSymbol)}
+          />
 
           {/* Tabbed Interface: Positions & History */}
           <div className="bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden mt-6 flex flex-col h-[500px]">
@@ -153,7 +185,7 @@ const App = () => {
                   : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/30'
                   }`}
               >
-                活跃持仓 <span className="ml-2 text-xs px-2 py-0.5 bg-slate-800 rounded text-slate-400">{data.account_status.positions.length}</span>
+                活跃持仓 <span className="ml-2 text-xs px-2 py-0.5 bg-slate-800 rounded text-slate-400">{(data.account_status?.positions || []).length}</span>
               </button>
               <button
                 onClick={() => setActiveTab('history')}
@@ -180,12 +212,12 @@ const App = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/50">
-                    {data.account_status.positions.map((pos) => (
+                    {(data.account_status?.positions || []).map((pos) => (
                       <tr key={pos.ticket} className="hover:bg-slate-800/30 transition-colors">
                         <td className="px-6 py-4 font-mono text-slate-400">{pos.ticket}</td>
                         <td className="px-6 py-4 font-bold">{pos.symbol}</td>
                         <td className="px-6 py-4">
-                          <span className={`px-2 py-0.5 rounded text-[10px] items-center gap-1 inline-flex font-bold ${pos.side === 'BUY' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
+                          <span className={`px-2 py-0.5 rounded text-[10px] items-center gap-1 inline-flex font-bold ${pos.side === 'BUY' ? 'bg-rose-500/10 text-rose-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
                             {pos.side}
                           </span>
                         </td>
@@ -195,7 +227,7 @@ const App = () => {
                         </td>
                       </tr>
                     ))}
-                    {data.account_status.positions.length === 0 && (
+                    {(data.account_status?.positions || []).length === 0 && (
                       <tr>
                         <td colSpan={5} className="px-6 py-12 text-center text-slate-600 italic">暂无活跃订单</td>
                       </tr>
@@ -222,7 +254,7 @@ const App = () => {
                         <td className="px-6 py-3 font-mono text-slate-400 text-xs">{t.ticket}</td>
                         <td className="px-6 py-3 font-bold text-sm">{t.symbol}</td>
                         <td className="px-6 py-3">
-                          <span className={`px-2 py-0.5 rounded text-[10px] items-center gap-1 inline-flex font-bold ${t.trade_type === 'BUY' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
+                          <span className={`px-2 py-0.5 rounded text-[10px] items-center gap-1 inline-flex font-bold ${t.trade_type === 'BUY' ? 'bg-rose-500/10 text-rose-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
                             {t.trade_type}
                           </span>
                         </td>

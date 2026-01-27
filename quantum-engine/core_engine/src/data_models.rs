@@ -18,6 +18,10 @@ pub struct Position {
     pub symbol: String,
     pub side: String,
     pub lots: f64,
+    #[serde(default)]
+    pub open_price: f64,
+    #[serde(default)]
+    pub open_time: i64,
     pub profit: f64,
 }
 

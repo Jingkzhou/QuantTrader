@@ -13,6 +13,7 @@ interface ChartWidgetProps {
     symbol: string;
     currentData: any;
     history?: any[];
+    positions?: any[];
 }
 
 const TIMEFRAMES = [
@@ -43,8 +44,9 @@ function calculateSMA(data: any[], period: number) {
     return smaData;
 }
 
-export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, history = [] }) => {
+export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, history = [], positions = [] }) => {
     const chartContainerRef = useRef<HTMLDivElement>(null);
+    const canvasRef = useRef<HTMLCanvasElement>(null);
     const chartRef = useRef<IChartApiType | null>(null);
     const seriesRef = useRef<ISeriesApiType<"Candlestick"> | null>(null);
     const maSeriesRef = useRef<ISeriesApiType<"Line"> | null>(null);
@@ -53,7 +55,8 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, h
 
 
     const [timeframe, setTimeframe] = useState(() => localStorage.getItem('chart_timeframe') || 'M1');
-    const [showHistory, setShowHistory] = useState(true);
+    const [showHistory, setShowHistory] = useState(false);
+    const [showPositions, setShowPositions] = useState(false);
     const [showMA, setShowMA] = useState(false);
 
     // Handle Timeframe Change
@@ -64,6 +67,74 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, h
         allCandlesRef.current = [];
     };
 
+    // Redraw Trade Lines
+    const drawTradeLines = () => {
+        const canvas = canvasRef.current;
+        const chart = chartRef.current;
+        const series = seriesRef.current;
+        if (!canvas || !chart || !series) return;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // 1. Draw Historical Trade Lines
+        if (showHistory && history && history.length > 0) {
+            const tfObj = TIMEFRAMES.find(t => t.value === timeframe);
+            const intervalSeconds = tfObj ? tfObj.seconds : 60;
+            const normalizeTime = (t: number) => {
+                return (Math.floor(t / intervalSeconds) * intervalSeconds) as Time;
+            };
+
+            ctx.setLineDash([4, 4]);
+            ctx.lineWidth = 1.5;
+
+            history.forEach(trade => {
+                if (!trade.open_time || !trade.close_time) return;
+
+                const nOpenTime = normalizeTime(trade.open_time);
+                const nCloseTime = normalizeTime(trade.close_time);
+
+                const xOpen = chart.timeScale().timeToCoordinate(nOpenTime);
+                const yOpen = series.priceToCoordinate(trade.open_price);
+                const xClose = chart.timeScale().timeToCoordinate(nCloseTime);
+                const yClose = series.priceToCoordinate(trade.close_price);
+
+                if (xOpen === null || yOpen === null || xClose === null || yClose === null) return;
+
+                ctx.beginPath();
+                ctx.strokeStyle = trade.profit >= 0 ? '#10b981' : '#64748b';
+                ctx.moveTo(xOpen, yOpen);
+                ctx.lineTo(xClose, yClose);
+                ctx.stroke();
+            });
+        }
+
+        // 2. Draw Active Position Lines (Horizontal)
+        if (showPositions && positions && positions.length > 0) {
+            ctx.setLineDash([2, 2]);
+            ctx.lineWidth = 1;
+
+            positions.forEach(pos => {
+                if (pos.symbol !== symbol || !pos.open_price) return;
+
+                const yPos = series.priceToCoordinate(pos.open_price);
+                if (yPos === null) return;
+
+                ctx.beginPath();
+                ctx.strokeStyle = pos.side === 'BUY' ? '#f43f5e' : '#10b981'; // Red / Green (Buy/Sell)
+                ctx.moveTo(0, yPos);
+                ctx.lineTo(canvas.width, yPos);
+                ctx.stroke();
+
+                // Draw label
+                ctx.font = '10px monospace';
+                ctx.fillStyle = pos.side === 'BUY' ? '#f43f5e' : '#10b981';
+                ctx.fillText(`${pos.side} #${pos.ticket} @ ${pos.open_price.toFixed(5)}`, 10, yPos - 5);
+            });
+        }
+    };
 
     // Initialize Chart
     useEffect(() => {
@@ -104,13 +175,41 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, h
         seriesRef.current = series;
         maSeriesRef.current = maSeries;
 
+        // Logic for canvas overlay sync
+        const updateCanvasSize = () => {
+            if (canvasRef.current && chartContainerRef.current) {
+                const chartElement = chartContainerRef.current.querySelector('.tv-lightweight-charts');
+                if (chartElement) {
+                    const rect = chartElement.getBoundingClientRect();
+                    canvasRef.current.width = rect.width;
+                    canvasRef.current.height = rect.height;
+                    // Position the canvas
+                    canvasRef.current.style.left = '0px';
+                    canvasRef.current.style.top = '0px';
+                }
+            }
+        };
+
         const handleResize = () => {
             if (chartContainerRef.current) {
                 chart.applyOptions({ width: chartContainerRef.current.clientWidth });
+                updateCanvasSize();
+                drawTradeLines();
             }
         };
 
         window.addEventListener('resize', handleResize);
+
+        // Initial size sync
+        setTimeout(() => {
+            updateCanvasSize();
+            drawTradeLines();
+        }, 100);
+
+        // Subscribe to chart events
+        chart.timeScale().subscribeVisibleTimeRangeChange(() => {
+            drawTradeLines();
+        });
 
         return () => {
             window.removeEventListener('resize', handleResize);
@@ -125,7 +224,7 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, h
         }
     }, [showMA]);
 
-    // Update Markers
+    // Update Markers & Lines
     useEffect(() => {
         if (!seriesRef.current) return;
 
@@ -133,6 +232,7 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, h
             if (seriesRef.current && (seriesRef.current as any).setMarkers) {
                 (seriesRef.current as any).setMarkers([]);
             }
+            drawTradeLines();
             return;
         }
 
@@ -151,7 +251,7 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, h
                 markers.push({
                     time: normalizeTime(trade.open_time),
                     position: trade.trade_type === 'BUY' ? 'belowBar' : 'aboveBar',
-                    color: trade.trade_type === 'BUY' ? '#22c55e' : '#ef4444', // Green / Red
+                    color: trade.trade_type === 'BUY' ? '#ef4444' : '#22c55e', // Red / Green (Chinese standard)
                     shape: trade.trade_type === 'BUY' ? 'arrowUp' : 'arrowDown',
                     text: `Open #${trade.ticket}`,
                     size: 1, // default is 1
@@ -180,7 +280,9 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, h
             console.warn("setMarkers is not defined on series", seriesRef.current);
         }
 
-    }, [history, showHistory]);
+        drawTradeLines();
+
+    }, [history, showHistory, timeframe, positions, showPositions]); // Added showPositions to deps
 
     // Fetch Data
     useEffect(() => {
@@ -209,6 +311,9 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, h
                         const sma = calculateSMA(data, 20); // SMA 20
                         maSeriesRef.current.setData(sma);
                     }
+
+                    // Redraw lines since data might have changed the Y scale
+                    drawTradeLines();
                 }
             } catch (err) {
                 console.error("Failed to fetch candle data", err);
@@ -306,6 +411,9 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, h
             });
         }
 
+        // Redraw lines (though price only changes current non-closed trade lines if we had those)
+        drawTradeLines();
+
     }, [currentData, timeframe]);
 
 
@@ -333,6 +441,17 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, h
                     >
                         {showHistory ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
                         History
+                    </button>
+
+                    {/* Positions Toggle */}
+                    <button
+                        onClick={() => setShowPositions(!showPositions)}
+                        className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider transition-colors ${showPositions ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'bg-slate-800 text-slate-500 border border-slate-700'
+                            }`}
+                        title="显示当前持仓线"
+                    >
+                        {showPositions ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                        POS
                     </button>
 
                     {/* MA Toggle */}
@@ -364,7 +483,13 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, h
             </div>
 
             {/* Chart Container */}
-            <div ref={chartContainerRef} className="w-full flex-1" />
+            <div className="w-full flex-1 relative">
+                <div ref={chartContainerRef} className="absolute inset-0 z-0" />
+                <canvas
+                    ref={canvasRef}
+                    className="absolute inset-0 z-10 pointer-events-none"
+                />
+            </div>
         </div>
     );
 };
