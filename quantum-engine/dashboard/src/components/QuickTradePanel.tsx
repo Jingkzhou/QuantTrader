@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { TrendingUp, TrendingDown, XCircle } from 'lucide-react';
+import { API_BASE } from '../config';
 
 interface QuickTradePanelProps {
     symbol: string;
 }
-
-const API_BASE = 'http://127.0.0.1:3001/api/v1';
 
 export const QuickTradePanel: React.FC<QuickTradePanelProps> = ({ symbol }) => {
     const [lots, setLots] = useState(0.01);
@@ -36,22 +35,31 @@ export const QuickTradePanel: React.FC<QuickTradePanelProps> = ({ symbol }) => {
     };
 
     return (
-        <div className={`absolute top-20 left-6 z-10 bg-slate-900/90 backdrop-blur-md border border-slate-700 rounded-xl shadow-2xl transition-all duration-300 overflow-hidden ${isExpanded ? 'w-56 p-4' : 'w-32 p-2'}`}>
+        <div className={`fixed bottom-20 right-4 md:absolute md:top-20 md:left-6 md:right-auto md:bottom-auto z-40 bg-slate-900/90 backdrop-blur-md border border-slate-700 rounded-xl shadow-2xl transition-all duration-300 overflow-hidden ${isExpanded ? 'w-56 p-4' : 'w-12 h-12 md:w-32 md:h-auto p-0 md:p-2 flex items-center justify-center'}`}>
             <div
-                className="flex items-center justify-between cursor-pointer"
+                className={`flex items-center cursor-pointer ${isExpanded ? 'justify-between' : 'justify-center w-full h-full'}`}
                 onClick={() => setIsExpanded(!isExpanded)}
             >
-                <div className="flex flex-col">
+                {isExpanded || <div className="hidden md:flex flex-col">
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                        {isExpanded ? '快速交易' : '交易面板'}
+                        交易面板
                     </span>
-                    {!isExpanded && <span className="text-[10px] text-slate-600 font-mono">{symbol}</span>}
-                </div>
-                <button className="text-slate-500 hover:text-slate-300 transition-colors">
+                    <span className="text-[10px] text-slate-600 font-mono">{symbol}</span>
+                </div>}
+
+                {isExpanded && (
+                    <div className="flex flex-col">
+                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                            快速交易
+                        </span>
+                    </div>
+                )}
+
+                <button className={`text-slate-500 hover:text-slate-300 transition-colors ${isExpanded ? '' : 'md:ml-auto'}`}>
                     {isExpanded ? (
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
                     ) : (
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        <TrendingUp className="w-6 h-6 md:w-4 md:h-4" />
                     )}
                 </button>
             </div>

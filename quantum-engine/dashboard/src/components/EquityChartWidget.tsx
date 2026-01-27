@@ -3,6 +3,7 @@ import { createChart, ColorType, AreaSeries } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts';
 import axios from 'axios';
 import { AreaChart } from 'lucide-react';
+import { API_BASE } from '../config';
 
 interface EquityChartWidgetProps {
     currentAccountStatus?: any;
@@ -10,7 +11,6 @@ interface EquityChartWidgetProps {
     accountId: number | null;
 }
 
-const API_BASE = 'http://127.0.0.1:3001/api/v1';
 
 export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAccountStatus, authToken, accountId }) => {
     const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -186,7 +186,7 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
     }, [currentAccountStatus, isLoaded]);
 
     return (
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 flex flex-col h-[280px]">
+        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 flex flex-col h-[250px] md:h-[280px]">
             <div className="flex justify-between items-center mb-4">
                 <h3 className="font-bold text-slate-300 flex items-center gap-2 uppercase tracking-wide text-sm">
                     <AreaChart className="w-4 h-4 text-emerald-500" />

@@ -69,7 +69,7 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ trades, sele
     );
 
     return (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <MetricCard
                 label={`胜率 (${stats.totalTrades}笔)`}
                 value={`${stats.winRate.toFixed(1)}%`}

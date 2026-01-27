@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { Lock, User, Activity } from 'lucide-react';
+import { API_BASE } from '../config';
+
 
 interface LoginPageProps {
     onLogin: (token: string, username: string, role: string) => void;
@@ -19,8 +21,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         setIsLoading(true);
 
         try {
-            const endpoint = isRegister ? '/api/v1/auth/register' : '/api/v1/auth/login';
-            const response = await axios.post(`http://127.0.0.1:3001${endpoint}`, {
+            const endpoint = isRegister ? '/auth/register' : '/auth/login';
+            const response = await axios.post(`${API_BASE}${endpoint}`, {
                 username,
                 password
             });

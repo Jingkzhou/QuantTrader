@@ -5,8 +5,8 @@ import type { IChartApi as IChartApiType, ISeriesApi as ISeriesApiType, SeriesMa
 import axios from 'axios';
 import { History, Eye, EyeOff, Activity } from 'lucide-react';
 import { QuickTradePanel } from './QuickTradePanel';
+import { API_BASE } from '../config';
 
-const API_BASE = 'http://127.0.0.1:3001/api/v1';
 
 
 interface ChartWidgetProps {
@@ -420,7 +420,7 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
 
 
     return (
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 h-[500px] flex flex-col relative group">
+        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 h-[400px] md:h-[500px] flex flex-col relative group">
             <QuickTradePanel symbol={symbol} />
             {/* Header & Toolbar */}
             <div className="flex justify-between items-center mb-4">

@@ -63,7 +63,7 @@ export const AccountStatistics: React.FC<AccountStatisticsProps> = ({
     return (
         <div className="space-y-4">
             {/* Dual Lane Panel */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* BUY Panel (Chinese Red Theme) */}
                 <div className="bg-rose-500/5 border border-rose-500/10 rounded-xl overflow-hidden shadow-lg shadow-rose-950/10">
                     <div className="bg-rose-500/10 px-4 py-2 border-b border-rose-500/10 flex justify-center items-center gap-2">
@@ -96,7 +96,7 @@ export const AccountStatistics: React.FC<AccountStatisticsProps> = ({
             </div>
 
             {/* Global Stats Footer Box */}
-            <div className="bg-amber-500/5 border border-amber-500/10 rounded-xl p-4 grid grid-cols-2 gap-x-8 gap-y-2">
+            <div className="bg-amber-500/5 border border-amber-500/10 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 md:gap-x-8 md:gap-y-2">
                 <div className="flex items-center justify-between">
                     <span className="text-amber-500 text-xs font-bold uppercase flex items-center gap-1">
                         <Shield className="w-3 h-3" /> 预付款比例:

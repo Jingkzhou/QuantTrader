@@ -10,8 +10,8 @@ import { EquityChartWidget } from './components/EquityChartWidget';
 import { AccountStatistics } from './components/AccountStatistics';
 
 import { LoginPage } from './components/LoginPage';
+import { API_BASE } from './config';
 
-const API_BASE = 'http://127.0.0.1:3001/api/v1';
 
 // Add Interfaces for Auth
 interface AuthState {
@@ -237,13 +237,13 @@ const App = () => {
         onNavigate={setActivePage}
       />
 
-      <main className="p-6 space-y-6">
+      <main className="p-4 md:p-6 space-y-4 md:space-y-6">
         {/* Toolbar: Accounts & Symbols */}
-        <div className="flex justify-between items-center bg-slate-900/50 p-4 rounded-2xl border border-slate-800 backdrop-blur-sm">
-          <div className="flex items-center gap-6">
+        <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 bg-slate-900/50 p-4 rounded-2xl border border-slate-800 backdrop-blur-sm">
+          <div className="flex flex-col md:flex-row items-center gap-4 md:gap-6">
 
             {/* Account Switcher */}
-            <div className="relative group w-64 z-20">
+            <div className="relative group w-full md:w-64 z-20">
               <div className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 flex items-center justify-between cursor-pointer hover:border-cyan-500/50 transition-all">
                 <div className="flex flex-col">
                   <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">当前账户</span>
@@ -278,15 +278,15 @@ const App = () => {
               </div>
             </div>
 
-            <div className="h-8 w-px bg-slate-800"></div>
+            <div className="hidden md:block h-8 w-px bg-slate-800"></div>
 
             {/* Symbol Selector */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0 w-full md:w-auto no-scrollbar">
               {(data?.active_symbols || []).map((sym: string) => (
                 <button
                   key={sym}
                   onClick={() => setSelectedSymbol(sym)}
-                  className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${selectedSymbol === sym ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-900/20' : 'text-slate-500 hover:text-slate-300 bg-slate-900 border border-slate-800'}`}
+                  className={`px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${selectedSymbol === sym ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-900/20' : 'text-slate-500 hover:text-slate-300 bg-slate-900 border border-slate-800'}`}
                 >
                   {sym}
                 </button>
@@ -297,7 +297,7 @@ const App = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-6">
+          <div className="flex items-center justify-between md:justify-end gap-6 border-t md:border-t-0 border-slate-800 pt-3 md:pt-0">
             <div className="flex flex-col items-end">
               <span className="text-xs text-slate-500 uppercase font-bold tracking-widest">引擎状态</span>
               <span className="flex items-center gap-2 text-emerald-500 text-sm font-mono">
@@ -375,15 +375,15 @@ const App = () => {
               {/* Tab Content */}
               <div className="flex-1 overflow-auto">
                 {activeTab === 'positions' ? (
-                  <table className="w-full text-left">
+                  <table className="w-full text-left min-w-[600px]">
                     <thead className="sticky top-0 z-10 bg-slate-900 shadow-sm">
                       <tr className="text-slate-500 text-xs uppercase font-bold">
-                        <th className="px-6 py-3">订单号</th>
-                        <th className="px-6 py-3">品种</th>
-                        <th className="px-6 py-3">方向</th>
-                        <th className="px-6 py-3">手数</th>
-                        <th className="px-6 py-3">MAE / MFE</th>
-                        <th className="px-6 py-3 text-right">利润</th>
+                        <th className="px-4 md:px-6 py-3">订单号</th>
+                        <th className="px-4 md:px-6 py-3">品种</th>
+                        <th className="px-4 md:px-6 py-3">方向</th>
+                        <th className="px-4 md:px-6 py-3">手数</th>
+                        <th className="px-4 md:px-6 py-3">MAE / MFE</th>
+                        <th className="px-4 md:px-6 py-3 text-right">利润</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/50">
@@ -391,45 +391,45 @@ const App = () => {
                         .filter((pos: any) => !selectedSymbol || pos.symbol === selectedSymbol)
                         .map((pos: any) => (
                           <tr key={pos.ticket} className="hover:bg-slate-800/30 transition-colors">
-                            <td className="px-6 py-4 font-mono text-slate-400">{pos.ticket}</td>
-                            <td className="px-6 py-4 font-bold">{pos.symbol}</td>
-                            <td className="px-6 py-4">
+                            <td className="px-4 md:px-6 py-4 font-mono text-slate-400">{pos.ticket}</td>
+                            <td className="px-4 md:px-6 py-4 font-bold">{pos.symbol}</td>
+                            <td className="px-4 md:px-6 py-4">
                               <span className={`px-2 py-0.5 rounded text-[10px] items-center gap-1 inline-flex font-bold ${pos.side === 'BUY' ? 'bg-rose-500/10 text-rose-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
                                 {pos.side}
                               </span>
                             </td>
-                            <td className="px-6 py-4 font-mono">{pos.lots.toFixed(2)}</td>
-                            <td className="px-6 py-4 font-mono text-xs">
+                            <td className="px-4 md:px-6 py-4 font-mono">{pos.lots.toFixed(2)}</td>
+                            <td className="px-4 md:px-6 py-4 font-mono text-xs">
                               <span className="text-rose-400">{pos.mae?.toFixed(2) || '0.00'}</span>
                               <span className="text-slate-600 mx-1">/</span>
                               <span className="text-emerald-400">{pos.mfe?.toFixed(2) || '0.00'}</span>
                             </td>
-                            <td className={`px-6 py-4 text-right font-mono font-bold ${pos.profit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                            <td className={`px-4 md:px-6 py-4 text-right font-mono font-bold ${pos.profit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
                               {pos.profit >= 0 ? '+' : ''}{pos.profit.toFixed(2)}
                             </td>
                           </tr>
                         ))}
                       {(data?.account_status?.positions || []).filter((pos: any) => !selectedSymbol || pos.symbol === selectedSymbol).length === 0 && (
                         <tr>
-                          <td colSpan={6} className="px-6 py-12 text-center text-slate-600 italic">该品种暂无活跃订单</td>
+                          <td colSpan={6} className="px-4 md:px-6 py-12 text-center text-slate-600 italic">该品种暂无活跃订单</td>
                         </tr>
                       )}
                     </tbody>
                   </table>
                 ) : (
-                  <table className="w-full text-left">
+                  <table className="w-full text-left min-w-[900px]">
                     <thead className="sticky top-0 z-10 bg-slate-900 shadow-sm">
                       <tr className="text-slate-500 text-xs uppercase font-bold">
-                        <th className="px-6 py-3">订单号</th>
-                        <th className="px-6 py-3">品种</th>
-                        <th className="px-6 py-3">方向</th>
-                        <th className="px-6 py-3">手数</th>
-                        <th className="px-6 py-3">开仓价</th>
-                        <th className="px-6 py-3">平仓价</th>
-                        <th className="px-6 py-3">MAE / MFE</th>
-                        <th className="px-6 py-3">开仓信号</th>
-                        <th className="px-6 py-3 text-right">利润</th>
-                        <th className="px-6 py-3 text-right">时间</th>
+                        <th className="px-4 md:px-6 py-3">订单号</th>
+                        <th className="px-4 md:px-6 py-3">品种</th>
+                        <th className="px-4 md:px-6 py-3">方向</th>
+                        <th className="px-4 md:px-6 py-3">手数</th>
+                        <th className="px-4 md:px-6 py-3">开仓价</th>
+                        <th className="px-4 md:px-6 py-3">平仓价</th>
+                        <th className="px-4 md:px-6 py-3">MAE / MFE</th>
+                        <th className="px-4 md:px-6 py-3">开仓信号</th>
+                        <th className="px-4 md:px-6 py-3 text-right">利润</th>
+                        <th className="px-4 md:px-6 py-3 text-right">时间</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/50">
@@ -437,22 +437,22 @@ const App = () => {
                         .filter((t: TradeHistory) => !selectedSymbol || t.symbol === selectedSymbol)
                         .map((t: TradeHistory) => (
                           <tr key={t.ticket} className="hover:bg-slate-800/30 transition-colors pointer-events-none">
-                            <td className="px-6 py-3 font-mono text-slate-400 text-xs">{t.ticket}</td>
-                            <td className="px-6 py-3 font-bold text-sm">{t.symbol}</td>
-                            <td className="px-6 py-3">
+                            <td className="px-4 md:px-6 py-3 font-mono text-slate-400 text-xs">{t.ticket}</td>
+                            <td className="px-4 md:px-6 py-3 font-bold text-sm">{t.symbol}</td>
+                            <td className="px-4 md:px-6 py-3">
                               <span className={`px-2 py-0.5 rounded text-[10px] items-center gap-1 inline-flex font-bold ${t.trade_type === 'BUY' ? 'bg-rose-500/10 text-rose-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
                                 {t.trade_type}
                               </span>
                             </td>
-                            <td className="px-6 py-3 font-mono text-xs">{t.lots.toFixed(2)}</td>
-                            <td className="px-6 py-3 font-mono text-slate-400 text-xs">{t.open_price.toFixed(5)}</td>
-                            <td className="px-6 py-3 font-mono text-slate-400 text-xs">{t.close_price.toFixed(5)}</td>
-                            <td className="px-6 py-3 font-mono text-[10px]">
+                            <td className="px-4 md:px-6 py-3 font-mono text-xs">{t.lots.toFixed(2)}</td>
+                            <td className="px-4 md:px-6 py-3 font-mono text-slate-400 text-xs">{t.open_price.toFixed(5)}</td>
+                            <td className="px-4 md:px-6 py-3 font-mono text-slate-400 text-xs">{t.close_price.toFixed(5)}</td>
+                            <td className="px-4 md:px-6 py-3 font-mono text-[10px]">
                               <span className="text-rose-400/70">{t.mae?.toFixed(2) || '0.00'}</span>
                               <span className="text-slate-600 mx-1">/</span>
                               <span className="text-emerald-400/70">{t.mfe?.toFixed(2) || '0.00'}</span>
                             </td>
-                            <td className="px-6 py-3 font-mono text-[10px] text-slate-500 whitespace-nowrap">
+                            <td className="px-4 md:px-6 py-3 font-mono text-[10px] text-slate-500 whitespace-nowrap">
                               {t.signal_context ? (() => {
                                 try {
                                   const ctx = JSON.parse(t.signal_context);
@@ -460,17 +460,17 @@ const App = () => {
                                 } catch (e) { return '---'; }
                               })() : '---'}
                             </td>
-                            <td className={`px-6 py-3 text-right font-mono font-bold text-sm ${t.profit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                            <td className={`px-4 md:px-6 py-3 text-right font-mono font-bold text-sm ${t.profit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
                               {t.profit >= 0 ? '+' : ''}{t.profit.toFixed(2)}
                             </td>
-                            <td className="px-6 py-3 text-right font-mono text-slate-500 text-left text-[10px]">
+                            <td className="px-4 md:px-6 py-3 text-right font-mono text-slate-500 text-left text-[10px]">
                               {new Date(t.close_time * 1000).toLocaleString()}
                             </td>
                           </tr>
                         ))}
                       {history.filter((t: TradeHistory) => !selectedSymbol || t.symbol === selectedSymbol).length === 0 && (
                         <tr>
-                          <td colSpan={10} className="px-6 py-12 text-center text-slate-600 italic">该品种暂无历史记录</td>
+                          <td colSpan={10} className="px-4 md:px-6 py-12 text-center text-slate-600 italic">该品种暂无历史记录</td>
                         </tr>
                       )}
                     </tbody>
