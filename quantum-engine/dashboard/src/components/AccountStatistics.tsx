@@ -1,5 +1,4 @@
 import React from 'react';
-import { TrendingUp, Shield, BarChart3, AlertOctagon } from 'lucide-react';
 
 interface Position {
     side: string;
@@ -64,71 +63,78 @@ export const AccountStatistics: React.FC<AccountStatisticsProps> = ({
     );
 
     return (
-        <div className="space-y-4">
-            {/* Dual Lane Panel */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* BUY Panel (Chinese Red Theme) */}
-                <div className="bg-rose-500/5 border border-rose-500/10 rounded-xl overflow-hidden shadow-lg shadow-rose-950/10">
-                    <div className="bg-rose-500/10 px-4 py-2 border-b border-rose-500/10 flex justify-center items-center gap-2">
-                        <span className="text-rose-500 font-black text-xs tracking-widest">
-                            ::: 多头 ({(!selectedSymbol || selectedSymbol === 'ALL') ? '全品种' : selectedSymbol}) :::
-                        </span>
-                    </div>
-                    <div className="p-4 space-y-1">
-                        <StatRow label="持仓单数" value={buyStats.count} />
-                        <StatRow label="持仓手数" value={buyStats.totalLots.toFixed(2)} />
-                        <StatRow label="持仓均价" value={buyStats.avgPrice.toFixed(5)} color="text-rose-400" />
-                        <StatRow label="保本价格" value={buyStats.bep.toFixed(5)} color="text-rose-400" />
-                        <StatRow label="隔夜利息" value={buyStats.totalSwap.toFixed(2)} />
-                        <StatRow label="当前浮盈" value={buyStats.totalProfit.toFixed(2)} color={buyStats.totalProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'} />
-                    </div>
+        /* 3-Column Layout: Long | Short | Account */
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* BUY Panel (Chinese Red Theme) */}
+            <div className="bg-rose-500/5 border border-rose-500/10 rounded-xl overflow-hidden shadow-lg shadow-rose-950/10">
+                <div className="bg-rose-500/10 px-4 py-2 border-b border-rose-500/10 flex justify-center items-center gap-2">
+                    <span className="text-rose-500 font-black text-xs tracking-widest">
+                        ::: 多头 ({(!selectedSymbol || selectedSymbol === 'ALL') ? '全品种' : selectedSymbol}) :::
+                    </span>
                 </div>
-
-                {/* SELL Panel (Chinese Green Theme) */}
-                <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-xl overflow-hidden shadow-lg shadow-emerald-950/10">
-                    <div className="bg-emerald-500/10 px-4 py-2 border-b border-emerald-500/10 flex justify-center items-center gap-2">
-                        <span className="text-emerald-500 font-black text-xs tracking-widest">
-                            ::: 空头 ({(!selectedSymbol || selectedSymbol === 'ALL') ? '全品种' : selectedSymbol}) :::
-                        </span>
-                    </div>
-                    <div className="p-4 space-y-1">
-                        <StatRow label="持仓单数" value={sellStats.count} />
-                        <StatRow label="持仓手数" value={sellStats.totalLots.toFixed(2)} />
-                        <StatRow label="持仓均价" value={sellStats.avgPrice.toFixed(5)} color="text-emerald-400" />
-                        <StatRow label="保本价格" value={sellStats.bep.toFixed(5)} color="text-emerald-400" />
-                        <StatRow label="隔夜利息" value={sellStats.totalSwap.toFixed(2)} />
-                        <StatRow label="当前浮盈" value={sellStats.totalProfit.toFixed(2)} color={sellStats.totalProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'} />
-                    </div>
+                <div className="p-4 space-y-1">
+                    <StatRow label="持仓单数" value={buyStats.count} />
+                    <StatRow label="持仓手数" value={buyStats.totalLots.toFixed(2)} />
+                    <StatRow label="持仓均价" value={buyStats.avgPrice.toFixed(5)} color="text-rose-400" />
+                    <StatRow label="保本价格" value={buyStats.bep.toFixed(5)} color="text-rose-400" />
+                    <StatRow label="隔夜利息" value={buyStats.totalSwap.toFixed(2)} />
+                    <StatRow label="当前浮盈" value={buyStats.totalProfit.toFixed(2)} color={buyStats.totalProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'} />
                 </div>
             </div>
 
-            {/* Global Stats Footer Box */}
-            <div className="bg-amber-500/5 border border-amber-500/10 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 md:gap-x-8 md:gap-y-2">
-                <div className="flex items-center justify-between">
-                    <span className="text-amber-500 text-xs font-bold uppercase flex items-center gap-1">
-                        <Shield className="w-3 h-3" /> 预付款比例:
-                    </span>
-                    <span className="text-amber-500 font-mono font-black text-lg">{marginLevel.toFixed(0)}%</span>
-                </div>
-                <div className="flex items-center justify-between">
-                    <span className="text-slate-400 text-xs font-bold uppercase flex items-center gap-1">
-                        <BarChart3 className="w-3 h-3" /> 当前回撤:
-                    </span>
-                    <span className={`font-mono font-bold ${currentDrawdown > 5 ? 'text-rose-500' : 'text-slate-300'}`}>
-                        {currentDrawdown.toFixed(2)}%
+            {/* SELL Panel (Chinese Green Theme) */}
+            <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-xl overflow-hidden shadow-lg shadow-emerald-950/10">
+                <div className="bg-emerald-500/10 px-4 py-2 border-b border-emerald-500/10 flex justify-center items-center gap-2">
+                    <span className="text-emerald-500 font-black text-xs tracking-widest">
+                        ::: 空头 ({(!selectedSymbol || selectedSymbol === 'ALL') ? '全品种' : selectedSymbol}) :::
                     </span>
                 </div>
-                <div className="flex items-center justify-between">
-                    <span className="text-emerald-500 text-xs font-bold uppercase flex items-center gap-1">
-                        <TrendingUp className="w-3 h-3" /> 今日盈亏:
-                    </span>
-                    <span className="text-emerald-500 font-mono font-black text-lg">${todayProfit.toFixed(2)}</span>
+                <div className="p-4 space-y-1">
+                    <StatRow label="持仓单数" value={sellStats.count} />
+                    <StatRow label="持仓手数" value={sellStats.totalLots.toFixed(2)} />
+                    <StatRow label="持仓均价" value={sellStats.avgPrice.toFixed(5)} color="text-emerald-400" />
+                    <StatRow label="保本价格" value={sellStats.bep.toFixed(5)} color="text-emerald-400" />
+                    <StatRow label="隔夜利息" value={sellStats.totalSwap.toFixed(2)} />
+                    <StatRow label="当前浮盈" value={sellStats.totalProfit.toFixed(2)} color={sellStats.totalProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'} />
                 </div>
-                <div className="flex items-center justify-between">
-                    <span className="text-amber-500 text-xs font-bold uppercase flex items-center gap-1">
-                        <AlertOctagon className="w-3 h-3" /> 最大回撤:
+            </div>
+
+            {/* Account Stats Panel (Vertical) */}
+            <div className="bg-amber-500/5 border border-amber-500/10 rounded-xl overflow-hidden shadow-lg shadow-amber-950/10">
+                <div className="bg-amber-500/10 px-4 py-2 border-b border-amber-500/10 flex justify-center items-center gap-2">
+                    <span className="text-amber-500 font-black text-xs tracking-widest">
+                        ::: 账户风控 :::
                     </span>
-                    <span className="text-amber-500 font-mono font-bold">{maxDrawdown.toFixed(2)}%</span>
+                </div>
+                <div className="p-4 space-y-1">
+                    <StatRow
+                        label="预付款比例"
+                        value={`${marginLevel.toFixed(0)}%`}
+                        color="text-amber-500"
+                    />
+                    <StatRow
+                        label="当前回撤"
+                        value={`${currentDrawdown.toFixed(2)}%`}
+                        color={currentDrawdown > 5 ? 'text-rose-500' : 'text-slate-300'}
+                    />
+                    <StatRow
+                        label="今日盈亏"
+                        value={`$${todayProfit.toFixed(2)}`}
+                        color={todayProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'}
+                    />
+                    <StatRow
+                        label="最大回撤"
+                        value={`${maxDrawdown.toFixed(2)}%`}
+                        color="text-amber-500"
+                    />
+                    <div className="mt-2 pt-2 border-t border-slate-800/30 flex justify-between">
+                        <span className="text-slate-500 text-xs">净值:</span>
+                        <span className="font-mono text-sm font-bold text-slate-200">${accountStatus?.equity?.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span className="text-slate-500 text-xs">余额:</span>
+                        <span className="font-mono text-sm font-bold text-slate-400">${accountStatus?.balance?.toFixed(2)}</span>
+                    </div>
                 </div>
             </div>
         </div>
