@@ -394,11 +394,20 @@ async fn handle_trade_history(State(state): State<Arc<CombinedState>>, Json(payl
     }
 }
 
+// Pagination Response Structure
+#[derive(serde::Serialize)]
+struct TradeHistoryResponse {
+    data: Vec<TradeHistory>,
+    total: i64,
+    page: i64,
+    limit: i64,
+}
+
 async fn get_trade_history(
     State(state): State<Arc<CombinedState>>,
     claims: Claims,
     axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
-) -> Result<Json<Vec<TradeHistory>>, (axum::http::StatusCode, String)> {
+) -> Result<Json<TradeHistoryResponse>, (axum::http::StatusCode, String)> {
     let mt4_account = params.get("mt4_account").and_then(|id| id.parse::<i64>().ok())
         .ok_or((axum::http::StatusCode::BAD_REQUEST, "Missing mt4_account".to_string()))?;
     let broker = params.get("broker").ok_or((axum::http::StatusCode::BAD_REQUEST, "Missing broker".to_string()))?;
@@ -413,6 +422,23 @@ async fn get_trade_history(
     .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
     .ok_or((axum::http::StatusCode::FORBIDDEN, "Access denied".to_string()))?;
 
+    // Parse pagination params
+    let page = params.get("page").and_then(|p| p.parse::<i64>().ok()).unwrap_or(1);
+    let limit = params.get("limit").and_then(|l| l.parse::<i64>().ok()).unwrap_or(100);
+    let offset = (page - 1) * limit;
+
+    // Get Total Count
+    let total_record = sqlx::query!(
+        "SELECT count(*) as count FROM trade_history WHERE mt4_account = $1 AND broker = $2",
+        mt4_account, broker
+    )
+    .fetch_one(&state.db)
+    .await
+    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let total = total_record.count.unwrap_or(0);
+
+    // Get Paginated Data
     let trades = sqlx::query_as!(
         TradeHistory,
         r#"
@@ -434,9 +460,10 @@ async fn get_trade_history(
             broker as "broker!" 
         FROM trade_history 
         WHERE mt4_account = $1 AND broker = $2
-        ORDER BY close_time DESC LIMIT 100
+        ORDER BY close_time DESC 
+        LIMIT $3 OFFSET $4
         "#,
-        mt4_account, broker
+        mt4_account, broker, limit, offset
     )
     .fetch_all(&state.db)
     .await
@@ -446,7 +473,12 @@ async fn get_trade_history(
     })
     .unwrap_or_default();
     
-    Ok(Json(trades))
+    Ok(Json(TradeHistoryResponse {
+        data: trades,
+        total,
+        page,
+        limit
+    }))
 }
 
 

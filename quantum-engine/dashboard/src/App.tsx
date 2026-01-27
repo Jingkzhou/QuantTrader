@@ -79,6 +79,7 @@ const App = () => {
   });
   const [data, setData] = useState<AppState | null>(null);
   const [history, setHistory] = useState<TradeHistory[]>([]);
+  const [pagination, setPagination] = useState({ page: 1, limit: 100, total: 0 });
   const [activePage, setActivePage] = useState('dashboard');
   const [drawdown, setDrawdown] = useState({ current: 0, max: 0 });
   const [activeTab, setActiveTab] = useState<'positions' | 'history'>('positions');
@@ -125,13 +126,22 @@ const App = () => {
       if (selectedAccount) {
         // Fetch History
         try {
-          const histRes = await axios.get(`${API_BASE}/trade_history?mt4_account=${selectedAccount.mt4_account}&broker=${encodeURIComponent(selectedAccount.broker)}`, {
+          const histRes = await axios.get(`${API_BASE}/trade_history?mt4_account=${selectedAccount.mt4_account}&broker=${encodeURIComponent(selectedAccount.broker)}&page=${pagination.page}&limit=${pagination.limit}`, {
             headers: { Authorization: `Bearer ${auth.token}` }
           });
-          setHistory(histRes.data);
+          // Handle new response format { data, total, page, limit }
+          // Or fallback if API not ready (transitional safety, though we know we updated backend)
+          if (histRes.data && Array.isArray(histRes.data.data)) {
+            setHistory(histRes.data.data);
+            setPagination(prev => ({ ...prev, total: histRes.data.total }));
+          } else if (Array.isArray(histRes.data)) {
+            // Fallback for old API if needed
+            setHistory(histRes.data);
+          }
         } catch (err) {
           console.error("Trade History fetch error:", err);
-          setHistory([]);
+          // Don't clear history on single error to prevent flickering? Or clear?
+          // setHistory([]); 
         }
 
         // Fetch Account Performance
@@ -170,10 +180,20 @@ const App = () => {
 
   useEffect(() => {
     if (!auth.token) return;
-    fetchData();
-    const interval = setInterval(fetchData, 1000);
+    fetchData(); // Initial fetch
+
+    // Polling interval - only fetch account status frequently
+    // const interval = setInterval(fetchData, 1000); 
+    // Optimization: Split polling. Account status fast, history slow or manual?
+    // For now, keep simple but be aware history is now paginated.
+    // Maybe we only poll account status (stateUrl) frequently, and history only on change?
+    // But existing code fetches everything. Let's keep it but maybe trade history doesn't need 1s polling if we are on page 2?
+    // Actually, if we are paging, polling overwrites the page content? 
+    // Yes, fetchData uses current pagination.page.
+
+    const interval = setInterval(fetchData, 2000);
     return () => clearInterval(interval);
-  }, [selectedSymbol, auth.token, selectedAccount]);
+  }, [selectedSymbol, auth.token, selectedAccount, pagination.page]); // Depend on page
 
   // Fetch Accounts List
   useEffect(() => {
@@ -376,7 +396,7 @@ const App = () => {
                     : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/30'
                     }`}
                 >
-                  交易明细 <span className="ml-2 text-xs px-2 py-0.5 bg-slate-800 rounded text-slate-400">{history.filter((t: TradeHistory) => !selectedSymbol || t.symbol === selectedSymbol).length}</span>
+                  交易明细 <span className="ml-2 text-xs px-2 py-0.5 bg-slate-800 rounded text-slate-400">{pagination.total}</span>
                 </button>
               </div>
 
@@ -485,6 +505,32 @@ const App = () => {
                   </table>
                 )}
               </div>
+
+              {/* Pagination Controls */}
+              {activeTab === 'history' && (
+                <div className="border-t border-slate-800 p-4 flex items-center justify-between bg-slate-900/30 shrink-0">
+                  <div className="text-xs text-slate-500 font-mono">
+                    显示 {(pagination.page - 1) * pagination.limit + 1} - {Math.min(pagination.page * pagination.limit, pagination.total)} 条 / 共 {pagination.total} 条
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      children="上一页"
+                      disabled={pagination.page <= 1}
+                      onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
+                      className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-bold text-slate-300 transition-colors"
+                    />
+                    <span className="px-3 py-1.5 text-xs font-mono text-slate-400 bg-slate-900 rounded border border-slate-800">
+                      第 {pagination.page} 页
+                    </span>
+                    <button
+                      children="下一页"
+                      disabled={pagination.page * pagination.limit >= pagination.total}
+                      onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+                      className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-bold text-slate-300 transition-colors"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

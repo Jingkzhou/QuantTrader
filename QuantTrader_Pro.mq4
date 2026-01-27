@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "QuantTrader Pro"
 #property link      ""
-#property version   "1.26"
+#property version   "1.27"
 #property strict
 
 //+------------------------------------------------------------------+
@@ -1484,6 +1484,12 @@ void ReportAccountStatus() {
    SendData("/api/v1/account", json);
 }
 
+string EscapeJSONString(string val) {
+   string res = val;
+   StringReplace(res, "\"", "\\\"");
+   return res;
+}
+
 void RemoteLog(string level, string message) {
    string json = StringFormat("{\"timestamp\":%lld,\"level\":\"%s\",\"message\":\"%s\",\"mt4_account\":%d,\"broker\":\"%s\"}", 
                               (long)TimeCurrent(), level, message, AccountNumber(), AccountCompany());
@@ -1511,7 +1517,7 @@ void ReportTradeHistory() {
             string typeStr = (OrderType() == OP_BUY) ? "BUY" : (OrderType() == OP_SELL) ? "SELL" : "OTHER";
             
             string entry = StringFormat(
-               "{\"ticket\":%d,\"symbol\":\"%s\",\"open_time\":%d,\"close_time\":%d,\"open_price\":%.5f,\"close_price\":%.5f,\"lots\":%.2f,\"profit\":%.2f,\"trade_type\":\"%s\",\"magic\":%d,\"mae\":%.2f,\"mfe\":%.2f,\"signal_context\":%s,\"mt4_account\":%d,\"broker\":\"%s\"}",
+               "{\"ticket\":%d,\"symbol\":\"%s\",\"open_time\":%d,\"close_time\":%d,\"open_price\":%.5f,\"close_price\":%.5f,\"lots\":%.2f,\"profit\":%.2f,\"trade_type\":\"%s\",\"magic\":%d,\"mae\":%.2f,\"mfe\":%.2f,\"signal_context\":\"%s\",\"mt4_account\":%d,\"broker\":\"%s\"}",
                OrderTicket(),
                OrderSymbol(),
                OrderOpenTime(),
@@ -1524,7 +1530,7 @@ void ReportTradeHistory() {
                OrderMagicNumber(),
                GlobalVariableGet(StringFormat("%sMAE_%d", GV_PREFIX, OrderTicket())),
                GlobalVariableGet(StringFormat("%sMFE_%d", GV_PREFIX, OrderTicket())),
-               GetSignalContextJSON(OrderTicket()),
+               EscapeJSONString(GetSignalContextJSON(OrderTicket())),
                AccountNumber(),
                AccountCompany()
             );
