@@ -186,13 +186,33 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
 
     }, [currentAccountStatus, isLoaded]);
 
+    const calculateRiskRatio = () => {
+        if (!currentAccountStatus || !currentAccountStatus.balance) return 0;
+        const bal = currentAccountStatus.balance;
+        const eq = currentAccountStatus.equity;
+        // Float = Balance - Equity. if Equity > Balance (profit), this is negative.
+        // We only care about Drawdown (Equity < Balance)
+        if (eq >= bal) return 0;
+        return ((bal - eq) / bal) * 100;
+    };
+
+    const riskRatio = calculateRiskRatio();
+    const isHighRisk = riskRatio > 30;
+
     return (
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 flex flex-col h-[250px] md:h-[280px]">
+        <div className={`bg-slate-900/50 border rounded-2xl p-6 flex flex-col h-[250px] md:h-[280px] transition-colors ${isHighRisk ? 'border-rose-500/50 shadow-[0_0_20px_rgba(244,63,94,0.1)]' : 'border-slate-800'}`}>
             <div className="flex justify-between items-center mb-4">
                 <h3 className="font-bold text-slate-300 flex items-center gap-2 uppercase tracking-wide text-sm">
-                    <AreaChart className="w-4 h-4 text-emerald-500" />
-                    资金曲线
+                    <AreaChart className={`w-4 h-4 ${isHighRisk ? 'text-rose-500 animate-pulse' : 'text-emerald-500'}`} />
+                    资金曲线 (Equity vs Balance)
                 </h3>
+                <div className="flex items-center gap-4">
+                    {riskRatio > 0 && (
+                        <div className={`text-xs font-mono font-bold px-2 py-1 rounded border ${isHighRisk ? 'bg-rose-500/10 text-rose-500 border-rose-500/50 animate-pulse' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>
+                            浮亏比: {riskRatio.toFixed(2)}%
+                        </div>
+                    )}
+                </div>
             </div>
             <div ref={chartContainerRef} className="w-full flex-1 pointer-events-none" />
         </div>

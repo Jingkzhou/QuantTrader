@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { LayoutDashboard, Settings, History, BarChart2, User, LogOut, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Settings, History, BarChart2, User, LogOut, Menu, X, ChevronDown, Check, Plus } from 'lucide-react';
 
 interface NavbarProps {
     currentUser: {
@@ -10,9 +10,24 @@ interface NavbarProps {
     onLogout: () => void;
     activePage: string;
     onNavigate: (page: string) => void;
+
+    // Account Props
+    accounts: any[];
+    selectedAccount: any;
+    setSelectedAccount: (account: any) => void;
+    onBindAccount: () => void;
+
+    // Symbol Props
+    activeSymbols: string[];
+    selectedSymbol: string;
+    setSelectedSymbol: (symbol: string) => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, activePage, onNavigate }) => {
+export const Navbar: React.FC<NavbarProps> = ({
+    currentUser, onLogout, activePage, onNavigate,
+    accounts, selectedAccount, setSelectedAccount, onBindAccount,
+    activeSymbols, selectedSymbol, setSelectedSymbol
+}) => {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
     const NavItem = ({ id, label, icon }: { id: string, label: string, icon: React.ReactNode }) => (
@@ -34,44 +49,112 @@ export const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, activePag
     return (
         <div className="border-b border-slate-800 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
             <div className="h-16 flex items-center justify-between px-4 md:px-6">
-                {/* Logo Section */}
-                <div className="flex items-center gap-3">
-                    <div className="bg-gradient-to-br from-cyan-600 to-blue-600 p-2 rounded-lg shadow-lg shadow-cyan-900/20">
-                        <LayoutDashboard className="text-white w-5 h-5" />
+
+                <div className="flex items-center gap-6">
+                    {/* Logo Section */}
+                    <div className="flex items-center gap-3">
+                        <div className="bg-gradient-to-br from-cyan-600 to-blue-600 p-2 rounded-lg shadow-lg shadow-cyan-900/20">
+                            <LayoutDashboard className="text-white w-5 h-5" />
+                        </div>
+                        <h1 className="text-lg font-bold tracking-tight text-white hidden md:block">
+                            QuantTrader <span className="text-cyan-500">PRO</span>
+                        </h1>
+                        <h1 className="text-lg font-bold tracking-tight text-white md:hidden">
+                            QT <span className="text-cyan-500">PRO</span>
+                        </h1>
                     </div>
-                    <h1 className="text-lg font-bold tracking-tight text-white hidden md:block">
-                        QuantTrader <span className="text-cyan-500">PRO</span>
-                    </h1>
-                    <h1 className="text-lg font-bold tracking-tight text-white md:hidden">
-                        QT <span className="text-cyan-500">PRO</span>
-                    </h1>
+
+                    <div className="hidden md:block h-6 w-px bg-slate-800"></div>
+
+                    {/* Desktop Selectors */}
+                    <div className="hidden md:flex items-center gap-4">
+                        {/* Account Switcher */}
+                        <div className="relative group z-20">
+                            <div className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 flex items-center gap-3 cursor-pointer hover:border-cyan-500/50 transition-all min-w-[200px]">
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">当前账户</span>
+                                    <span className="text-sm font-bold text-cyan-500 truncate max-w-[160px]">
+                                        {(() => {
+                                            const acc = accounts.find(a => a.mt4_account === selectedAccount?.mt4_account && a.broker === selectedAccount?.broker);
+                                            return acc?.account_name || (acc ? `MT4: ${acc.mt4_account}` : "未选择");
+                                        })()}
+                                    </span>
+                                </div>
+                                <ChevronDown size={14} className="text-slate-600 group-hover:text-cyan-500 transition-colors ml-auto" />
+                            </div>
+
+                            <div className="absolute top-full left-0 mt-2 w-64 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 overflow-hidden">
+                                {accounts.map(acc => {
+                                    const isActive = selectedAccount?.mt4_account === acc.mt4_account && selectedAccount?.broker === acc.broker;
+                                    return (
+                                        <div
+                                            key={`${acc.mt4_account}:${acc.broker}`}
+                                            onClick={() => setSelectedAccount({ mt4_account: acc.mt4_account, broker: acc.broker })}
+                                            className={`flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-slate-800 transition-colors ${isActive ? 'bg-cyan-600/10' : ''}`}
+                                        >
+                                            <div className="flex flex-col">
+                                                <span className="text-sm font-bold text-slate-200">{acc.account_name || `MT4: ${acc.mt4_account}`}</span>
+                                                <span className="text-[10px] text-slate-500 lowercase">{acc.broker}</span>
+                                            </div>
+                                            {isActive && <Check size={14} className="text-cyan-500" />}
+                                        </div>
+                                    );
+                                })}
+                                <div
+                                    onClick={onBindAccount}
+                                    className="px-4 py-3 border-t border-slate-800 flex items-center gap-2 text-cyan-500 hover:bg-cyan-500/10 cursor-pointer transition-colors"
+                                >
+                                    <Plus size={14} />
+                                    <span className="text-xs font-bold uppercase tracking-widest">绑定新账号</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Symbol Selector */}
+                        <div className="flex items-center gap-2 overflow-x-auto max-w-[400px] no-scrollbar">
+                            {(activeSymbols || []).map((sym: string) => (
+                                <button
+                                    key={sym}
+                                    onClick={() => setSelectedSymbol(sym)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${selectedSymbol === sym ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-900/20' : 'text-slate-500 hover:text-slate-300 bg-slate-900 border border-slate-800'}`}
+                                >
+                                    {sym}
+                                </button>
+                            ))}
+                            {(!activeSymbols || activeSymbols.length === 0) && (
+                                <span className="px-3 py-1.5 text-xs text-slate-600 italic">等待信号...</span>
+                            )}
+                        </div>
+                    </div>
                 </div>
 
-                {/* Desktop Navigation */}
-                <div className="hidden md:flex items-center gap-2 bg-slate-900/50 p-1 rounded-2xl border border-slate-800/50">
-                    <NavItem id="dashboard" label="交易监控" icon={<LayoutDashboard className="w-4 h-4" />} />
-                    <NavItem id="analysis" label="数据分析" icon={<BarChart2 className="w-4 h-4" />} />
-                    <NavItem id="history" label="历史记录" icon={<History className="w-4 h-4" />} />
-                    <NavItem id="settings" label="系统设置" icon={<Settings className="w-4 h-4" />} />
-                </div>
+                <div className="flex items-center gap-6">
+                    {/* Desktop Navigation */}
+                    <div className="hidden md:flex items-center gap-2 bg-slate-900/50 p-1 rounded-2xl border border-slate-800/50">
+                        <NavItem id="dashboard" label="交易监控" icon={<LayoutDashboard className="w-4 h-4" />} />
+                        <NavItem id="analysis" label="数据分析" icon={<BarChart2 className="w-4 h-4" />} />
+                        {/* <NavItem id="history" label="历史记录" icon={<History className="w-4 h-4" />} /> */}
+                        {/* <NavItem id="settings" label="系统设置" icon={<Settings className="w-4 h-4" />} /> */}
+                    </div>
 
-                {/* User Section (Desktop) */}
-                <div className="hidden md:flex items-center gap-4">
-                    <div className="flex items-center gap-3 pl-4 border-l border-slate-800">
-                        <div className="flex flex-col items-end">
-                            <span className="text-xs font-bold text-slate-200">{currentUser.username}</span>
-                            <span className="text-[10px] text-slate-500 uppercase tracking-wider">{currentUser.role}</span>
+                    {/* User Section (Desktop) */}
+                    <div className="hidden md:flex items-center gap-4">
+                        <div className="flex items-center gap-3 pl-4 border-l border-slate-800">
+                            <div className="flex flex-col items-end">
+                                <span className="text-xs font-bold text-slate-200">{currentUser.username}</span>
+                                <span className="text-[10px] text-slate-500 uppercase tracking-wider">{currentUser.role}</span>
+                            </div>
+                            <div className="w-9 h-9 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center">
+                                <User className="w-4 h-4 text-cyan-500" />
+                            </div>
+                            <button
+                                onClick={onLogout}
+                                className="p-2 rounded-lg text-slate-500 hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
+                                title="退出登录"
+                            >
+                                <LogOut className="w-4 h-4" />
+                            </button>
                         </div>
-                        <div className="w-9 h-9 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center">
-                            <User className="w-4 h-4 text-cyan-500" />
-                        </div>
-                        <button
-                            onClick={onLogout}
-                            className="p-2 rounded-lg text-slate-500 hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
-                            title="退出登录"
-                        >
-                            <LogOut className="w-4 h-4" />
-                        </button>
                     </div>
                 </div>
 
@@ -86,14 +169,54 @@ export const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, activePag
 
             {/* Mobile Menu Overlay */}
             {isMobileMenuOpen && (
-                <div className="md:hidden border-t border-slate-800 bg-slate-950 absolute w-full left-0 px-4 py-4 shadow-2xl space-y-4 animate-in slide-in-from-top-2">
+                <div className="md:hidden border-t border-slate-800 bg-slate-950 absolute w-full left-0 px-4 py-4 shadow-2xl space-y-4 animate-in slide-in-from-top-2 h-[calc(100vh-64px)] overflow-y-auto">
+                    {/* Mobile Selectors */}
+                    <div className="space-y-4 pb-4 border-b border-slate-800">
+                        {/* Mobile Account Switcher */}
+                        <div className="flex flex-col gap-2">
+                            <span className="text-xs text-slate-500 uppercase font-bold tracking-widest">当前账户</span>
+                            <div className="grid grid-cols-1 gap-2">
+                                {accounts.map(acc => (
+                                    <button
+                                        key={`${acc.mt4_account}:${acc.broker}`}
+                                        onClick={() => { setSelectedAccount({ mt4_account: acc.mt4_account, broker: acc.broker }); setIsMobileMenuOpen(false); }}
+                                        className={`px-4 py-3 rounded-xl text-left border ${selectedAccount?.mt4_account === acc.mt4_account && selectedAccount?.broker === acc.broker ? 'bg-cyan-600/10 border-cyan-500/50 text-cyan-400' : 'bg-slate-900 border-slate-800 text-slate-400'}`}
+                                    >
+                                        <div className="font-bold">{acc.account_name || `MT4: ${acc.mt4_account}`}</div>
+                                        <div className="text-[10px] opacity-70">{acc.broker}</div>
+                                    </button>
+                                ))}
+                                <button onClick={() => { onBindAccount(); setIsMobileMenuOpen(false); }} className="px-4 py-3 rounded-xl border border-dashed border-slate-700 text-slate-500 flex items-center justify-center gap-2">
+                                    <Plus size={14} /> 绑定新账号
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Mobile Symbol Selector */}
+                        <div className="flex flex-col gap-2">
+                            <span className="text-xs text-slate-500 uppercase font-bold tracking-widest">交易品种</span>
+                            <div className="flex flex-wrap gap-2">
+                                {(activeSymbols || []).map((sym: string) => (
+                                    <button
+                                        key={sym}
+                                        onClick={() => { setSelectedSymbol(sym); setIsMobileMenuOpen(false); }}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold ${selectedSymbol === sym ? 'bg-cyan-600 text-white' : 'bg-slate-900 text-slate-500 border border-slate-800'}`}
+                                    >
+                                        {sym}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
                     <div className="flex flex-col gap-2">
                         <NavItem id="dashboard" label="交易监控" icon={<LayoutDashboard className="w-4 h-4" />} />
                         <NavItem id="analysis" label="数据分析" icon={<BarChart2 className="w-4 h-4" />} />
                         <NavItem id="history" label="历史记录" icon={<History className="w-4 h-4" />} />
                         <NavItem id="settings" label="系统设置" icon={<Settings className="w-4 h-4" />} />
                     </div>
-                    <div className="border-t border-slate-800 pt-4 flex items-center justify-between">
+
+                    <div className="border-t border-slate-800 pt-4 flex items-center justify-between mt-auto">
                         <div className="flex items-center gap-3">
                             <div className="w-9 h-9 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center">
                                 <User className="w-4 h-4 text-cyan-500" />
@@ -116,3 +239,4 @@ export const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, activePag
         </div>
     );
 };
+
