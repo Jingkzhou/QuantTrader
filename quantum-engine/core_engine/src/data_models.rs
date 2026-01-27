@@ -27,6 +27,10 @@ pub struct Position {
     pub swap: f64,
     #[serde(default)]
     pub commission: f64,
+    #[serde(default)]
+    pub mae: f64,
+    #[serde(default)]
+    pub mfe: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -68,6 +72,12 @@ pub struct TradeHistory {
     pub profit: f64,
     pub trade_type: String, // "BUY" or "SELL"
     pub magic: i32,
+    #[serde(default)]
+    pub mae: f64,
+    #[serde(default)]
+    pub mfe: f64,
+    #[serde(default)]
+    pub signal_context: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, sqlx::FromRow)]

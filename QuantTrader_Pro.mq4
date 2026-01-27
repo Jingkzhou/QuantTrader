@@ -30,6 +30,12 @@ enum ENUM_OPEN_MODE
    OPEN_MODE_INSTANT   = 3     // C: 不延迟模式
   };
 
+enum ENUM_CONNECTION_MODE
+  {
+   MODE_ONLINE = 1,    // 连线模式 (开启回传)
+   MODE_OFFLINE = 2    // 离线模式 (不回传)
+  };
+
 //+------------------------------------------------------------------+
 //|                          订单统计结构体                          |
 //+------------------------------------------------------------------+
@@ -159,7 +165,8 @@ extern string OrderComment2             = "备注2";        // 订单备注2
 
 //--- 数据上报参数
 extern string RustServerUrl             = "http://www.trader.com"; // Rust 引擎地址
-extern bool   EnableDataLoop            = true;                    // 是否启用数据上报
+extern ENUM_CONNECTION_MODE ConnectionMode = MODE_ONLINE;          // 连接模式 (连线/离线)
+extern bool   EnableDataLoop            = true;                    // 是否启用数据循环
 extern int    AccountReportInterval     = 10;                      // 账户状态上报间隔(秒)
 
 //+------------------------------------------------------------------+
@@ -754,6 +761,7 @@ void ProcessBuyLogic(const OrderStats &stats)
       pendingPrice >= NormalizeDouble(stats.highestBuyPrice + GridStep * Point, Digits)) comment = OrderComment2;
 
    int ticket = OrderSend(Symbol(), OP_BUYSTOP, lots, pendingPrice, Slippage, 0, 0, comment, MagicNumber, 0, Blue);
+   if(ticket > 0) CaptureSignalContext(ticket);
    if(ticket > 0) g_LastBuyOrderTime = TimeCurrent();
   }
 
@@ -818,6 +826,7 @@ void ProcessSellLogic(const OrderStats &stats)
       pendingPrice <= NormalizeDouble(stats.lowestSellPrice - GridStep * Point, Digits)) comment = OrderComment2;
 
    int ticket = OrderSend(Symbol(), OP_SELLSTOP, lots, pendingPrice, Slippage, 0, 0, comment, MagicNumber, 0, Red);
+   if(ticket > 0) CaptureSignalContext(ticket);
    if(ticket > 0) g_LastSellOrderTime = TimeCurrent();
   }
 
@@ -1404,6 +1413,45 @@ void DrawButtonPanel() {
 //|                       数据采集与传输逻辑                         |
 //+------------------------------------------------------------------+
 
+//+------------------------------------------------------------------+
+//|                       高级数据分析采集辅助                       |
+//+------------------------------------------------------------------+
+#define GV_PREFIX "QT_"
+
+void UpdateOrderMFE_MAE(int ticket, double profit) {
+   string mfe_name = StringFormat("%sMFE_%d", GV_PREFIX, ticket);
+   string mae_name = StringFormat("%sMAE_%d", GV_PREFIX, ticket);
+   
+   double current_mfe = GlobalVariableGet(mfe_name);
+   double current_mae = GlobalVariableGet(mae_name);
+   
+   if(!GlobalVariableCheck(mfe_name) || profit > current_mfe) GlobalVariableSet(mfe_name, profit);
+   if(!GlobalVariableCheck(mae_name) || profit < current_mae) GlobalVariableSet(mae_name, profit);
+}
+
+void CaptureSignalContext(int ticket) {
+   if(ticket <= 0) return;
+   GlobalVariableSet(StringFormat("%sRSI_%d", GV_PREFIX, ticket), iRSI(Symbol(), 0, 14, PRICE_CLOSE, 0));
+   GlobalVariableSet(StringFormat("%sATR_%d", GV_PREFIX, ticket), iATR(Symbol(), 0, 14, 0));
+   GlobalVariableSet(StringFormat("%sSPD_%d", GV_PREFIX, ticket), MarketInfo(Symbol(), MODE_SPREAD));
+}
+
+string GetSignalContextJSON(int ticket) {
+   double rsi = GlobalVariableGet(StringFormat("%sRSI_%d", GV_PREFIX, ticket));
+   double atr = GlobalVariableGet(StringFormat("%sATR_%d", GV_PREFIX, ticket));
+   double spd = GlobalVariableGet(StringFormat("%sSPD_%d", GV_PREFIX, ticket));
+   
+   return StringFormat("{\"rsi\":%.2f,\"atr\":%.5f,\"spread\":%.1f}", rsi, atr, spd);
+}
+
+void CleanupOrderGVs(int ticket) {
+   GlobalVariableDel(StringFormat("%sMFE_%d", GV_PREFIX, ticket));
+   GlobalVariableDel(StringFormat("%sMAE_%d", GV_PREFIX, ticket));
+   GlobalVariableDel(StringFormat("%sRSI_%d", GV_PREFIX, ticket));
+   GlobalVariableDel(StringFormat("%sATR_%d", GV_PREFIX, ticket));
+   GlobalVariableDel(StringFormat("%sSPD_%d", GV_PREFIX, ticket));
+}
+
 void ReportMarketData() {
    string json = StringFormat("{\"symbol\":\"%s\",\"timestamp\":%lld,\"open\":%.5f,\"high\":%.5f,\"low\":%.5f,\"close\":%.5f,\"bid\":%.5f,\"ask\":%.5f}",
                               Symbol(), (long)TimeCurrent(), Open[0], High[0], Low[0], Close[0], Bid, Ask);
@@ -1418,9 +1466,13 @@ void ReportAccountStatus() {
    int total = OrdersTotal();
    for(int i=0; i<total; i++) {
       if(OrderSelect(i, SELECT_BY_POS) && OrderSymbol() == Symbol() && OrderMagicNumber() == MagicNumber && OrderType() <= OP_SELL) {
+         UpdateOrderMFE_MAE(OrderTicket(), OrderProfit());
+         
          string side = (OrderType() == OP_BUY) ? "BUY" : "SELL";
-         string item = StringFormat("{\"ticket\":%d,\"symbol\":\"%s\",\"side\":\"%s\",\"lots\":%.2f,\"open_price\":%.5f,\"open_time\":%d,\"profit\":%.2f,\"swap\":%.2f,\"commission\":%.2f}",
-                                    OrderTicket(), OrderSymbol(), side, OrderLots(), OrderOpenPrice(), (long)OrderOpenTime(), OrderProfit(), OrderSwap(), OrderCommission());
+         string item = StringFormat("{\"ticket\":%d,\"symbol\":\"%s\",\"side\":\"%s\",\"lots\":%.2f,\"open_price\":%.5f,\"open_time\":%d,\"profit\":%.2f,\"swap\":%.2f,\"commission\":%.2f,\"mae\":%.2f,\"mfe\":%.2f}",
+                                    OrderTicket(), OrderSymbol(), side, OrderLots(), OrderOpenPrice(), (long)OrderOpenTime(), OrderProfit(), OrderSwap(), OrderCommission(),
+                                    GlobalVariableGet(StringFormat("%sMAE_%d", GV_PREFIX, OrderTicket())),
+                                    GlobalVariableGet(StringFormat("%sMFE_%d", GV_PREFIX, OrderTicket())));
          posJson += (posJson == "" ? "" : ",") + item;
       }
    }
@@ -1458,7 +1510,7 @@ void ReportTradeHistory() {
             string typeStr = (OrderType() == OP_BUY) ? "BUY" : (OrderType() == OP_SELL) ? "SELL" : "OTHER";
             
             string entry = StringFormat(
-               "{\"ticket\":%d,\"symbol\":\"%s\",\"open_time\":%d,\"close_time\":%d,\"open_price\":%.5f,\"close_price\":%.5f,\"lots\":%.2f,\"profit\":%.2f,\"trade_type\":\"%s\",\"magic\":%d}",
+               "{\"ticket\":%d,\"symbol\":\"%s\",\"open_time\":%d,\"close_time\":%d,\"open_price\":%.5f,\"close_price\":%.5f,\"lots\":%.2f,\"profit\":%.2f,\"trade_type\":\"%s\",\"magic\":%d,\"mae\":%.2f,\"mfe\":%.2f,\"signal_context\":%s}",
                OrderTicket(),
                OrderSymbol(),
                OrderOpenTime(),
@@ -1468,8 +1520,13 @@ void ReportTradeHistory() {
                OrderLots(),
                OrderProfit() + OrderSwap() + OrderCommission(),
                typeStr,
-               OrderMagicNumber()
+               OrderMagicNumber(),
+               GlobalVariableGet(StringFormat("%sMAE_%d", GV_PREFIX, OrderTicket())),
+               GlobalVariableGet(StringFormat("%sMFE_%d", GV_PREFIX, OrderTicket())),
+               GetSignalContextJSON(OrderTicket())
             );
+            
+            CleanupOrderGVs(OrderTicket());
             
             json_body += entry;
             hasData = true;
@@ -1487,6 +1544,8 @@ void ReportTradeHistory() {
 }
 
 int SendData(string path, string json_body) {
+   if(ConnectionMode == MODE_OFFLINE) return 200; // 离线模式不发送
+   
    char data[], result[];
    string headers = "Content-Type: application/json\r\n";
    StringToCharArray(json_body, data, 0, WHOLE_ARRAY, CP_UTF8);
@@ -1505,6 +1564,8 @@ int SendData(string path, string json_body) {
 
 // 简易命令轮询 (Simple Command Polling)
 void CheckCommands() {
+   if(ConnectionMode == MODE_OFFLINE) return; // 离线模式不轮询
+   
    char data[], result[];
    string headers = "Content-Type: application/json\r\n";
    // Use GET to retrieve pending commands
@@ -1534,13 +1595,19 @@ void CheckCommands() {
 
          if(StringFind(json, "OPEN_BUY") >= 0) {
             int ticket = OrderSend(Symbol(), OP_BUY, cmdLots, Ask, Slippage, 0, 0, "WebCmd", MagicNumber, 0, Blue);
-            if(ticket > 0) Print("Remote Command: OPEN BUY ", cmdLots, " lots Executed");
+            if(ticket > 0) {
+               Print("Remote Command: OPEN BUY ", cmdLots, " lots Executed");
+               CaptureSignalContext(ticket);
+            }
             else Print("Remote Command: OPEN BUY Failed: ", GetLastError());
          }
          
          if(StringFind(json, "OPEN_SELL") >= 0) {
             int ticket = OrderSend(Symbol(), OP_SELL, cmdLots, Bid, Slippage, 0, 0, "WebCmd", MagicNumber, 0, Red);
-            if(ticket > 0) Print("Remote Command: OPEN SELL ", cmdLots, " lots Executed");
+            if(ticket > 0) {
+               Print("Remote Command: OPEN SELL ", cmdLots, " lots Executed");
+               CaptureSignalContext(ticket);
+            }
             else Print("Remote Command: OPEN SELL Failed: ", GetLastError());
          }
       }

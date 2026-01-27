@@ -43,6 +43,9 @@ interface TradeHistory {
   lots: number;
   profit: number;
   trade_type: string;
+  mae?: number;
+  mfe?: number;
+  signal_context?: string;
 }
 
 interface AppState {
@@ -236,6 +239,7 @@ const App = () => {
                       <th className="px-6 py-3">品种</th>
                       <th className="px-6 py-3">方向</th>
                       <th className="px-6 py-3">手数</th>
+                      <th className="px-6 py-3">MAE / MFE</th>
                       <th className="px-6 py-3 text-right">利润</th>
                     </tr>
                   </thead>
@@ -252,6 +256,11 @@ const App = () => {
                             </span>
                           </td>
                           <td className="px-6 py-4 font-mono">{pos.lots.toFixed(2)}</td>
+                          <td className="px-6 py-4 font-mono text-xs">
+                            <span className="text-rose-400">{pos.mae?.toFixed(2) || '0.00'}</span>
+                            <span className="text-slate-600 mx-1">/</span>
+                            <span className="text-emerald-400">{pos.mfe?.toFixed(2) || '0.00'}</span>
+                          </td>
                           <td className={`px-6 py-4 text-right font-mono font-bold ${pos.profit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
                             {pos.profit >= 0 ? '+' : ''}{pos.profit.toFixed(2)}
                           </td>
@@ -274,6 +283,8 @@ const App = () => {
                       <th className="px-6 py-3">手数</th>
                       <th className="px-6 py-3">开仓价</th>
                       <th className="px-6 py-3">平仓价</th>
+                      <th className="px-6 py-3">MAE / MFE</th>
+                      <th className="px-6 py-3">开仓信号</th>
                       <th className="px-6 py-3 text-right">利润</th>
                       <th className="px-6 py-3 text-right">时间</th>
                     </tr>
@@ -293,6 +304,19 @@ const App = () => {
                           <td className="px-6 py-3 font-mono text-xs">{t.lots.toFixed(2)}</td>
                           <td className="px-6 py-3 font-mono text-slate-400 text-xs">{t.open_price.toFixed(5)}</td>
                           <td className="px-6 py-3 font-mono text-slate-400 text-xs">{t.close_price.toFixed(5)}</td>
+                          <td className="px-6 py-3 font-mono text-[10px]">
+                            <span className="text-rose-400/70">{t.mae?.toFixed(2) || '0.00'}</span>
+                            <span className="text-slate-600 mx-1">/</span>
+                            <span className="text-emerald-400/70">{t.mfe?.toFixed(2) || '0.00'}</span>
+                          </td>
+                          <td className="px-6 py-3 font-mono text-[10px] text-slate-500 whitespace-nowrap">
+                            {t.signal_context ? (() => {
+                              try {
+                                const ctx = JSON.parse(t.signal_context);
+                                return `R:${ctx.rsi?.toFixed(1)} A:${ctx.atr?.toFixed(4)} S:${ctx.spread}`;
+                              } catch (e) { return '---'; }
+                            })() : '---'}
+                          </td>
                           <td className={`px-6 py-3 text-right font-mono font-bold text-sm ${t.profit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
                             {t.profit >= 0 ? '+' : ''}{t.profit.toFixed(2)}
                           </td>

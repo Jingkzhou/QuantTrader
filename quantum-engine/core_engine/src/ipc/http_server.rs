@@ -207,9 +207,12 @@ async fn handle_trade_history(State(state): State<Arc<CombinedState>>, Json(payl
 
     for trade in payload {
         let res = sqlx::query(
-            "INSERT INTO trade_history (ticket, symbol, open_time, close_time, open_price, close_price, lots, profit, trade_type, magic) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-             ON CONFLICT (ticket) DO NOTHING"
+            "INSERT INTO trade_history (ticket, symbol, open_time, close_time, open_price, close_price, lots, profit, trade_type, magic, mae, mfe, signal_context) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+             ON CONFLICT (ticket) DO UPDATE SET 
+                mae = CASE WHEN trade_history.mfe < $12 THEN $11 ELSE trade_history.mae END,
+                mfe = CASE WHEN trade_history.mfe < $12 THEN $12 ELSE trade_history.mfe END,
+                signal_context = COALESCE(trade_history.signal_context, $13)"
         )
         .bind(trade.ticket)
         .bind(&trade.symbol)
@@ -221,6 +224,9 @@ async fn handle_trade_history(State(state): State<Arc<CombinedState>>, Json(payl
         .bind(trade.profit)
         .bind(&trade.trade_type)
         .bind(trade.magic)
+        .bind(trade.mae)
+        .bind(trade.mfe)
+        .bind(&trade.signal_context)
         .execute(&state.db)
         .await;
 
@@ -231,7 +237,7 @@ async fn handle_trade_history(State(state): State<Arc<CombinedState>>, Json(payl
 }
 
 async fn get_trade_history(State(state): State<Arc<CombinedState>>) -> Json<Vec<TradeHistory>> {
-    let trades = sqlx::query_as::<_, TradeHistory>("SELECT * FROM trade_history ORDER BY close_time DESC LIMIT 50")
+    let trades = sqlx::query_as::<_, TradeHistory>("SELECT * FROM trade_history ORDER BY close_time DESC LIMIT 100")
         .fetch_all(&state.db)
         .await
         .unwrap_or_default();
