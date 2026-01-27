@@ -42,6 +42,7 @@ pub async fn start_server(db_pool: PgPool) {
         .route("/api/v1/account", post(handle_account_status))
         .route("/api/v1/logs", post(handle_logs))
         .route("/api/v1/history", post(handle_trade_history))
+        .route("/api/v1/candles", get(get_candles))
         .route("/api/v1/trades", get(get_trade_history))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
@@ -168,4 +169,68 @@ async fn get_trade_history(State(state): State<Arc<CombinedState>>) -> Json<Vec<
         .unwrap_or_default();
     
     Json(trades)
+}
+
+use crate::data_models::Candle;
+
+async fn get_candles(
+    State(state): State<Arc<CombinedState>>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> Json<Vec<Candle>> {
+    let timeframe = params.get("timeframe").map(|s| s.as_str()).unwrap_or("M1");
+    let symbol = params.get("symbol").unwrap_or(&"".to_string()).clone();
+
+    // Mapping timeframe to SQL interval bucket
+    let bucket_interval = match timeframe {
+        "M1" => 60,
+        "M5" => 300,
+        "M15" => 900,
+        "M30" => 1800,
+        "H1" => 3600,
+        "H4" => 14400,
+        "D1" => 86400,
+        "W1" => 604800,
+        "MN" => 2592000, 
+        _ => 60,
+    };
+
+    // SQL Aggregation: simple time_bucket approach
+    // We group by time bucket and use:
+    // Open = first(bid, timestamp)
+    // High = max(bid)
+    // Low = min(bid)
+    // Close = last(bid, timestamp)
+    // Note: This relies on sufficient tick density. 
+    // Ideally we usage timescaledb functions like time_bucket. Since we are using standard Postgres via sqlx for this MVP (assumed):
+    // We manually floor the timestamp.
+    
+    // Safety limit to avoid fetching too much data
+    let limit = 1000;
+
+    let query = format!(
+        "SELECT 
+            (timestamp / {0}) * {0} as time,
+            (array_agg(bid ORDER BY timestamp ASC))[1] as open,
+            MAX(bid) as high,
+            MIN(bid) as low,
+            (array_agg(bid ORDER BY timestamp DESC))[1] as close
+         FROM market_data 
+         WHERE symbol = $1
+         GROUP BY 1
+         ORDER BY 1 DESC
+         LIMIT {1}",
+        bucket_interval, limit
+    );
+
+    let candles = sqlx::query_as::<_, Candle>(&query)
+        .bind(symbol)
+        .fetch_all(&state.db)
+        .await
+        .unwrap_or_default();
+    
+    // Results are DESC (newest first), reverse for frontend usually
+    let mut asc_candles = candles;
+    asc_candles.reverse();
+    
+    Json(asc_candles)
 }

@@ -51,3 +51,12 @@ pub struct TradeHistory {
     pub trade_type: String, // "BUY" or "SELL"
     pub magic: i32,
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default, sqlx::FromRow)]
+pub struct Candle {
+    pub time: i64,
+    pub open: f64,
+    pub high: f64,
+    pub low: f64,
+    pub close: f64,
+}

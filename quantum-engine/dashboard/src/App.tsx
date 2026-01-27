@@ -1,12 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
-} from 'recharts';
-import {
-  TrendingUp, TrendingDown, Wallet, Activity, Terminal, LayoutDashboard,
-  ShieldAlert, CheckCircle2, History
+  TrendingUp, TrendingDown, Wallet, Activity, Terminal, LayoutDashboard
 } from 'lucide-react';
+import { ChartWidget } from './components/ChartWidget';
 
 const API_BASE = 'http://127.0.0.1:3001/api/v1';
 
@@ -54,7 +51,7 @@ const App = () => {
   const [data, setData] = useState<AppState | null>(null);
   const [history, setHistory] = useState<TradeHistory[]>([]);
   const [activeTab, setActiveTab] = useState<'positions' | 'history'>('positions');
-  const [priceHistory, setPriceHistory] = useState<any[]>([]);
+
 
   useEffect(() => {
     const fetchData = async () => {
@@ -70,16 +67,7 @@ const App = () => {
           console.error("History fetch error", e);
         }
 
-        // Update price history chart
-        if (response.data.market_data.symbol) {
-          setPriceHistory(prev => {
-            const newHistory = [...prev, {
-              time: new Date().toLocaleTimeString(),
-              price: response.data.market_data.bid
-            }];
-            return newHistory.slice(-20); // Keep last 20 ticks
-          });
-        }
+
       } catch (err) {
         console.error("Fetch error:", err);
       }
@@ -146,33 +134,7 @@ const App = () => {
           </div>
 
           {/* Price Evolution Chart */}
-          <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 h-[400px]">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="font-bold text-slate-300 flex items-center gap-2 uppercase tracking-wide text-sm">
-                <History className="w-4 h-4 text-cyan-500" /> 价格走势
-              </h3>
-              <span className="text-xs font-mono text-slate-500 italic">最近 20 个 Tick</span>
-            </div>
-            <ResponsiveContainer width="100%" height="85%">
-              <LineChart data={priceHistory}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                <XAxis dataKey="time" hide />
-                <YAxis domain={['auto', 'auto']} stroke="#475569" fontSize={10} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px' }}
-                  itemStyle={{ color: '#06b6d4' }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="price"
-                  stroke="#06b6d4"
-                  strokeWidth={2}
-                  dot={false}
-                  animationDuration={300}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+          <ChartWidget symbol={data.market_data.symbol} />
 
           {/* Tabbed Interface: Positions & History */}
           <div className="bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden mt-6 flex flex-col h-[500px]">
@@ -181,8 +143,8 @@ const App = () => {
               <button
                 onClick={() => setActiveTab('positions')}
                 className={`px-6 py-4 text-sm font-bold uppercase tracking-wide transition-colors ${activeTab === 'positions'
-                    ? 'text-cyan-500 border-b-2 border-cyan-500 bg-slate-800/50'
-                    : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/30'
+                  ? 'text-cyan-500 border-b-2 border-cyan-500 bg-slate-800/50'
+                  : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/30'
                   }`}
               >
                 活跃持仓 <span className="ml-2 text-xs px-2 py-0.5 bg-slate-800 rounded text-slate-400">{data.account_status.positions.length}</span>
@@ -190,8 +152,8 @@ const App = () => {
               <button
                 onClick={() => setActiveTab('history')}
                 className={`px-6 py-4 text-sm font-bold uppercase tracking-wide transition-colors ${activeTab === 'history'
-                    ? 'text-cyan-500 border-b-2 border-cyan-500 bg-slate-800/50'
-                    : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/30'
+                  ? 'text-cyan-500 border-b-2 border-cyan-500 bg-slate-800/50'
+                  : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/30'
                   }`}
               >
                 交易明细 <span className="ml-2 text-xs px-2 py-0.5 bg-slate-800 rounded text-slate-400">{history.length}</span>
