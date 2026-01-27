@@ -24,9 +24,12 @@ export const AccountStatistics: React.FC<AccountStatisticsProps> = ({
     positions, accountStatus, history, selectedSymbol, currentDrawdown, maxDrawdown
 }) => {
 
-    // Calculate per-side stats for selected symbol
+    // Calculate per-side stats
     const calculateSideStats = (side: string) => {
-        const sidePos = positions.filter(p => p.side === side && p.symbol === selectedSymbol);
+        const sidePos = positions.filter(p =>
+            p.side === side &&
+            (!selectedSymbol || selectedSymbol === 'ALL' || p.symbol === selectedSymbol)
+        );
         const count = sidePos.length;
         const totalLots = sidePos.reduce((sum, p) => sum + p.lots, 0);
         const weightedPriceSum = sidePos.reduce((sum, p) => sum + (p.open_price * p.lots), 0);
@@ -36,7 +39,7 @@ export const AccountStatistics: React.FC<AccountStatisticsProps> = ({
 
         const avgPrice = totalLots > 0 ? weightedPriceSum / totalLots : 0;
 
-        // BEP calculation (simplified: adjusted price based on swap/comm)
+        // BEP calculation (simplified)
         const bep = avgPrice;
 
         return { count, totalLots, avgPrice, totalProfit, totalSwap, totalComm, bep };
@@ -67,7 +70,9 @@ export const AccountStatistics: React.FC<AccountStatisticsProps> = ({
                 {/* BUY Panel (Chinese Red Theme) */}
                 <div className="bg-rose-500/5 border border-rose-500/10 rounded-xl overflow-hidden shadow-lg shadow-rose-950/10">
                     <div className="bg-rose-500/10 px-4 py-2 border-b border-rose-500/10 flex justify-center items-center gap-2">
-                        <span className="text-rose-500 font-black text-xs tracking-widest">::: 多头 (BUY) :::</span>
+                        <span className="text-rose-500 font-black text-xs tracking-widest">
+                            ::: 多头 ({(!selectedSymbol || selectedSymbol === 'ALL') ? '全品种' : selectedSymbol}) :::
+                        </span>
                     </div>
                     <div className="p-4 space-y-1">
                         <StatRow label="持仓单数" value={buyStats.count} />
@@ -82,7 +87,9 @@ export const AccountStatistics: React.FC<AccountStatisticsProps> = ({
                 {/* SELL Panel (Chinese Green Theme) */}
                 <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-xl overflow-hidden shadow-lg shadow-emerald-950/10">
                     <div className="bg-emerald-500/10 px-4 py-2 border-b border-emerald-500/10 flex justify-center items-center gap-2">
-                        <span className="text-emerald-500 font-black text-xs tracking-widest">::: 空头 (SELL) :::</span>
+                        <span className="text-emerald-500 font-black text-xs tracking-widest">
+                            ::: 空头 ({(!selectedSymbol || selectedSymbol === 'ALL') ? '全品种' : selectedSymbol}) :::
+                        </span>
                     </div>
                     <div className="p-4 space-y-1">
                         <StatRow label="持仓单数" value={sellStats.count} />

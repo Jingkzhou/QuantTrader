@@ -8,11 +8,12 @@ import { API_BASE } from '../config';
 interface EquityChartWidgetProps {
     currentAccountStatus?: any;
     authToken: string | null;
-    accountId: number | null;
+    mt4Account: number | null;
+    broker: string | null;
 }
 
 
-export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAccountStatus, authToken, accountId }) => {
+export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAccountStatus, authToken, mt4Account, broker }) => {
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
     const balanceSeriesRef = useRef<ISeriesApi<"Area"> | null>(null);
@@ -67,14 +68,14 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
 
         // Fetch History
         const fetchHistory = async () => {
-            if (!authToken || !accountId) {
+            if (!authToken || !mt4Account || !broker) {
                 // Clear chart if no account
                 balanceSeries.setData([]);
                 equitySeries.setData([]);
                 return;
             }
             try {
-                const res = await axios.get(`${API_BASE}/account/history?account_id=${accountId}&limit=500`, {
+                const res = await axios.get(`${API_BASE}/account/history?mt4_account=${mt4Account}&broker=${encodeURIComponent(broker)}&limit=500`, {
                     headers: { Authorization: `Bearer ${authToken}` }
                 });
                 const history = res.data;
@@ -143,7 +144,7 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
             window.removeEventListener('resize', handleResize);
             chart.remove();
         };
-    }, [authToken, accountId]);
+    }, [authToken, mt4Account, broker]);
 
     // Real-time Updates
     useEffect(() => {

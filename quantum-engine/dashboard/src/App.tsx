@@ -59,9 +59,8 @@ interface TradeHistory {
 }
 
 interface AccountRecord {
-  id: number;
-  mt4_account_number: number;
-  broker_name: string;
+  mt4_account: number;
+  broker: string;
   account_name: string | null;
 }
 
@@ -87,7 +86,7 @@ const App = () => {
 
   // Account Management States
   const [accounts, setAccounts] = useState<AccountRecord[]>([]);
-  const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null);
+  const [selectedAccount, setSelectedAccount] = useState<{ mt4_account: number, broker: string } | null>(null);
   const [isBindModalOpen, setIsBindModalOpen] = useState(false);
   const [newAccount, setNewAccount] = useState({ mt4_account: '', broker: '', name: '' });
 
@@ -106,8 +105,8 @@ const App = () => {
   const fetchData = async () => {
     if (!auth.token) return;
     try {
-      const stateUrl = selectedAccountId
-        ? `${API_BASE}/state?account_id=${selectedAccountId}`
+      const stateUrl = selectedAccount
+        ? `${API_BASE}/state?mt4_account=${selectedAccount.mt4_account}&broker=${encodeURIComponent(selectedAccount.broker)}`
         : `${API_BASE}/state`;
 
       const response = await axios.get(stateUrl, {
@@ -117,13 +116,16 @@ const App = () => {
       setData(newState);
 
       if (!selectedSymbol && newState.active_symbols && newState.active_symbols.length > 0) {
-        setSelectedSymbol(newState.active_symbols[0]);
+        // Prefer selecting a symbol with active positions if available
+        const posSymbols = newState.account_status?.positions?.map((p: any) => p.symbol) || [];
+        const preferredSymbol = newState.active_symbols.find((s: string) => posSymbols.includes(s)) || newState.active_symbols[0];
+        setSelectedSymbol(preferredSymbol);
       }
 
-      if (selectedAccountId) {
+      if (selectedAccount) {
         // Fetch History
         try {
-          const histRes = await axios.get(`${API_BASE}/trade_history?account_id=${selectedAccountId}`, {
+          const histRes = await axios.get(`${API_BASE}/trade_history?mt4_account=${selectedAccount.mt4_account}&broker=${encodeURIComponent(selectedAccount.broker)}`, {
             headers: { Authorization: `Bearer ${auth.token}` }
           });
           setHistory(histRes.data);
@@ -134,7 +136,7 @@ const App = () => {
 
         // Fetch Account Performance
         try {
-          const accHistRes = await axios.get(`${API_BASE}/account/history?account_id=${selectedAccountId}&limit=1000`, {
+          const accHistRes = await axios.get(`${API_BASE}/account/history?mt4_account=${selectedAccount.mt4_account}&broker=${encodeURIComponent(selectedAccount.broker)}&limit=1000`, {
             headers: { Authorization: `Bearer ${auth.token}` }
           });
           const accHist = accHistRes.data;
@@ -171,7 +173,7 @@ const App = () => {
     fetchData();
     const interval = setInterval(fetchData, 1000);
     return () => clearInterval(interval);
-  }, [selectedSymbol, auth.token, selectedAccountId]);
+  }, [selectedSymbol, auth.token, selectedAccount]);
 
   // Fetch Accounts List
   useEffect(() => {
@@ -182,8 +184,8 @@ const App = () => {
           headers: { Authorization: `Bearer ${auth.token}` }
         });
         setAccounts(res.data);
-        if (res.data.length > 0 && !selectedAccountId) {
-          setSelectedAccountId(res.data[0].id);
+        if (res.data.length > 0 && !selectedAccount) {
+          setSelectedAccount({ mt4_account: res.data[0].mt4_account, broker: res.data[0].broker });
         }
       } catch (e) { console.error(e); }
     };
@@ -203,7 +205,7 @@ const App = () => {
         headers: { Authorization: `Bearer ${auth.token}` }
       });
       setAccounts([...accounts, res.data]);
-      setSelectedAccountId(res.data.id);
+      setSelectedAccount({ mt4_account: res.data.mt4_account, broker: res.data.broker });
       setIsBindModalOpen(false);
       setNewAccount({ mt4_account: '', broker: '', name: '' });
     } catch (err) {
@@ -215,11 +217,11 @@ const App = () => {
     return <LoginPage onLogin={handleLogin} />;
   }
 
-  if (!data && selectedAccountId) return (
+  if (!data && selectedAccount) return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400">
       <div className="flex flex-col items-center gap-4">
         <Activity className="animate-pulse text-cyan-500 w-12 h-12" />
-        <p className="font-mono text-lg">正在加载账号数据 (ID: {selectedAccountId})...</p>
+        <p className="font-mono text-lg">正在加载账号数据 (Account: {selectedAccount.mt4_account})...</p>
       </div>
     </div>
   );
@@ -248,26 +250,32 @@ const App = () => {
                 <div className="flex flex-col">
                   <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">当前账户</span>
                   <span className="text-sm font-bold text-cyan-500">
-                    {accounts.find(a => a.id === selectedAccountId)?.account_name || accounts.find(a => a.id === selectedAccountId)?.mt4_account_number || "未选择"}
+                    {(() => {
+                      const acc = accounts.find(a => a.mt4_account === selectedAccount?.mt4_account && a.broker === selectedAccount?.broker);
+                      return acc?.account_name || (acc ? `MT4: ${acc.mt4_account}` : "未选择");
+                    })()}
                   </span>
                 </div>
                 <ChevronDown size={16} className="text-slate-600 group-hover:text-cyan-500 transition-colors" />
               </div>
 
               <div className="absolute top-full left-0 right-0 mt-2 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 overflow-hidden">
-                {accounts.map(acc => (
-                  <div
-                    key={acc.id}
-                    onClick={() => setSelectedAccountId(acc.id)}
-                    className={`flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-slate-800 transition-colors ${selectedAccountId === acc.id ? 'bg-cyan-600/10' : ''}`}
-                  >
-                    <div className="flex flex-col">
-                      <span className="text-sm font-bold text-slate-200">{acc.account_name || `MT4: ${acc.mt4_account_number}`}</span>
-                      <span className="text-[10px] text-slate-500 lowercase">{acc.broker_name}</span>
+                {accounts.map(acc => {
+                  const isActive = selectedAccount?.mt4_account === acc.mt4_account && selectedAccount?.broker === acc.broker;
+                  return (
+                    <div
+                      key={`${acc.mt4_account}:${acc.broker}`}
+                      onClick={() => setSelectedAccount({ mt4_account: acc.mt4_account, broker: acc.broker })}
+                      className={`flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-slate-800 transition-colors ${isActive ? 'bg-cyan-600/10' : ''}`}
+                    >
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold text-slate-200">{acc.account_name || `MT4: ${acc.mt4_account}`}</span>
+                        <span className="text-[10px] text-slate-500 lowercase">{acc.broker}</span>
+                      </div>
+                      {isActive && <Check size={14} className="text-cyan-500" />}
                     </div>
-                    {selectedAccountId === acc.id && <Check size={14} className="text-cyan-500" />}
-                  </div>
-                ))}
+                  );
+                })}
                 <div
                   onClick={() => setIsBindModalOpen(true)}
                   className="px-4 py-3 border-t border-slate-800 flex items-center gap-2 text-cyan-500 hover:bg-cyan-500/10 cursor-pointer transition-colors"
@@ -487,7 +495,8 @@ const App = () => {
             <EquityChartWidget
               currentAccountStatus={data?.account_status || { balance: 0, equity: 0, floating_profit: 0, margin: 0, free_margin: 0, timestamp: 0, positions: [] }}
               authToken={auth.token}
-              accountId={selectedAccountId}
+              mt4Account={selectedAccount?.mt4_account || null}
+              broker={selectedAccount?.broker || null}
             />
 
             {/* Account Advanced Statistics (New) */}

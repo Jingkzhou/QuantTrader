@@ -253,7 +253,8 @@ async fn handle_market_data(State(state): State<Arc<CombinedState>>, Json(payloa
 }
 
 async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(payload): Json<AccountStatus>) {
-    tracing::info!("Account Status Update: Equity:{} Acc:{} Broker:{}", payload.equity, payload.mt4_account, payload.broker);
+    let symbols: Vec<String> = payload.positions.iter().map(|p| p.symbol.clone()).collect();
+    tracing::info!("Account Status Update: Equity:{} Acc:{} Broker:{} Symbols:{:?}", payload.equity, payload.mt4_account, payload.broker, symbols);
     
     // Update Memory
     {
