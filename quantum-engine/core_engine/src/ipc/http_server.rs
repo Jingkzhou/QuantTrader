@@ -119,6 +119,7 @@ pub async fn start_server(db_pool: PgPool) {
     let app = Router::new()
         .route("/api/v1/state", get(get_state))
         .route("/api/v1/market", post(handle_market_data))
+        .route("/api/v1/market/batch", post(handle_market_data_batch))
         .route("/api/v1/account", post(handle_account_status))
         .route("/api/v1/account/history", get(get_account_history))
         .route("/api/v1/logs", post(handle_logs))
@@ -228,6 +229,17 @@ async fn get_state(
 }
 
 async fn handle_market_data(State(state): State<Arc<CombinedState>>, Json(payload): Json<MarketData>) {
+    process_market_data(&state, payload).await;
+}
+
+async fn handle_market_data_batch(State(state): State<Arc<CombinedState>>, Json(payload): Json<Vec<MarketData>>) {
+    // tracing::info!("Received batch of {} market data points", payload.len());
+    for data in payload {
+        process_market_data(&state, data).await;
+    }
+}
+
+async fn process_market_data(state: &Arc<CombinedState>, payload: MarketData) {
     tracing::info!("Market Data: {} Bid:{} Ask:{}", payload.symbol, payload.bid, payload.ask);
     
     // Update Memory
