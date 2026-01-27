@@ -1,5 +1,5 @@
 import React from 'react';
-import { TrendingUp, Shield, BarChart3, Percent } from 'lucide-react';
+import { TrendingUp, Shield, BarChart3, AlertOctagon } from 'lucide-react';
 
 interface Position {
     side: string;
@@ -16,9 +16,13 @@ interface AccountStatisticsProps {
     accountStatus: any;
     history: any[];
     selectedSymbol: string;
+    currentDrawdown: number;
+    maxDrawdown: number;
 }
 
-export const AccountStatistics: React.FC<AccountStatisticsProps> = ({ positions, accountStatus, history, selectedSymbol }) => {
+export const AccountStatistics: React.FC<AccountStatisticsProps> = ({
+    positions, accountStatus, history, selectedSymbol, currentDrawdown, maxDrawdown
+}) => {
 
     // Calculate per-side stats for selected symbol
     const calculateSideStats = (side: string) => {
@@ -33,13 +37,6 @@ export const AccountStatistics: React.FC<AccountStatisticsProps> = ({ positions,
         const avgPrice = totalLots > 0 ? weightedPriceSum / totalLots : 0;
 
         // BEP calculation (simplified: adjusted price based on swap/comm)
-        // Profit ~= (Price - OpenPrice) * Lots * Factor
-        // BEP is where (Price - OpenPrice) * Lots * Factor + Swap + Comm = 0
-        // Price = OpenPrice - (Swap + Comm) / (Lots * Factor)
-        // Since we don't have Factor (PointValue) easily accessible here for all symbols, 
-        // we'll approximate BEP as weighted avg if swap/comm is small, 
-        // or just show Avg Price if we can't do exact. 
-        // For now, let's use weighted avg as its the primary component.
         const bep = avgPrice;
 
         return { count, totalLots, avgPrice, totalProfit, totalSwap, totalComm, bep };
@@ -54,14 +51,7 @@ export const AccountStatistics: React.FC<AccountStatisticsProps> = ({ positions,
         .filter(t => t.close_time >= today)
         .reduce((sum, t) => sum + t.profit, 0);
 
-    // Drawdown Calculation (Current Equity vs peak would be better but requires full history)
     const marginLevel = accountStatus.margin_level || 0;
-
-    // Win Rate (latest 20)
-    const recentTrades = history.slice(0, 20);
-    const winRate = recentTrades.length > 0
-        ? (recentTrades.filter(t => t.profit > 0).length / recentTrades.length) * 100
-        : 0;
 
     const StatRow = ({ label, value, color }: { label: string, value: string | number, color?: string }) => (
         <div className="flex justify-between items-center py-1 border-b border-slate-800/30 last:border-0">
@@ -117,7 +107,9 @@ export const AccountStatistics: React.FC<AccountStatisticsProps> = ({ positions,
                     <span className="text-slate-400 text-xs font-bold uppercase flex items-center gap-1">
                         <BarChart3 className="w-3 h-3" /> 当前回撤:
                     </span>
-                    <span className="text-slate-300 font-mono font-bold">--- %</span>
+                    <span className={`font-mono font-bold ${currentDrawdown > 5 ? 'text-rose-500' : 'text-slate-300'}`}>
+                        {currentDrawdown.toFixed(2)}%
+                    </span>
                 </div>
                 <div className="flex items-center justify-between">
                     <span className="text-emerald-500 text-xs font-bold uppercase flex items-center gap-1">
@@ -126,10 +118,10 @@ export const AccountStatistics: React.FC<AccountStatisticsProps> = ({ positions,
                     <span className="text-emerald-500 font-mono font-black text-lg">${todayProfit.toFixed(2)}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                    <span className="text-slate-400 text-xs font-bold uppercase flex items-center gap-1">
-                        <Percent className="w-3 h-3" /> 近期胜率(20):
+                    <span className="text-amber-500 text-xs font-bold uppercase flex items-center gap-1">
+                        <AlertOctagon className="w-3 h-3" /> 最大回撤:
                     </span>
-                    <span className="text-slate-300 font-mono font-bold">{winRate.toFixed(1)}%</span>
+                    <span className="text-amber-500 font-mono font-bold">{maxDrawdown.toFixed(2)}%</span>
                 </div>
             </div>
         </div>

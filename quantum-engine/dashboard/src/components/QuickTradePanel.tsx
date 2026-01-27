@@ -10,7 +10,7 @@ const API_BASE = 'http://127.0.0.1:3001/api/v1';
 
 export const QuickTradePanel: React.FC<QuickTradePanelProps> = ({ symbol }) => {
     const [lots, setLots] = useState(0.01);
-    const [isExpanded, setIsExpanded] = useState(true);
+    const [isExpanded, setIsExpanded] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const sendCommand = async (action: 'OPEN_BUY' | 'OPEN_SELL' | 'CLOSE_ALL') => {

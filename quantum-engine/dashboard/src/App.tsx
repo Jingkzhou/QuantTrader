@@ -55,6 +55,7 @@ interface AppState {
 const App = () => {
   const [data, setData] = useState<AppState | null>(null);
   const [history, setHistory] = useState<TradeHistory[]>([]);
+  const [drawdown, setDrawdown] = useState({ current: 0, max: 0 });
   const [activeTab, setActiveTab] = useState<'positions' | 'history'>('positions');
   const [selectedSymbol, setSelectedSymbol] = useState<string>('');
 
@@ -73,8 +74,34 @@ const App = () => {
 
         // Fetch History
         try {
-          const histRes = await axios.get(`${API_BASE}/trades`);
+          const [histRes, accHistRes] = await Promise.all([
+            axios.get(`${API_BASE}/trades`),
+            axios.get(`${API_BASE}/account/history?limit=1000`)
+          ]);
           setHistory(histRes.data);
+
+          // Calculate DD
+          const accHist = accHistRes.data;
+          if (accHist.length > 0) {
+            let peak = 0;
+            let maxDD = 0;
+            let currentDD = 0;
+
+            // Sort by time
+            const sorted = [...accHist].sort((a, b) => a.timestamp - b.timestamp);
+
+            sorted.forEach(h => {
+              const equity = Number(h.equity);
+              if (equity > peak) peak = equity;
+              if (peak > 0) {
+                const dd = (peak - equity) / peak * 100;
+                if (dd > maxDD) maxDD = dd;
+                currentDD = dd;
+              }
+            });
+
+            setDrawdown({ current: currentDD, max: maxDD });
+          }
         } catch (e) {
           console.error("History fetch error", e);
         }
@@ -298,6 +325,8 @@ const App = () => {
             accountStatus={data.account_status}
             history={history}
             selectedSymbol={selectedSymbol}
+            currentDrawdown={drawdown.current}
+            maxDrawdown={drawdown.max}
           />
 
           {/* Real-time Logs */}
