@@ -139,7 +139,7 @@ const App = () => {
       </div>
 
       {/* Performance Panel */}
-      <PerformancePanel />
+      <PerformancePanel trades={history} selectedSymbol={selectedSymbol} />
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
 
@@ -186,7 +186,7 @@ const App = () => {
                   : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/30'
                   }`}
               >
-                活跃持仓 <span className="ml-2 text-xs px-2 py-0.5 bg-slate-800 rounded text-slate-400">{(data.account_status?.positions || []).length}</span>
+                活跃持仓 <span className="ml-2 text-xs px-2 py-0.5 bg-slate-800 rounded text-slate-400">{(data.account_status?.positions || []).filter(p => !selectedSymbol || p.symbol === selectedSymbol).length}</span>
               </button>
               <button
                 onClick={() => setActiveTab('history')}
@@ -195,7 +195,7 @@ const App = () => {
                   : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/30'
                   }`}
               >
-                交易明细 <span className="ml-2 text-xs px-2 py-0.5 bg-slate-800 rounded text-slate-400">{history.length}</span>
+                交易明细 <span className="ml-2 text-xs px-2 py-0.5 bg-slate-800 rounded text-slate-400">{history.filter(t => !selectedSymbol || t.symbol === selectedSymbol).length}</span>
               </button>
             </div>
 
