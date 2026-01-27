@@ -22,6 +22,7 @@ interface AccountStatus {
   floating_profit: number;
   margin: number;
   free_margin: number;
+  timestamp: number;
   positions: any[];
 }
 

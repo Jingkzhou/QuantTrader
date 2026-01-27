@@ -15,6 +15,7 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
     const chartRef = useRef<IChartApi | null>(null);
     const balanceSeriesRef = useRef<ISeriesApi<"Area"> | null>(null);
     const equitySeriesRef = useRef<ISeriesApi<"Area"> | null>(null);
+    const lastTimeRef = useRef<number>(0);
 
     const [isLoaded, setIsLoaded] = useState(false);
 
@@ -48,8 +49,8 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
 
         const equitySeries = chart.addSeries(AreaSeries, {
             lineColor: '#10b981',
-            topColor: 'rgba(16, 185, 129, 0.4)',
-            bottomColor: 'rgba(16, 185, 129, 0.0)',
+            topColor: 'rgba(10, 185, 129, 0.4)',
+            bottomColor: 'rgba(10, 185, 129, 0.0)',
             lineWidth: 2,
         });
 
@@ -74,9 +75,15 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
                 }));
 
                 // Deduplicate and Sort
-                // Assuming backend returns sorted, but just in case
                 balanceSeries.setData(balanceData);
                 equitySeries.setData(equityData);
+
+                // Initialize lastTimeRef with the latest history time
+                if (history.length > 0) {
+                    // History is ascending (from backend)
+                    lastTimeRef.current = history[history.length - 1].timestamp;
+                }
+
                 chart.timeScale().fitContent();
                 setIsLoaded(true);
             } catch (e) {
@@ -104,17 +111,44 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
     useEffect(() => {
         if (!isLoaded || !currentAccountStatus || !balanceSeriesRef.current || !equitySeriesRef.current) return;
 
-        // Using a global or provided timestamp if available, else local
-        const time = Math.floor(Date.now() / 1000) as Time;
+        // Use server timestamp if available, otherwise fallback to local time (but dangerous if mixed)
+        // Ensure strictly increasing time for chart updates
+        let time = currentAccountStatus.timestamp
+            ? (currentAccountStatus.timestamp as number)
+            : Math.floor(Date.now() / 1000);
+
+        // Guard: If new time is not greater than last update time, skip or clamp?
+        // Lightweight charts `update` allows replacing the *current* bar (same time), but not older.
+        // So time >= lastTimeRef.current is required.
+
+        // HOWEVER, if we just fetched history, lastWait... history might end at T=100.
+        // If we try to update at T=99, it errors.
+        // We need to track the latest time in the chart.
+
+        // On load, we should set lastTimeRef to the last history point.
+        // But we didn't save it. 
+        // Let's rely on the incoming timestamp being correct (it comes from the same source as history).
+
+        // If getting duplicate timestamp (same second), it's an update to the current candle/point -> Allowed.
+        // If getting older timestamp -> Ignore.
+
+        if (lastTimeRef.current > 0 && time < lastTimeRef.current) {
+            // console.warn("Skipping out-of-order update", time, lastTimeRef.current);
+            return;
+        }
+
+        lastTimeRef.current = time;
+
+        const chartTime = time as Time;
 
         // Update Series
         balanceSeriesRef.current.update({
-            time: time,
+            time: chartTime,
             value: currentAccountStatus.balance
         });
 
         equitySeriesRef.current.update({
-            time: time,
+            time: chartTime,
             value: currentAccountStatus.equity
         });
 
