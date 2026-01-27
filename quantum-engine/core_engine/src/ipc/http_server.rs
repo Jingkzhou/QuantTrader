@@ -411,10 +411,34 @@ async fn get_trade_history(
         .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or((axum::http::StatusCode::FORBIDDEN, "Access denied".to_string()))?;
 
-    let trades = sqlx::query_as::<_, TradeHistory>("SELECT * FROM trade_history WHERE account_uuid = $1 ORDER BY close_time DESC LIMIT 100")
+    let trades = sqlx::query_as::<_, TradeHistory>(
+        r#"
+        SELECT 
+            ticket, symbol, open_time, close_time, 
+            COALESCE(open_price, 0.0) as open_price, 
+            COALESCE(close_price, 0.0) as close_price, 
+            COALESCE(lots, 0.0) as lots, 
+            COALESCE(profit, 0.0) as profit, 
+            trade_type, 
+            COALESCE(magic, 0) as magic, 
+            COALESCE(mae, 0.0) as mae, 
+            COALESCE(mfe, 0.0) as mfe, 
+            signal_context, 
+            account_uuid,
+            0::bigint as mt4_account, 
+            ''::text as broker 
+        FROM trade_history 
+        WHERE account_uuid = $1 
+        ORDER BY close_time DESC LIMIT 100
+        "#
+    )
         .bind(account_id)
         .fetch_all(&state.db)
         .await
+        .map_err(|e| {
+            tracing::error!("DB Error trade_history: {}", e);
+            e
+        })
         .unwrap_or_default();
     
     Ok(Json(trades))

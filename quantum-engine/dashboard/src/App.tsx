@@ -121,31 +121,41 @@ const App = () => {
       }
 
       if (selectedAccountId) {
-        // Fetch History & Account Performance
-        const [histRes, accHistRes] = await Promise.all([
-          axios.get(`${API_BASE}/trade_history?account_id=${selectedAccountId}`, {
+        // Fetch History
+        try {
+          const histRes = await axios.get(`${API_BASE}/trade_history?account_id=${selectedAccountId}`, {
             headers: { Authorization: `Bearer ${auth.token}` }
-          }),
-          axios.get(`${API_BASE}/account/history?account_id=${selectedAccountId}&limit=1000`, {
-            headers: { Authorization: `Bearer ${auth.token}` }
-          })
-        ]);
-        setHistory(histRes.data);
-
-        const accHist = accHistRes.data;
-        if (accHist.length > 0) {
-          let peak = 0; let maxDD = 0; let currentDD = 0;
-          const sorted = [...accHist].sort((a: any, b: any) => a.timestamp - b.timestamp);
-          sorted.forEach(h => {
-            const equity = Number(h.equity);
-            if (equity > peak) peak = equity;
-            if (peak > 0) {
-              const dd = (peak - equity) / peak * 100;
-              if (dd > maxDD) maxDD = dd;
-              currentDD = dd;
-            }
           });
-          setDrawdown({ current: currentDD, max: maxDD });
+          setHistory(histRes.data);
+        } catch (err) {
+          console.error("Trade History fetch error:", err);
+          setHistory([]);
+        }
+
+        // Fetch Account Performance
+        try {
+          const accHistRes = await axios.get(`${API_BASE}/account/history?account_id=${selectedAccountId}&limit=1000`, {
+            headers: { Authorization: `Bearer ${auth.token}` }
+          });
+          const accHist = accHistRes.data;
+
+          if (accHist.length > 0) {
+            let peak = 0; let maxDD = 0; let currentDD = 0;
+            const sorted = [...accHist].sort((a: any, b: any) => a.timestamp - b.timestamp);
+            sorted.forEach(h => {
+              const equity = Number(h.equity);
+              if (equity > peak) peak = equity;
+              if (peak > 0) {
+                const dd = (peak - equity) / peak * 100;
+                if (dd > maxDD) maxDD = dd;
+                currentDD = dd;
+              }
+            });
+            setDrawdown({ current: currentDD, max: maxDD });
+          }
+        } catch (err) {
+          console.error("Account History fetch error:", err);
+          setDrawdown({ current: 0, max: 0 });
         }
       } else {
         setHistory([]);
