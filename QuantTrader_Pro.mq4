@@ -1419,14 +1419,16 @@ void ReportAccountStatus() {
    for(int i=0; i<total; i++) {
       if(OrderSelect(i, SELECT_BY_POS) && OrderSymbol() == Symbol() && OrderMagicNumber() == MagicNumber && OrderType() <= OP_SELL) {
          string side = (OrderType() == OP_BUY) ? "BUY" : "SELL";
-         string item = StringFormat("{\"ticket\":%d,\"symbol\":\"%s\",\"side\":\"%s\",\"lots\":%.2f,\"open_price\":%.5f,\"open_time\":%d,\"profit\":%.2f}",
-                                    OrderTicket(), OrderSymbol(), side, OrderLots(), OrderOpenPrice(), (long)OrderOpenTime(), OrderProfit());
+         string item = StringFormat("{\"ticket\":%d,\"symbol\":\"%s\",\"side\":\"%s\",\"lots\":%.2f,\"open_price\":%.5f,\"open_time\":%d,\"profit\":%.2f,\"swap\":%.2f,\"commission\":%.2f}",
+                                    OrderTicket(), OrderSymbol(), side, OrderLots(), OrderOpenPrice(), (long)OrderOpenTime(), OrderProfit(), OrderSwap(), OrderCommission());
          posJson += (posJson == "" ? "" : ",") + item;
       }
    }
    
-   string json = StringFormat("{\"balance\":%.2f,\"equity\":%.2f,\"margin\":%.2f,\"free_margin\":%.2f,\"floating_profit\":%.2f,\"timestamp\":%lld,\"positions\":[%s]}",
-                              AccountBalance(), AccountEquity(), AccountMargin(), AccountFreeMargin(), stats.buyProfit + stats.sellProfit, (long)TimeCurrent(), posJson);
+   double marginLevel = (AccountMargin() > 0) ? AccountEquity() / AccountMargin() * 100.0 : 0;
+
+   string json = StringFormat("{\"balance\":%.2f,\"equity\":%.2f,\"margin\":%.2f,\"free_margin\":%.2f,\"floating_profit\":%.2f,\"timestamp\":%lld,\"margin_level\":%.2f,\"positions\":[%s]}",
+                               AccountBalance(), AccountEquity(), AccountMargin(), AccountFreeMargin(), stats.buyProfit + stats.sellProfit, (long)TimeCurrent(), marginLevel, posJson);
    SendData("/api/v1/account", json);
 }
 

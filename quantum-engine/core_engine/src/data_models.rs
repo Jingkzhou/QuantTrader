@@ -23,6 +23,10 @@ pub struct Position {
     #[serde(default)]
     pub open_time: i64,
     pub profit: f64,
+    #[serde(default)]
+    pub swap: f64,
+    #[serde(default)]
+    pub commission: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -33,6 +37,8 @@ pub struct AccountStatus {
     pub free_margin: f64,
     pub floating_profit: f64,
     pub timestamp: i64, 
+    #[serde(default)]
+    pub margin_level: f64,
     pub positions: Vec<Position>,
 }
 

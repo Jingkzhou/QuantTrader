@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
-  TrendingUp, TrendingDown, Wallet, Activity, Terminal, LayoutDashboard
+  TrendingUp, TrendingDown, Activity, Terminal, LayoutDashboard
 } from 'lucide-react';
 import { ChartWidget } from './components/ChartWidget';
 import { PerformancePanel } from './components/PerformancePanel';
 import { EquityChartWidget } from './components/EquityChartWidget';
+import { AccountStatistics } from './components/AccountStatistics';
 
 const API_BASE = 'http://127.0.0.1:3001/api/v1';
 
@@ -212,24 +213,26 @@ const App = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/50">
-                    {(data.account_status?.positions || []).map((pos) => (
-                      <tr key={pos.ticket} className="hover:bg-slate-800/30 transition-colors">
-                        <td className="px-6 py-4 font-mono text-slate-400">{pos.ticket}</td>
-                        <td className="px-6 py-4 font-bold">{pos.symbol}</td>
-                        <td className="px-6 py-4">
-                          <span className={`px-2 py-0.5 rounded text-[10px] items-center gap-1 inline-flex font-bold ${pos.side === 'BUY' ? 'bg-rose-500/10 text-rose-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
-                            {pos.side}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 font-mono">{pos.lots.toFixed(2)}</td>
-                        <td className={`px-6 py-4 text-right font-mono font-bold ${pos.profit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                          {pos.profit >= 0 ? '+' : ''}{pos.profit.toFixed(2)}
-                        </td>
-                      </tr>
-                    ))}
-                    {(data.account_status?.positions || []).length === 0 && (
+                    {(data.account_status?.positions || [])
+                      .filter(pos => !selectedSymbol || pos.symbol === selectedSymbol)
+                      .map((pos) => (
+                        <tr key={pos.ticket} className="hover:bg-slate-800/30 transition-colors">
+                          <td className="px-6 py-4 font-mono text-slate-400">{pos.ticket}</td>
+                          <td className="px-6 py-4 font-bold">{pos.symbol}</td>
+                          <td className="px-6 py-4">
+                            <span className={`px-2 py-0.5 rounded text-[10px] items-center gap-1 inline-flex font-bold ${pos.side === 'BUY' ? 'bg-rose-500/10 text-rose-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
+                              {pos.side}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 font-mono">{pos.lots.toFixed(2)}</td>
+                          <td className={`px-6 py-4 text-right font-mono font-bold ${pos.profit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                            {pos.profit >= 0 ? '+' : ''}{pos.profit.toFixed(2)}
+                          </td>
+                        </tr>
+                      ))}
+                    {(data.account_status?.positions || []).filter(pos => !selectedSymbol || pos.symbol === selectedSymbol).length === 0 && (
                       <tr>
-                        <td colSpan={5} className="px-6 py-12 text-center text-slate-600 italic">暂无活跃订单</td>
+                        <td colSpan={5} className="px-6 py-12 text-center text-slate-600 italic">该品种暂无活跃订单</td>
                       </tr>
                     )}
                   </tbody>
@@ -249,29 +252,31 @@ const App = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/50">
-                    {history.map((t) => (
-                      <tr key={t.ticket} className="hover:bg-slate-800/30 transition-colors pointer-events-none">
-                        <td className="px-6 py-3 font-mono text-slate-400 text-xs">{t.ticket}</td>
-                        <td className="px-6 py-3 font-bold text-sm">{t.symbol}</td>
-                        <td className="px-6 py-3">
-                          <span className={`px-2 py-0.5 rounded text-[10px] items-center gap-1 inline-flex font-bold ${t.trade_type === 'BUY' ? 'bg-rose-500/10 text-rose-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
-                            {t.trade_type}
-                          </span>
-                        </td>
-                        <td className="px-6 py-3 font-mono text-xs">{t.lots.toFixed(2)}</td>
-                        <td className="px-6 py-3 font-mono text-slate-400 text-xs">{t.open_price.toFixed(5)}</td>
-                        <td className="px-6 py-3 font-mono text-slate-400 text-xs">{t.close_price.toFixed(5)}</td>
-                        <td className={`px-6 py-3 text-right font-mono font-bold text-sm ${t.profit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                          {t.profit >= 0 ? '+' : ''}{t.profit.toFixed(2)}
-                        </td>
-                        <td className="px-6 py-3 text-right font-mono text-slate-500 text-left text-[10px]">
-                          {new Date(t.close_time * 1000).toLocaleString()}
-                        </td>
-                      </tr>
-                    ))}
-                    {history.length === 0 && (
+                    {history
+                      .filter(t => !selectedSymbol || t.symbol === selectedSymbol)
+                      .map((t) => (
+                        <tr key={t.ticket} className="hover:bg-slate-800/30 transition-colors pointer-events-none">
+                          <td className="px-6 py-3 font-mono text-slate-400 text-xs">{t.ticket}</td>
+                          <td className="px-6 py-3 font-bold text-sm">{t.symbol}</td>
+                          <td className="px-6 py-3">
+                            <span className={`px-2 py-0.5 rounded text-[10px] items-center gap-1 inline-flex font-bold ${t.trade_type === 'BUY' ? 'bg-rose-500/10 text-rose-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
+                              {t.trade_type}
+                            </span>
+                          </td>
+                          <td className="px-6 py-3 font-mono text-xs">{t.lots.toFixed(2)}</td>
+                          <td className="px-6 py-3 font-mono text-slate-400 text-xs">{t.open_price.toFixed(5)}</td>
+                          <td className="px-6 py-3 font-mono text-slate-400 text-xs">{t.close_price.toFixed(5)}</td>
+                          <td className={`px-6 py-3 text-right font-mono font-bold text-sm ${t.profit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                            {t.profit >= 0 ? '+' : ''}{t.profit.toFixed(2)}
+                          </td>
+                          <td className="px-6 py-3 text-right font-mono text-slate-500 text-left text-[10px]">
+                            {new Date(t.close_time * 1000).toLocaleString()}
+                          </td>
+                        </tr>
+                      ))}
+                    {history.filter(t => !selectedSymbol || t.symbol === selectedSymbol).length === 0 && (
                       <tr>
-                        <td colSpan={8} className="px-6 py-12 text-center text-slate-600 italic">暂无历史交易记录</td>
+                        <td colSpan={8} className="px-6 py-12 text-center text-slate-600 italic">该品种暂无历史记录</td>
                       </tr>
                     )}
                   </tbody>
@@ -287,32 +292,13 @@ const App = () => {
           {/* Equity Curve Chart (New) */}
           <EquityChartWidget currentAccountStatus={data.account_status} />
 
-          {/* Account Summary */}
-          <div className="bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 rounded-2xl p-6 shadow-xl">
-            <div className="flex items-center gap-2 mb-6 text-slate-400 text-xs font-bold uppercase tracking-wider">
-              <Wallet className="w-4 h-4 text-cyan-500" /> 账户概览
-            </div>
-            <div className="space-y-4">
-              <BalanceRow label="余额" value={data.account_status.balance} />
-              <BalanceRow label="净值" value={data.account_status.equity} highlight />
-              <div className="pt-4 border-t border-slate-800 flex justify-between items-center">
-                <span className="text-slate-500 text-sm">浮动盈亏</span>
-                <span className={`font-bold text-lg font-mono ${data.account_status.floating_profit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                  ${data.account_status.floating_profit.toFixed(2)}
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-4 mt-6">
-                <div className="bg-slate-900 p-3 rounded-xl border border-slate-800">
-                  <span className="text-[10px] text-slate-500 uppercase block mb-1">已用保证金</span>
-                  <span className="font-mono text-sm">${data.account_status.margin.toFixed(0)}</span>
-                </div>
-                <div className="bg-slate-900 p-3 rounded-xl border border-slate-800">
-                  <span className="text-[10px] text-slate-500 uppercase block mb-1">可用保证金</span>
-                  <span className="font-mono text-sm">${data.account_status.free_margin.toFixed(0)}</span>
-                </div>
-              </div>
-            </div>
-          </div>
+          {/* Account Advanced Statistics (New) */}
+          <AccountStatistics
+            positions={data.account_status.positions}
+            accountStatus={data.account_status}
+            history={history}
+            selectedSymbol={selectedSymbol}
+          />
 
           {/* Real-time Logs */}
           <div className="bg-slate-900/50 border border-slate-800 rounded-2xl flex flex-col h-[500px]">
@@ -352,13 +338,5 @@ const MarketCard = ({ label, value, icon, subValue }: any) => (
   </div>
 );
 
-const BalanceRow = ({ label, value, highlight }: any) => (
-  <div className="flex justify-between items-center">
-    <span className="text-slate-400 text-sm">{label}</span>
-    <span className={`font-mono ${highlight ? 'text-slate-100 font-bold text-lg' : 'text-slate-400'}`}>
-      ${value.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-    </span>
-  </div>
-);
 
 export default App;
