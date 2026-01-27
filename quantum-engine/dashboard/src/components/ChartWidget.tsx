@@ -7,26 +7,31 @@ import { History } from 'lucide-react';
 
 const API_BASE = 'http://127.0.0.1:3001/api/v1';
 
+
 interface ChartWidgetProps {
     symbol: string;
+    currentData: any;
 }
 
 const TIMEFRAMES = [
-    { label: 'M1', value: 'M1' },
-    { label: 'M5', value: 'M5' },
-    { label: 'M15', value: 'M15' },
-    { label: 'M30', value: 'M30' },
-    { label: 'H1', value: 'H1' },
-    { label: 'H4', value: 'H4' },
-    { label: 'D1', value: 'D1' },
-    { label: 'W1', value: 'W1' },
-    { label: 'MN', value: 'MN' },
+    { label: 'M1', value: 'M1', seconds: 60 },
+    { label: 'M5', value: 'M5', seconds: 300 },
+    { label: 'M15', value: 'M15', seconds: 900 },
+    { label: 'M30', value: 'M30', seconds: 1800 },
+    { label: 'H1', value: 'H1', seconds: 3600 },
+    { label: 'H4', value: 'H4', seconds: 14400 },
+    { label: 'D1', value: 'D1', seconds: 86400 },
+    { label: 'W1', value: 'W1', seconds: 604800 },
+    { label: 'MN', value: 'MN', seconds: 2592000 },
 ];
 
-export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol }) => {
+
+export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData }) => {
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApiType | null>(null);
     const seriesRef = useRef<ISeriesApiType<"Candlestick"> | null>(null);
+    const lastCandleRef = useRef<{ time: number, open: number, high: number, low: number, close: number } | null>(null);
+
 
     const [timeframe, setTimeframe] = useState(() => localStorage.getItem('chart_timeframe') || 'M1');
 
@@ -34,7 +39,9 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol }) => {
     const handleTimeframeChange = (tf: string) => {
         setTimeframe(tf);
         localStorage.setItem('chart_timeframe', tf);
+        lastCandleRef.current = null;
     };
+
 
     // Initialize Chart
     useEffect(() => {
@@ -91,7 +98,6 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol }) => {
                     params: { symbol, timeframe }
                 });
 
-                // Ensure unique time points and sorted
                 const data = response.data.map((d: any) => ({
                     time: d.time,
                     open: d.open,
@@ -102,17 +108,73 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol }) => {
 
                 if (data.length > 0) {
                     seriesRef.current.setData(data);
+                    lastCandleRef.current = data[data.length - 1];
                 }
             } catch (err) {
                 console.error("Failed to fetch candle data", err);
             }
         };
 
-        fetchData(); // Initial load
-        const interval = setInterval(fetchData, 2000); // Poll every 2s
+        fetchData();
+        const interval = setInterval(fetchData, 5000);
 
         return () => clearInterval(interval);
     }, [symbol, timeframe]);
+
+    // Real-time Tick Updates
+    useEffect(() => {
+        if (!currentData || !seriesRef.current) return;
+
+        const currentPrice = currentData.bid;
+        // USE SERVER TIMESTAMP if available (currentData.timestamp assumed to be seconds)
+        // Fallback to local time if not available
+        const now = currentData.timestamp ? currentData.timestamp : Math.floor(Date.now() / 1000);
+
+        const tfObj = TIMEFRAMES.find(t => t.value === timeframe);
+        const intervalSeconds = tfObj ? tfObj.seconds : 60;
+        const candleTime = Math.floor(now / intervalSeconds) * intervalSeconds;
+
+        let newCandle;
+
+        if (lastCandleRef.current) {
+            // Guard: Prevent updating with older time (Lightweight Charts Error 136)
+            if (candleTime < lastCandleRef.current.time) {
+                return;
+            }
+
+            if (lastCandleRef.current.time === candleTime) {
+                // Update existing candle
+                newCandle = {
+                    ...lastCandleRef.current,
+                    high: Math.max(lastCandleRef.current.high, currentPrice),
+                    low: Math.min(lastCandleRef.current.low, currentPrice),
+                    close: currentPrice,
+                };
+            } else {
+                // New candle
+                newCandle = {
+                    time: candleTime,
+                    open: currentPrice,
+                    high: currentPrice,
+                    low: currentPrice,
+                    close: currentPrice,
+                };
+            }
+        } else {
+            // First candle
+            newCandle = {
+                time: candleTime,
+                open: currentPrice,
+                high: currentPrice,
+                low: currentPrice,
+                close: currentPrice,
+            };
+        }
+
+        seriesRef.current.update(newCandle as any);
+        lastCandleRef.current = newCandle;
+    }, [currentData, timeframe]);
+
 
     return (
         <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 h-[500px] flex flex-col">
@@ -120,6 +182,11 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol }) => {
             <div className="flex justify-between items-center mb-4">
                 <h3 className="font-bold text-slate-300 flex items-center gap-2 uppercase tracking-wide text-sm">
                     <History className="w-4 h-4 text-cyan-500" /> K-Line Chart ({timeframe})
+                    {currentData && (
+                        <span className="ml-2 text-cyan-400 font-mono text-base">
+                            {currentData.bid}
+                        </span>
+                    )}
                 </h3>
 
                 <div className="flex bg-slate-800 rounded-lg p-1 gap-1">

@@ -134,7 +134,7 @@ const App = () => {
           </div>
 
           {/* Price Evolution Chart */}
-          <ChartWidget symbol={data.market_data.symbol} />
+          <ChartWidget symbol={data.market_data.symbol} currentData={data.market_data} />
 
           {/* Tabbed Interface: Positions & History */}
           <div className="bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden mt-6 flex flex-col h-[500px]">
