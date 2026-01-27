@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "QuantTrader Pro"
 #property link      ""
-#property version   "1.25"
+#property version   "1.26"
 #property strict
 
 //+------------------------------------------------------------------+
@@ -1465,7 +1465,7 @@ void ReportAccountStatus() {
    string posJson = "";
    int total = OrdersTotal();
    for(int i=0; i<total; i++) {
-      if(OrderSelect(i, SELECT_BY_POS) && OrderSymbol() == Symbol() && OrderMagicNumber() == MagicNumber && OrderType() <= OP_SELL) {
+      if(OrderSelect(i, SELECT_BY_POS) && OrderType() <= OP_SELL) {
          UpdateOrderMFE_MAE(OrderTicket(), OrderProfit());
          
          string side = (OrderType() == OP_BUY) ? "BUY" : "SELL";
@@ -1504,7 +1504,7 @@ void ReportTradeHistory() {
      {
       if(OrderSelect(i, SELECT_BY_POS, MODE_HISTORY))
         {
-         if(OrderMagicNumber() == MagicNumber && OrderSymbol() == Symbol() && OrderCloseTime() >= scanTime)
+         if(OrderCloseTime() >= scanTime)
            {
             if(hasData) json_body += ",";
             
