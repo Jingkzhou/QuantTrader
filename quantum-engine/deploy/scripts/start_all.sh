@@ -28,12 +28,13 @@ fi
 echo "[start_all] starting ai_brain"
 nohup "$PYTHON_BIN" ai_brain/src/main.py >/tmp/quantum-engine-ai.log 2>&1 & echo $! > /tmp/quantum-engine-ai.pid
 
-if command -v npm >/dev/null 2>&1; then
-  echo "[start_all] starting dashboard"
-  (cd dashboard && nohup npm run dev -- --port 5173 --host >/tmp/quantum-engine-dashboard.log 2>&1 & echo $! > /tmp/quantum-engine-dashboard.pid)
-else
-  echo "[start_all] npm not found; dashboard not started" >&2
-fi
+# Dashboard is now started via docker-compose
+# if command -v npm >/dev/null 2>&1; then
+#   echo "[start_all] starting dashboard"
+#   (cd dashboard && nohup npm run dev -- --port 5173 --host >/tmp/quantum-engine-dashboard.log 2>&1 & echo $! > /tmp/quantum-engine-dashboard.pid)
+# else
+#   echo "[start_all] npm not found; dashboard not started" >&2
+# fi
 
 echo "[start_all] done"
 echo "[start_all] core_engine log: /tmp/quantum-engine-core.log"

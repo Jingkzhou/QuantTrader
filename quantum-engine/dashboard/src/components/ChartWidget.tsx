@@ -1,9 +1,9 @@
 
 import React, { useEffect, useRef, useState } from 'react';
-import { createChart, ColorType, CandlestickSeries } from 'lightweight-charts';
-import type { IChartApi as IChartApiType, ISeriesApi as ISeriesApiType } from 'lightweight-charts';
+import { createChart, ColorType, CandlestickSeries, LineSeries } from 'lightweight-charts';
+import type { IChartApi as IChartApiType, ISeriesApi as ISeriesApiType, SeriesMarker, Time } from 'lightweight-charts';
 import axios from 'axios';
-import { History } from 'lucide-react';
+import { History, Eye, EyeOff, Activity } from 'lucide-react';
 import { QuickTradePanel } from './QuickTradePanel';
 
 const API_BASE = 'http://127.0.0.1:3001/api/v1';
@@ -12,6 +12,7 @@ const API_BASE = 'http://127.0.0.1:3001/api/v1';
 interface ChartWidgetProps {
     symbol: string;
     currentData: any;
+    history?: any[];
 }
 
 const TIMEFRAMES = [
@@ -26,21 +27,41 @@ const TIMEFRAMES = [
     { label: 'MN', value: 'MN', seconds: 2592000 },
 ];
 
+function calculateSMA(data: any[], period: number) {
+    const smaData = [];
+    for (let i = 0; i < data.length; i++) {
+        if (i < period - 1) continue;
+        let sum = 0;
+        for (let j = 0; j < period; j++) {
+            sum += data[i - j].close;
+        }
+        smaData.push({
+            time: data[i].time,
+            value: sum / period,
+        });
+    }
+    return smaData;
+}
 
-export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData }) => {
+export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, history = [] }) => {
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApiType | null>(null);
     const seriesRef = useRef<ISeriesApiType<"Candlestick"> | null>(null);
+    const maSeriesRef = useRef<ISeriesApiType<"Line"> | null>(null);
     const lastCandleRef = useRef<{ time: number, open: number, high: number, low: number, close: number } | null>(null);
+    const allCandlesRef = useRef<any[]>([]); // Store all candles for MA calc
 
 
     const [timeframe, setTimeframe] = useState(() => localStorage.getItem('chart_timeframe') || 'M1');
+    const [showHistory, setShowHistory] = useState(true);
+    const [showMA, setShowMA] = useState(false);
 
     // Handle Timeframe Change
     const handleTimeframeChange = (tf: string) => {
         setTimeframe(tf);
         localStorage.setItem('chart_timeframe', tf);
         lastCandleRef.current = null;
+        allCandlesRef.current = [];
     };
 
 
@@ -73,8 +94,15 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData })
             wickDownColor: '#10b981',
         });
 
+        const maSeries = chart.addSeries(LineSeries, {
+            color: '#fbbf24', // Amber-400
+            lineWidth: 2,
+            visible: false,
+        });
+
         chartRef.current = chart;
         seriesRef.current = series;
+        maSeriesRef.current = maSeries;
 
         const handleResize = () => {
             if (chartContainerRef.current) {
@@ -89,6 +117,70 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData })
             chart.remove();
         };
     }, []);
+
+    // Toggle MA Visibility
+    useEffect(() => {
+        if (maSeriesRef.current) {
+            maSeriesRef.current.applyOptions({ visible: showMA });
+        }
+    }, [showMA]);
+
+    // Update Markers
+    useEffect(() => {
+        if (!seriesRef.current) return;
+
+        if (!showHistory || !history || history.length === 0) {
+            if (seriesRef.current && (seriesRef.current as any).setMarkers) {
+                (seriesRef.current as any).setMarkers([]);
+            }
+            return;
+        }
+
+        const tfObj = TIMEFRAMES.find(t => t.value === timeframe);
+        const intervalSeconds = tfObj ? tfObj.seconds : 60;
+
+        const normalizeTime = (t: number) => {
+            return (Math.floor(t / intervalSeconds) * intervalSeconds) as Time;
+        };
+
+        const markers: SeriesMarker<Time>[] = [];
+
+        history.forEach((trade) => {
+            // Entry Marker
+            if (trade.open_time) {
+                markers.push({
+                    time: normalizeTime(trade.open_time),
+                    position: trade.trade_type === 'BUY' ? 'belowBar' : 'aboveBar',
+                    color: trade.trade_type === 'BUY' ? '#22c55e' : '#ef4444', // Green / Red
+                    shape: trade.trade_type === 'BUY' ? 'arrowUp' : 'arrowDown',
+                    text: `Open #${trade.ticket}`,
+                    size: 1, // default is 1
+                });
+            }
+
+            // Exit Marker
+            if (trade.close_time) {
+                markers.push({
+                    time: normalizeTime(trade.close_time),
+                    position: trade.profit >= 0 ? 'aboveBar' : 'belowBar', // Position doesn't matter much for non-arrow
+                    color: trade.profit >= 0 ? '#fbbf24' : '#94a3b8', // Amber (Gold) / Slate (Gray)
+                    shape: 'circle',
+                    text: `Close #${trade.ticket} (${trade.profit.toFixed(2)})`,
+                    size: 1,
+                });
+            }
+        });
+
+        // Markers must be sorted by time
+        markers.sort((a, b) => (a.time as number) - (b.time as number));
+
+        if (seriesRef.current && (seriesRef.current as any).setMarkers) {
+            (seriesRef.current as any).setMarkers(markers);
+        } else {
+            console.warn("setMarkers is not defined on series", seriesRef.current);
+        }
+
+    }, [history, showHistory]);
 
     // Fetch Data
     useEffect(() => {
@@ -110,6 +202,13 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData })
                 if (data.length > 0) {
                     seriesRef.current.setData(data);
                     lastCandleRef.current = data[data.length - 1];
+                    allCandlesRef.current = data;
+
+                    // Update MA if enabled
+                    if (maSeriesRef.current) {
+                        const sma = calculateSMA(data, 20); // SMA 20
+                        maSeriesRef.current.setData(sma);
+                    }
                 }
             } catch (err) {
                 console.error("Failed to fetch candle data", err);
@@ -151,6 +250,12 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData })
                     low: Math.min(lastCandleRef.current.low, currentPrice),
                     close: currentPrice,
                 };
+                // Update local cache for next tick
+                lastCandleRef.current = newCandle;
+                // Update allCandlesRef last element
+                if (allCandlesRef.current.length > 0) {
+                    allCandlesRef.current[allCandlesRef.current.length - 1] = newCandle;
+                }
             } else {
                 // New candle
                 newCandle = {
@@ -160,6 +265,8 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData })
                     low: currentPrice,
                     close: currentPrice,
                 };
+                lastCandleRef.current = newCandle;
+                allCandlesRef.current.push(newCandle);
             }
         } else {
             // First candle
@@ -170,10 +277,35 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData })
                 low: currentPrice,
                 close: currentPrice,
             };
+            lastCandleRef.current = newCandle;
+            allCandlesRef.current = [newCandle];
         }
 
         seriesRef.current.update(newCandle as any);
-        lastCandleRef.current = newCandle;
+
+        // Update MA Realtime
+        if (maSeriesRef.current && allCandlesRef.current.length >= 20) {
+            // Calculate SMA for the last point only to be efficient? 
+            // Or just recalculate entire SMA for simplicity (array is small usually < 1000)
+            // lightweight-charts optimized `setData` or `update`? 
+            // For line series, `update` adds a new point.
+            // If we updated the current candle (same time), we should update the MA value for that time.
+
+            // Recalculate last MA point
+            const data = allCandlesRef.current;
+            const period = 20;
+            let sum = 0;
+            for (let j = 0; j < period; j++) {
+                sum += data[data.length - 1 - j].close;
+            }
+            const maValue = sum / period;
+
+            maSeriesRef.current.update({
+                time: newCandle.time as Time,
+                value: maValue
+            });
+        }
+
     }, [currentData, timeframe]);
 
 
@@ -182,14 +314,38 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData })
             <QuickTradePanel symbol={symbol} />
             {/* Header & Toolbar */}
             <div className="flex justify-between items-center mb-4">
-                <h3 className="font-bold text-slate-300 flex items-center gap-2 uppercase tracking-wide text-sm">
-                    <History className="w-4 h-4 text-cyan-500" /> K线图 ({timeframe})
-                    {currentData && (
-                        <span className="ml-2 text-cyan-400 font-mono text-base">
-                            {currentData.bid}
-                        </span>
-                    )}
-                </h3>
+                <div className="flex items-center gap-4">
+                    <h3 className="font-bold text-slate-300 flex items-center gap-2 uppercase tracking-wide text-sm">
+                        <History className="w-4 h-4 text-cyan-500" /> K线图 ({timeframe})
+                        {currentData && (
+                            <span className="ml-2 text-cyan-400 font-mono text-base">
+                                {currentData.bid}
+                            </span>
+                        )}
+                    </h3>
+
+                    {/* History Toggle */}
+                    <button
+                        onClick={() => setShowHistory(!showHistory)}
+                        className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider transition-colors ${showHistory ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'bg-slate-800 text-slate-500 border border-slate-700'
+                            }`}
+                        title="显示历史交易标记"
+                    >
+                        {showHistory ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                        History
+                    </button>
+
+                    {/* MA Toggle */}
+                    <button
+                        onClick={() => setShowMA(!showMA)}
+                        className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider transition-colors ${showMA ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-slate-800 text-slate-500 border border-slate-700'
+                            }`}
+                        title="显示 SMA(20) 均线"
+                    >
+                        <Activity className="w-3 h-3" />
+                        MA(20)
+                    </button>
+                </div>
 
                 <div className="flex bg-slate-800 rounded-lg p-1 gap-1">
                     {TIMEFRAMES.map((tf) => (
