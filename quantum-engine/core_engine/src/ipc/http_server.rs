@@ -186,7 +186,7 @@ async fn get_state(
     // Use if let to handle optional account_id
     if let Some(id) = account_id {
         // Verify ownership
-        let acc = sqlx::query!("SELECT id FROM accounts WHERE id = $1 AND owner_id = $2", id, claims.user_id)
+        let acc = sqlx::query!("SELECT a.id FROM accounts a JOIN user_accounts ua ON a.id = ua.account_id WHERE a.id = $1 AND ua.user_id = $2", id, claims.user_id)
             .fetch_optional(&state.db)
             .await
             .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
@@ -335,7 +335,7 @@ async fn get_account_history(
         .ok_or((axum::http::StatusCode::BAD_REQUEST, "Missing account_id".to_string()))?;
 
     // Verify ownership
-    let _ = sqlx::query!("SELECT id FROM accounts WHERE id = $1 AND owner_id = $2", account_id, claims.user_id)
+    let _ = sqlx::query!("SELECT a.id FROM accounts a JOIN user_accounts ua ON a.id = ua.account_id WHERE a.id = $1 AND ua.user_id = $2", account_id, claims.user_id)
         .fetch_optional(&state.db)
         .await
         .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
@@ -405,7 +405,7 @@ async fn get_trade_history(
         .ok_or((axum::http::StatusCode::BAD_REQUEST, "Missing account_id".to_string()))?;
 
     // Verify ownership
-    let _ = sqlx::query!("SELECT id FROM accounts WHERE id = $1 AND owner_id = $2", account_id, claims.user_id)
+    let _ = sqlx::query!("SELECT a.id FROM accounts a JOIN user_accounts ua ON a.id = ua.account_id WHERE a.id = $1 AND ua.user_id = $2", account_id, claims.user_id)
         .fetch_optional(&state.db)
         .await
         .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
@@ -517,7 +517,7 @@ async fn get_commands(
         .ok_or((axum::http::StatusCode::BAD_REQUEST, "Missing account_id".to_string()))?;
 
     // Verify ownership
-    let _ = sqlx::query!("SELECT id FROM accounts WHERE id = $1 AND owner_id = $2", account_id, claims.user_id)
+    let _ = sqlx::query!("SELECT a.id FROM accounts a JOIN user_accounts ua ON a.id = ua.account_id WHERE a.id = $1 AND ua.user_id = $2", account_id, claims.user_id)
         .fetch_optional(&state.db)
         .await
         .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
@@ -634,7 +634,10 @@ async fn list_accounts(
 ) -> Result<Json<Vec<crate::data_models::AccountRecord>>, (axum::http::StatusCode, String)> {
     let accounts = sqlx::query_as!(
         crate::data_models::AccountRecord,
-        "SELECT id, owner_id, mt4_account_number, broker_name, account_name, COALESCE(is_active, true) as \"is_active!\" FROM accounts WHERE owner_id = $1",
+        "SELECT a.id, a.owner_id, a.mt4_account_number, a.broker_name, a.account_name, COALESCE(a.is_active, true) as \"is_active!\" 
+         FROM accounts a
+         JOIN user_accounts ua ON a.id = ua.account_id
+         WHERE ua.user_id = $1",
         claims.user_id
     )
     .fetch_all(&state.db)
@@ -649,7 +652,7 @@ async fn bind_account(
     claims: Claims,
     Json(payload): Json<crate::data_models::BindAccountRequest>,
 ) -> Result<Json<crate::data_models::AccountRecord>, (axum::http::StatusCode, String)> {
-    // 1. Find if the account exists (auto-registered by EA)
+    // 1. Find if the account exists (auto-registered by EA) or create it
     let account = sqlx::query_as!(
         crate::data_models::AccountRecord,
         "SELECT id, owner_id, mt4_account_number, broker_name, account_name, COALESCE(is_active, true) as \"is_active!\" FROM accounts WHERE mt4_account_number = $1 AND broker_name = $2",
@@ -659,34 +662,48 @@ async fn bind_account(
     .await
     .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    if let Some(mut acc) = account {
-        if acc.owner_id.is_some() && acc.owner_id != Some(claims.user_id) {
-            return Err((axum::http::StatusCode::FORBIDDEN, "Account already owned by another user".to_string()));
-        }
-
-        // Bind it
-        sqlx::query!(
-            "UPDATE accounts SET owner_id = $1, account_name = $2 WHERE id = $3",
-            claims.user_id, payload.account_name, acc.id
-        )
-        .execute(&state.db)
-        .await
-        .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-        acc.owner_id = Some(claims.user_id);
-        acc.account_name = payload.account_name;
-        Ok(Json(acc))
+    let acc_id = if let Some(acc) = account {
+        acc.id
     } else {
-        // Create it manually if it hasn't connected yet
-        let acc = sqlx::query_as!(
-            crate::data_models::AccountRecord,
-            "INSERT INTO accounts (owner_id, mt4_account_number, broker_name, account_name) VALUES ($1, $2, $3, $4) RETURNING id, owner_id, mt4_account_number, broker_name, account_name, COALESCE(is_active, true) as \"is_active!\"",
-            claims.user_id, payload.mt4_account, payload.broker, payload.account_name
+        // Create it manually
+        let new_acc = sqlx::query!(
+            "INSERT INTO accounts (mt4_account_number, broker_name, account_name) VALUES ($1, $2, $3) RETURNING id",
+            payload.mt4_account, payload.broker, payload.account_name
         )
         .fetch_one(&state.db)
         .await
         .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        new_acc.id
+    };
 
-        Ok(Json(acc))
+    // 2. Bind to user (idempotent insert)
+    let _ = sqlx::query!(
+        "INSERT INTO user_accounts (user_id, account_id, created_at) VALUES ($1, $2, $3) ON CONFLICT (user_id, account_id) DO NOTHING",
+        claims.user_id, acc_id, chrono::Utc::now().timestamp()
+    )
+    .execute(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // 3. Update account name if provided (optional, last write wins or maybe we shouldn't update it if it's shared? For now let's update it)
+    if let Some(name) = payload.account_name.clone() {
+        let _ = sqlx::query!(
+            "UPDATE accounts SET account_name = $1 WHERE id = $2",
+            name, acc_id
+        )
+        .execute(&state.db)
+        .await;
     }
+
+    // Return current state
+    let final_acc = sqlx::query_as!(
+        crate::data_models::AccountRecord,
+        "SELECT id, owner_id, mt4_account_number, broker_name, account_name, COALESCE(is_active, true) as \"is_active!\" FROM accounts WHERE id = $1",
+        acc_id
+    )
+    .fetch_one(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(final_acc))
 }

@@ -66,13 +66,22 @@ pub struct UserInternal {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, sqlx::FromRow)]
+
 pub struct AccountRecord {
     pub id: i32,
-    pub owner_id: Option<i32>,
+    pub owner_id: Option<i32>, // Deprecated
     pub mt4_account_number: i64,
     pub broker_name: String,
     pub account_name: Option<String>,
     pub is_active: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default, sqlx::FromRow)]
+pub struct UserAccount {
+    pub user_id: i32,
+    pub account_id: i32,
+    pub permission: String,
+    pub created_at: i64,
 }
 
 #[derive(Debug, Deserialize)]

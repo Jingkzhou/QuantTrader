@@ -80,6 +80,49 @@ async fn main() {
     .await
     .expect("Failed to create trade_history table");
 
+    // Initialize users table
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            username TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'viewer'
+        )"
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to create users table");
+
+    // Initialize accounts table
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS accounts (
+            id SERIAL PRIMARY KEY,
+            owner_id INTEGER, -- Deprecated in favor of user_accounts, but kept for compatibility during migration
+            mt4_account_number BIGINT NOT NULL,
+            broker_name TEXT NOT NULL,
+            account_name TEXT,
+            is_active BOOLEAN DEFAULT TRUE,
+            UNIQUE(mt4_account_number, broker_name)
+        )"
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to create accounts table");
+
+    // Initialize user_accounts table (Many-to-Many)
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS user_accounts (
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            account_id INTEGER NOT NULL REFERENCES accounts(id),
+            permission TEXT DEFAULT 'read_write',
+            created_at BIGINT NOT NULL,
+            PRIMARY KEY (user_id, account_id)
+        )"
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to create user_accounts table");
+
     // Start HTTP server for MT4 data ingestion
     ipc::http_server::start_server(pool).await;
 }
