@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "QuantTrader Pro"
 #property link      ""
-#property version   "1.24"
+#property version   "1.25"
 #property strict
 
 //+------------------------------------------------------------------+
@@ -864,10 +864,25 @@ void TrackPendingOrders(const OrderStats &stats, int direction)
                if(g_SellOverweight || (EnableLockTrend && stats.buyLots==stats.sellLots)) isAllow=true;
             }
             
-            if(isAllow) 
+            // 动态 StopLevel 检查
+            double stopLevel = MarketInfo(Symbol(), MODE_STOPLEVEL) * Point;
+            bool safetyCheck = true;
+            
+            if(direction == 1) // Buy Stop: Target must be > Ask + StopLevel
+               if(targetPrice <= Ask + stopLevel) safetyCheck = false;
+            
+            if(direction == -1) // Sell Stop: Target must be < Bid - StopLevel
+               if(targetPrice >= Bid - stopLevel) safetyCheck = false;
+
+            if(isAllow && safetyCheck) 
               {
-               if(!OrderModify(OrderTicket(), targetPrice, 0, 0, 0, Blue))
-                  Print("OrderModify Error: ", GetLastError());
+               if(!OrderModify(OrderTicket(), targetPrice, 0, 0, 0, (direction==1?Blue:Red)))
+                  Print("OrderModify Error: ", GetLastError(), " (136=OffQuotes). Tgt:", targetPrice, " Mkt:", (direction==1?Ask:Bid), " SLvl:", stopLevel);
+              }
+            else if(isAllow && !safetyCheck)
+              {
+               // 仅调试时打开，避免刷屏
+               // Print("OrderModify Skipped: Too close to market. Gap:", DoubleToString(MathAbs(targetPrice-(direction==1?Ask:Bid))/_Point, 1));
               }
            }
         }
@@ -905,10 +920,25 @@ void TrackPendingOrders(const OrderStats &stats, int direction)
                if(g_BuyOverweight || (EnableLockTrend && stats.buyLots==stats.sellLots)) isAllow=true;
             }
             
-            if(isAllow) 
+            // 动态 StopLevel 检查
+            double stopLevel = MarketInfo(Symbol(), MODE_STOPLEVEL) * Point;
+            bool safetyCheck = true;
+            
+            if(direction == 1) // Buy Stop: Target must be > Ask + StopLevel
+               if(targetPrice <= Ask + stopLevel) safetyCheck = false;
+            
+            if(direction == -1) // Sell Stop: Target must be < Bid - StopLevel
+               if(targetPrice >= Bid - stopLevel) safetyCheck = false;
+
+            if(isAllow && safetyCheck) 
               {
-               if(!OrderModify(OrderTicket(), targetPrice, 0, 0, 0, Red))
-                  Print("OrderModify Error: ", GetLastError());
+               if(!OrderModify(OrderTicket(), targetPrice, 0, 0, 0, (direction==1?Blue:Red)))
+                  Print("OrderModify Error: ", GetLastError(), " (136=OffQuotes). Tgt:", targetPrice, " Mkt:", (direction==1?Ask:Bid), " SLvl:", stopLevel);
+              }
+            else if(isAllow && !safetyCheck)
+              {
+               // 仅调试时打开，避免刷屏
+               // Print("OrderModify Skipped: Too close to market. Gap:", DoubleToString(MathAbs(targetPrice-(direction==1?Ask:Bid))/_Point, 1));
               }
            }
         }

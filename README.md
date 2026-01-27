@@ -1,4 +1,4 @@
-# QuantTrader Pro (Version 1.24 Final)
+# QuantTrader Pro (Version 1.25 Final)
 
 ## 项目概述
 **QuantTrader Pro** 是一款基于 MT4 平台的自动化网格交易系统。本项目已升级至 **Version 1.0 Final**，核心逻辑基于反编译代码 1:1 精确复刻，专注于高频交易环境下的策略稳定性与风控能力。系统集成了智能双阶段网格、多重风控保护（逆势/顺势/对锁）、UI 可视化面板以及实时数据上报功能。
@@ -120,6 +120,7 @@
 5.  在面板上检查网络连接状态与各项参数。
 
 ## 版本历史
+*   **v1.25**: 修复: 增加 StopLevel 检查防止错误 136 (Off quotes)
 *   **v1.24**: Fixed: Increased WebRequest timeout to 3000ms
 *   **v1.23**: Config: Reverted RustServerUrl for VM setup
 *   **v1.22**: Config: Changed default RustServerUrl to localhost
