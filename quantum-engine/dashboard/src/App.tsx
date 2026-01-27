@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
-  TrendingUp, TrendingDown, Activity, Terminal
+  Activity, Terminal
 } from 'lucide-react';
 import { Navbar } from './components/Navbar';
 import { ChartWidget } from './components/ChartWidget';
@@ -477,21 +477,7 @@ const App = () => {
                   gridClass="grid-cols-2 lg:grid-cols-2 gap-3"
                 />
 
-                {/* Market Ticker (Side) */}
-                <div className="grid grid-cols-2 gap-3">
-                  <MarketCard
-                    label="买入价"
-                    value={currentMarketData?.bid?.toFixed(5) || "0.00000"}
-                    icon={<TrendingDown className="text-rose-500 w-4 h-4" />}
-                    subValue="Bid"
-                  />
-                  <MarketCard
-                    label="卖出价"
-                    value={currentMarketData?.ask?.toFixed(5) || "0.00000"}
-                    icon={<TrendingUp className="text-emerald-500 w-4 h-4" />}
-                    subValue="Ask"
-                  />
-                </div>
+
 
                 {/* Real-time Logs */}
                 <div className="bg-slate-900/50 border border-slate-800 rounded-2xl flex flex-col h-[500px]">
@@ -607,16 +593,7 @@ const BindModal = ({ onClose, onBind, form, setForm }: any) => (
   </div>
 );
 
-const MarketCard = ({ label, value, icon, subValue }: any) => (
-  <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 transition-all hover:border-slate-700">
-    <div className="flex justify-between items-start mb-2">
-      <span className="text-slate-500 text-xs font-bold uppercase tracking-widest">{label}</span>
-      {icon}
-    </div>
-    <div className="text-2xl font-mono font-bold">{value}</div>
-    {subValue && <div className="text-[10px] text-slate-600 mt-1 uppercase tracking-tight">{subValue}</div>}
-  </div>
-);
+
 
 
 export default App;

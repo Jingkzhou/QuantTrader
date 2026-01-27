@@ -428,9 +428,17 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
                     <h3 className="font-bold text-slate-300 flex items-center gap-2 uppercase tracking-wide text-sm">
                         <History className="w-4 h-4 text-cyan-500" /> K线图 ({timeframe})
                         {currentData && (
-                            <span className="ml-2 text-cyan-400 font-mono text-base">
-                                {currentData.bid}
-                            </span>
+                            <div className="flex items-center gap-3 ml-4 bg-slate-900/50 px-3 py-1 rounded-lg border border-slate-700/50">
+                                <div className="flex flex-col items-end leading-none">
+                                    <span className="text-[9px] text-slate-500 font-bold tracking-wider">BID</span>
+                                    <span className="text-emerald-500 font-mono text-sm font-bold">{currentData.bid}</span>
+                                </div>
+                                <div className="h-4 w-px bg-slate-700" />
+                                <div className="flex flex-col items-start leading-none">
+                                    <span className="text-[9px] text-slate-500 font-bold tracking-wider">ASK</span>
+                                    <span className="text-rose-500 font-mono text-sm font-bold">{currentData.ask}</span>
+                                </div>
+                            </div>
                         )}
                     </h3>
 
