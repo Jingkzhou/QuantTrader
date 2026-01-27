@@ -4,6 +4,7 @@ import { createChart, ColorType, CandlestickSeries } from 'lightweight-charts';
 import type { IChartApi as IChartApiType, ISeriesApi as ISeriesApiType } from 'lightweight-charts';
 import axios from 'axios';
 import { History } from 'lucide-react';
+import { QuickTradePanel } from './QuickTradePanel';
 
 const API_BASE = 'http://127.0.0.1:3001/api/v1';
 
@@ -177,11 +178,12 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData })
 
 
     return (
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 h-[500px] flex flex-col">
+        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 h-[500px] flex flex-col relative group">
+            <QuickTradePanel symbol={symbol} />
             {/* Header & Toolbar */}
             <div className="flex justify-between items-center mb-4">
                 <h3 className="font-bold text-slate-300 flex items-center gap-2 uppercase tracking-wide text-sm">
-                    <History className="w-4 h-4 text-cyan-500" /> K-Line Chart ({timeframe})
+                    <History className="w-4 h-4 text-cyan-500" /> K线图 ({timeframe})
                     {currentData && (
                         <span className="ml-2 text-cyan-400 font-mono text-base">
                             {currentData.bid}

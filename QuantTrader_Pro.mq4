@@ -357,9 +357,10 @@ void OnTimer()
       static datetime lastReportTime = 0;
 
       // Frequency Limiter: Max 1 request per 3 seconds to prevent thread blocking
-      if(TimeCurrent() - lastReportTime > 3 && IsConnected())
+         if(TimeCurrent() - lastReportTime > 3 && IsConnected())
         {
          ReportMarketData();
+         CheckCommands(); // Poll for commands (every 3s aligned with report, or faster?)
          
          static datetime lastAccountReport = 0;
          if(TimeCurrent() - lastAccountReport >= AccountReportInterval)
@@ -1424,8 +1425,8 @@ void ReportAccountStatus() {
       }
    }
    
-   string json = StringFormat("{\"balance\":%.2f,\"equity\":%.2f,\"margin\":%.2f,\"free_margin\":%.2f,\"floating_profit\":%.2f,\"positions\":[%s]}",
-                              AccountBalance(), AccountEquity(), AccountMargin(), AccountFreeMargin(), stats.buyProfit + stats.sellProfit, posJson);
+   string json = StringFormat("{\"balance\":%.2f,\"equity\":%.2f,\"margin\":%.2f,\"free_margin\":%.2f,\"floating_profit\":%.2f,\"timestamp\":%lld,\"positions\":[%s]}",
+                              AccountBalance(), AccountEquity(), AccountMargin(), AccountFreeMargin(), stats.buyProfit + stats.sellProfit, (long)TimeCurrent(), posJson);
    SendData("/api/v1/account", json);
 }
 
@@ -1498,4 +1499,48 @@ int SendData(string path, string json_body) {
       }
    }
    return res;
+}
+
+// 简易命令轮询 (Simple Command Polling)
+void CheckCommands() {
+   char data[], result[];
+   string headers = "Content-Type: application/json\r\n";
+   // Use GET to retrieve pending commands
+   int res = WebRequest("GET", RustServerUrl + "/api/v1/commands", headers, 500, data, result, headers);
+   
+   if(res == 200) {
+      string json = CharArrayToString(result, 0, WHOLE_ARRAY, CP_UTF8);
+      if(StringLen(json) > 10) { // Not empty "[]" and has content
+         // 解析动作 ("action":"OPEN_BUY")
+         // 注意：此简易解析假设一次只处理一个同类指令，或者依靠高频轮询处理
+         
+         if(StringFind(json, "CLOSE_ALL") >= 0) {
+            CloseAllOrders(0);
+            Print("Remote Command: CLOSE ALL Executed");
+         }
+         
+         // 简单的解析 Lots (假设格式固定 "lots":0.01)
+         // 实际生产环境建议使用专门的 JSON 库
+         double cmdLots = BaseLotSize; 
+         // Find "lots":
+         int lotPos = StringFind(json, "\"lots\":");
+         if(lotPos >= 0) {
+            string lotSub = StringSubstr(json, lotPos + 7, 5); // 取 5 位字符 "0.01,"
+            cmdLots = StringToDouble(lotSub);
+            if(cmdLots <= 0) cmdLots = BaseLotSize;
+         }
+
+         if(StringFind(json, "OPEN_BUY") >= 0) {
+            int ticket = OrderSend(Symbol(), OP_BUY, cmdLots, Ask, Slippage, 0, 0, "WebCmd", MagicNumber, 0, Blue);
+            if(ticket > 0) Print("Remote Command: OPEN BUY ", cmdLots, " lots Executed");
+            else Print("Remote Command: OPEN BUY Failed: ", GetLastError());
+         }
+         
+         if(StringFind(json, "OPEN_SELL") >= 0) {
+            int ticket = OrderSend(Symbol(), OP_SELL, cmdLots, Bid, Slippage, 0, 0, "WebCmd", MagicNumber, 0, Red);
+            if(ticket > 0) Print("Remote Command: OPEN SELL ", cmdLots, " lots Executed");
+            else Print("Remote Command: OPEN SELL Failed: ", GetLastError());
+         }
+      }
+   }
 }

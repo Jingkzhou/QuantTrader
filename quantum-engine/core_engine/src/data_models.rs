@@ -28,7 +28,15 @@ pub struct AccountStatus {
     pub margin: f64,
     pub free_margin: f64,
     pub floating_profit: f64,
+    pub timestamp: i64, 
     pub positions: Vec<Position>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default, sqlx::FromRow)]
+pub struct AccountHistory {
+    pub timestamp: i64,
+    pub balance: f64,
+    pub equity: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -59,4 +67,14 @@ pub struct Candle {
     pub high: f64,
     pub low: f64,
     pub close: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct Command {
+    pub id: String,
+    pub action: String, // OPEN_BUY, OPEN_SELL, CLOSE_ALL
+    pub symbol: String,
+    pub lots: f64,
+    pub status: String, // PENDING, SENT
+    pub timestamp: u64,
 }

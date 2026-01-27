@@ -40,3 +40,10 @@ Interpret creatively and make unexpected choices that feel genuinely designed fo
 **IMPORTANT**: Match implementation complexity to the aesthetic vision. Maximalist designs need elaborate code with extensive animations and effects. Minimalist or refined designs need restraint, precision, and careful attention to spacing, typography, and subtle details. Elegance comes from executing the vision well.
 
 Remember: Claude is capable of extraordinary creative work. Don't hold back, show what can truly be created when thinking outside the box and committing fully to a distinctive vision.
+
+## Localization (汉化)
+
+**MANDATORY**: Unless the user explicitly requests another language, ALL user-facing text, labels, buttons, and content MUST be in **Simplified Chinese (简体中文)**.
+- Simulate realistic and professional Chinese content (do not use "Lorem Ipsum").
+- Ensure translations are natural and context-appropriate (e.g., using standard industry terminology for dashboard/trading apps).
+- If the user provides English requirements, you must translate them into Chinese for the final interface.

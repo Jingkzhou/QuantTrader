@@ -4,6 +4,8 @@ import {
   TrendingUp, TrendingDown, Wallet, Activity, Terminal, LayoutDashboard
 } from 'lucide-react';
 import { ChartWidget } from './components/ChartWidget';
+import { PerformancePanel } from './components/PerformancePanel';
+import { EquityChartWidget } from './components/EquityChartWidget';
 
 const API_BASE = 'http://127.0.0.1:3001/api/v1';
 
@@ -94,7 +96,7 @@ const App = () => {
           <div className="bg-cyan-600/20 p-2 rounded-lg border border-cyan-500/30">
             <LayoutDashboard className="text-cyan-500 w-6 h-6" />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">QuantTrader <span className="text-cyan-500">PRO</span></h1>
+          <h1 className="text-2xl font-bold tracking-tight">QuantTrader <span className="text-cyan-500">专业版</span></h1>
         </div>
         <div className="flex items-center gap-6">
           <div className="flex flex-col items-end">
@@ -106,6 +108,9 @@ const App = () => {
           </div>
         </div>
       </div>
+
+      {/* Performance Panel */}
+      <PerformancePanel />
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
 
@@ -226,7 +231,7 @@ const App = () => {
                         <td className={`px-6 py-3 text-right font-mono font-bold text-sm ${t.profit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
                           {t.profit >= 0 ? '+' : ''}{t.profit.toFixed(2)}
                         </td>
-                        <td className="px-6 py-3 text-right font-mono text-slate-500 text-[10px]">
+                        <td className="px-6 py-3 text-right font-mono text-slate-500 text-left text-[10px]">
                           {new Date(t.close_time * 1000).toLocaleString()}
                         </td>
                       </tr>
@@ -245,6 +250,9 @@ const App = () => {
 
         {/* Right Column: Account & Logs */}
         <div className="space-y-6">
+
+          {/* Equity Curve Chart (New) */}
+          <EquityChartWidget currentAccountStatus={data.account_status} />
 
           {/* Account Summary */}
           <div className="bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 rounded-2xl p-6 shadow-xl">

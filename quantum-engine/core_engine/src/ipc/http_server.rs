@@ -16,6 +16,7 @@ pub struct AppState {
     pub market_data: MarketData,
     pub account_status: AccountStatus,
     pub recent_logs: Vec<LogEntry>,
+    pub pending_commands: Vec<Command>,
 }
 
 pub struct CombinedState {
@@ -40,10 +41,13 @@ pub async fn start_server(db_pool: PgPool) {
         .route("/api/v1/state", get(get_state))
         .route("/api/v1/market", post(handle_market_data))
         .route("/api/v1/account", post(handle_account_status))
+        .route("/api/v1/account/history", get(get_account_history))
         .route("/api/v1/logs", post(handle_logs))
         .route("/api/v1/history", post(handle_trade_history))
         .route("/api/v1/candles", get(get_candles))
         .route("/api/v1/trades", get(get_trade_history))
+        .route("/api/v1/command", post(handle_command))
+        .route("/api/v1/commands", get(get_commands))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(shared_state);
@@ -101,6 +105,8 @@ async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(pay
     // Persist to DB
     let positions_json = serde_json::to_string(&payload.positions).unwrap_or_default();
     
+    let timestamp = if payload.timestamp > 0 { payload.timestamp } else { chrono::Utc::now().timestamp() };
+
     let res = sqlx::query(
         "INSERT INTO account_status (balance, equity, margin, free_margin, floating_profit, timestamp, positions_snapshot) VALUES ($1, $2, $3, $4, $5, $6, $7)"
     )
@@ -109,7 +115,7 @@ async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(pay
     .bind(payload.margin)
     .bind(payload.free_margin)
     .bind(payload.floating_profit)
-    .bind(chrono::Utc::now().timestamp())
+    .bind(timestamp as i64)
     .bind(positions_json)
     .execute(&state.db)
     .await;
@@ -132,7 +138,33 @@ async fn handle_logs(State(state): State<Arc<CombinedState>>, Json(payload): Jso
     }
 }
 
-use crate::data_models::TradeHistory;
+
+
+use crate::data_models::{TradeHistory, AccountHistory};
+
+async fn get_account_history(
+    State(state): State<Arc<CombinedState>>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> Json<Vec<AccountHistory>> {
+    let limit = params.get("limit").and_then(|s| s.parse::<i64>().ok()).unwrap_or(200);
+
+    // Downsample strategy: 
+    // If we have too many points, we might want to aggregate. 
+    // For now, simple LIMIT query sorted by time.
+    
+    let history = sqlx::query_as::<_, AccountHistory>(
+        "SELECT timestamp, balance, equity FROM account_status ORDER BY timestamp DESC LIMIT $1"
+    )
+    .bind(limit)
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
+
+    let mut asc_history = history;
+    asc_history.reverse();
+
+    Json(asc_history)
+}
 
 async fn handle_trade_history(State(state): State<Arc<CombinedState>>, Json(payload): Json<Vec<TradeHistory>>) {
     tracing::info!("Received {} trade history records", payload.len());
@@ -171,7 +203,7 @@ async fn get_trade_history(State(state): State<Arc<CombinedState>>) -> Json<Vec<
     Json(trades)
 }
 
-use crate::data_models::Candle;
+use crate::data_models::{Candle, Command};
 
 async fn get_candles(
     State(state): State<Arc<CombinedState>>,
@@ -194,17 +226,6 @@ async fn get_candles(
         _ => 60,
     };
 
-    // SQL Aggregation: simple time_bucket approach
-    // We group by time bucket and use:
-    // Open = first(bid, timestamp)
-    // High = max(bid)
-    // Low = min(bid)
-    // Close = last(bid, timestamp)
-    // Note: This relies on sufficient tick density. 
-    // Ideally we usage timescaledb functions like time_bucket. Since we are using standard Postgres via sqlx for this MVP (assumed):
-    // We manually floor the timestamp.
-    
-    // Safety limit to avoid fetching too much data
     let limit = 1000;
 
     let query = format!(
@@ -228,9 +249,31 @@ async fn get_candles(
         .await
         .unwrap_or_default();
     
-    // Results are DESC (newest first), reverse for frontend usually
     let mut asc_candles = candles;
     asc_candles.reverse();
     
     Json(asc_candles)
+}
+    
+// --- Command Handling ---
+
+async fn handle_command(State(state): State<Arc<CombinedState>>, Json(payload): Json<Command>) {
+    tracing::info!("Received Command: {:?} on {}", payload.action, payload.symbol);
+    
+    // Add to pending queue (in-memory simple queue)
+    {
+        let mut s = state.memory.write().unwrap();
+        // Since we don't have pending_commands in AppState struct yet, need to add it there first. 
+        // But wait, replace_file_content replaces block. I need a MultiReplace to update struct definition AND handlers.
+        // For now, assume struct is updated or use a separate DB table.
+        // Actually, simple in-memory queue attached to AppState is best.
+        s.pending_commands.push(payload);
+    }
+}
+
+async fn get_commands(State(state): State<Arc<CombinedState>>) -> Json<Vec<Command>> {
+    let mut s = state.memory.write().unwrap();
+    let commands = s.pending_commands.clone();
+    s.pending_commands.clear(); // Consume commands once fetched (simple polling)
+    Json(commands)
 }
