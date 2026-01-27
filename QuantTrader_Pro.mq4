@@ -1479,13 +1479,14 @@ void ReportAccountStatus() {
    
    double marginLevel = (AccountMargin() > 0) ? AccountEquity() / AccountMargin() * 100.0 : 0;
 
-   string json = StringFormat("{\"balance\":%.2f,\"equity\":%.2f,\"margin\":%.2f,\"free_margin\":%.2f,\"floating_profit\":%.2f,\"timestamp\":%lld,\"margin_level\":%.2f,\"positions\":[%s]}",
-                               AccountBalance(), AccountEquity(), AccountMargin(), AccountFreeMargin(), stats.buyProfit + stats.sellProfit, (long)TimeCurrent(), marginLevel, posJson);
+   string json = StringFormat("{\"balance\":%.2f,\"equity\":%.2f,\"margin\":%.2f,\"free_margin\":%.2f,\"floating_profit\":%.2f,\"timestamp\":%lld,\"margin_level\":%.2f,\"mt4_account\":%d,\"broker\":\"%s\",\"positions\":[%s]}",
+                               AccountBalance(), AccountEquity(), AccountMargin(), AccountFreeMargin(), stats.buyProfit + stats.sellProfit, (long)TimeCurrent(), marginLevel, AccountNumber(), AccountCompany(), posJson);
    SendData("/api/v1/account", json);
 }
 
 void RemoteLog(string level, string message) {
-   string json = StringFormat("{\"timestamp\":%lld,\"level\":\"%s\",\"message\":\"%s\"}", (long)TimeCurrent(), level, message);
+   string json = StringFormat("{\"timestamp\":%lld,\"level\":\"%s\",\"message\":\"%s\",\"mt4_account\":%d,\"broker\":\"%s\"}", 
+                              (long)TimeCurrent(), level, message, AccountNumber(), AccountCompany());
    SendData("/api/v1/logs", json);
    Print(StringFormat("[%s] %s", level, message));
 }
@@ -1510,7 +1511,7 @@ void ReportTradeHistory() {
             string typeStr = (OrderType() == OP_BUY) ? "BUY" : (OrderType() == OP_SELL) ? "SELL" : "OTHER";
             
             string entry = StringFormat(
-               "{\"ticket\":%d,\"symbol\":\"%s\",\"open_time\":%d,\"close_time\":%d,\"open_price\":%.5f,\"close_price\":%.5f,\"lots\":%.2f,\"profit\":%.2f,\"trade_type\":\"%s\",\"magic\":%d,\"mae\":%.2f,\"mfe\":%.2f,\"signal_context\":%s}",
+               "{\"ticket\":%d,\"symbol\":\"%s\",\"open_time\":%d,\"close_time\":%d,\"open_price\":%.5f,\"close_price\":%.5f,\"lots\":%.2f,\"profit\":%.2f,\"trade_type\":\"%s\",\"magic\":%d,\"mae\":%.2f,\"mfe\":%.2f,\"signal_context\":%s,\"mt4_account\":%d,\"broker\":\"%s\"}",
                OrderTicket(),
                OrderSymbol(),
                OrderOpenTime(),
@@ -1523,7 +1524,9 @@ void ReportTradeHistory() {
                OrderMagicNumber(),
                GlobalVariableGet(StringFormat("%sMAE_%d", GV_PREFIX, OrderTicket())),
                GlobalVariableGet(StringFormat("%sMFE_%d", GV_PREFIX, OrderTicket())),
-               GetSignalContextJSON(OrderTicket())
+               GetSignalContextJSON(OrderTicket()),
+               AccountNumber(),
+               AccountCompany()
             );
             
             CleanupOrderGVs(OrderTicket());

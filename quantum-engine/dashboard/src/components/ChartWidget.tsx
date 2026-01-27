@@ -12,6 +12,7 @@ const API_BASE = 'http://127.0.0.1:3001/api/v1';
 interface ChartWidgetProps {
     symbol: string;
     currentData: any;
+    authToken: string | null;
     history?: any[];
     positions?: any[];
 }
@@ -44,7 +45,7 @@ function calculateSMA(data: any[], period: number) {
     return smaData;
 }
 
-export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, history = [], positions = [] }) => {
+export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, authToken, history = [], positions = [] }) => {
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const chartRef = useRef<IChartApiType | null>(null);
@@ -290,7 +291,8 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, h
             if (!symbol || !seriesRef.current) return;
             try {
                 const response = await axios.get(`${API_BASE}/candles`, {
-                    params: { symbol, timeframe }
+                    params: { symbol, timeframe },
+                    headers: { Authorization: authToken ? `Bearer ${authToken}` : '' }
                 });
 
                 const data = response.data.map((d: any) => ({

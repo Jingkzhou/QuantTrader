@@ -43,7 +43,43 @@ pub struct AccountStatus {
     pub timestamp: i64, 
     #[serde(default)]
     pub margin_level: f64,
+    #[serde(default)]
+    pub mt4_account: i64,
+    #[serde(default)]
+    pub broker: String,
     pub positions: Vec<Position>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default, sqlx::FromRow)]
+pub struct User {
+    pub id: i32,
+    pub username: String,
+    pub role: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default, sqlx::FromRow)]
+pub struct UserInternal {
+    pub id: i32,
+    pub username: String,
+    pub password_hash: String,
+    pub role: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default, sqlx::FromRow)]
+pub struct AccountRecord {
+    pub id: i32,
+    pub owner_id: Option<i32>,
+    pub mt4_account_number: i64,
+    pub broker_name: String,
+    pub account_name: Option<String>,
+    pub is_active: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BindAccountRequest {
+    pub mt4_account: i64,
+    pub broker: String,
+    pub account_name: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, sqlx::FromRow)]
@@ -51,13 +87,16 @@ pub struct AccountHistory {
     pub timestamp: i64,
     pub balance: f64,
     pub equity: f64,
+    pub account_uuid: Option<i32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct LogEntry {
-    pub timestamp: u64,
+    pub timestamp: i64,
     pub level: String,
     pub message: String,
+    pub mt4_account: i64,
+    pub broker: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, sqlx::FromRow)]
@@ -78,6 +117,10 @@ pub struct TradeHistory {
     pub mfe: f64,
     #[serde(default)]
     pub signal_context: Option<String>,
+    #[serde(default)]
+    pub mt4_account: i64,
+    #[serde(default)]
+    pub broker: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, sqlx::FromRow)]
@@ -96,5 +139,7 @@ pub struct Command {
     pub symbol: String,
     pub lots: f64,
     pub status: String, // PENDING, SENT
-    pub timestamp: u64,
+    pub timestamp: i64,
+    pub mt4_account: i64,
+    pub broker: String,
 }
