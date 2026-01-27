@@ -67,19 +67,19 @@ pub struct UserInternal {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, sqlx::FromRow)]
 
+
 pub struct AccountRecord {
-    pub id: i32,
-    pub owner_id: Option<i32>, // Deprecated
-    pub mt4_account_number: i64,
-    pub broker_name: String,
+    pub mt4_account: i64, // Renamed from mt4_account_number to match DB/JSON naming convention if desired, but let's keep consistency with DB
+    pub broker: String, // Renamed from broker_name
     pub account_name: Option<String>,
-    pub is_active: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, sqlx::FromRow)]
 pub struct UserAccount {
     pub user_id: i32,
-    pub account_id: i32,
+    pub mt4_account: i64,
+    pub broker: String,
+    pub account_name: Option<String>,
     pub permission: String,
     pub created_at: i64,
 }
@@ -96,7 +96,8 @@ pub struct AccountHistory {
     pub timestamp: i64,
     pub balance: f64,
     pub equity: f64,
-    pub account_uuid: Option<i32>,
+    pub mt4_account: i64,
+    pub broker: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]

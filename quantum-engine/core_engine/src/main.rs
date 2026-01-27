@@ -41,6 +41,11 @@ async fn main() {
     .await
     .expect("Failed to create market_data table");
 
+    // Migration: Add mt4_account and broker to market_data if not exist
+    // (Optional, market data often global, but let's support it)
+    let _ = sqlx::query("ALTER TABLE market_data ADD COLUMN IF NOT EXISTS mt4_account BIGINT").execute(&pool).await;
+    let _ = sqlx::query("ALTER TABLE market_data ADD COLUMN IF NOT EXISTS broker TEXT").execute(&pool).await;
+
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS account_status (
             id BIGSERIAL PRIMARY KEY,
@@ -56,6 +61,10 @@ async fn main() {
     .execute(&pool)
     .await
     .expect("Failed to create account_status table");
+    
+    // Migration: Add mt4_account and broker
+    let _ = sqlx::query("ALTER TABLE account_status ADD COLUMN IF NOT EXISTS mt4_account BIGINT").execute(&pool).await;
+    let _ = sqlx::query("ALTER TABLE account_status ADD COLUMN IF NOT EXISTS broker TEXT").execute(&pool).await;
 
     // Migration: Ensure positions_snapshot column exists for existing tables
     let _ = sqlx::query("ALTER TABLE account_status ADD COLUMN IF NOT EXISTS positions_snapshot TEXT")
@@ -80,6 +89,10 @@ async fn main() {
     .await
     .expect("Failed to create trade_history table");
 
+    // Migration: Add mt4_account and broker
+    let _ = sqlx::query("ALTER TABLE trade_history ADD COLUMN IF NOT EXISTS mt4_account BIGINT").execute(&pool).await;
+    let _ = sqlx::query("ALTER TABLE trade_history ADD COLUMN IF NOT EXISTS broker TEXT").execute(&pool).await;
+
     // Initialize users table
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS users (
@@ -93,30 +106,16 @@ async fn main() {
     .await
     .expect("Failed to create users table");
 
-    // Initialize accounts table
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS accounts (
-            id SERIAL PRIMARY KEY,
-            owner_id INTEGER, -- Deprecated in favor of user_accounts, but kept for compatibility during migration
-            mt4_account_number BIGINT NOT NULL,
-            broker_name TEXT NOT NULL,
-            account_name TEXT,
-            is_active BOOLEAN DEFAULT TRUE,
-            UNIQUE(mt4_account_number, broker_name)
-        )"
-    )
-    .execute(&pool)
-    .await
-    .expect("Failed to create accounts table");
-
-    // Initialize user_accounts table (Many-to-Many)
+    // Initialize user_accounts table (Direct binding: User <-> MT4/Broker)
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS user_accounts (
             user_id INTEGER NOT NULL REFERENCES users(id),
-            account_id INTEGER NOT NULL REFERENCES accounts(id),
+            mt4_account BIGINT NOT NULL,
+            broker TEXT NOT NULL,
+            account_name TEXT,
             permission TEXT DEFAULT 'read_write',
             created_at BIGINT NOT NULL,
-            PRIMARY KEY (user_id, account_id)
+            PRIMARY KEY (user_id, mt4_account, broker)
         )"
     )
     .execute(&pool)

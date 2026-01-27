@@ -24,11 +24,12 @@ pub struct AppState {
 }
 
 #[derive(Debug, Clone, Default)]
+
 pub struct InternalState {
     pub market_data: HashMap<String, MarketData>,
-    pub account_statuses: HashMap<i32, AccountStatus>,
-    pub recent_logs: HashMap<i32, Vec<LogEntry>>,
-    pub pending_commands: HashMap<i32, Vec<Command>>,
+    pub account_statuses: HashMap<String, AccountStatus>, // Key: "mt4_account:broker"
+    pub recent_logs: HashMap<String, Vec<LogEntry>>,     // Key: "mt4_account:broker"
+    pub pending_commands: HashMap<String, Vec<Command>>, // Key: "mt4_account:broker"
     pub active_symbols: Vec<String>,
 }
 
@@ -141,38 +142,15 @@ pub async fn start_server(db_pool: PgPool) {
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn get_or_create_account(pool: &sqlx::PgPool, mt4_acc: i64, broker: &str) -> Option<i32> {
-    // Check if account exists
-    let row = sqlx::query!(
-        "SELECT id, owner_id, mt4_account_number, broker_name, account_name, COALESCE(is_active, true) as \"is_active!\" FROM accounts WHERE mt4_account_number = $1 AND broker_name = $2", 
-        mt4_acc, broker
-    )
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten();
 
-    if let Some(r) = row {
-        Some(r.id)
-    } else {
-        // Auto-register (owner_id is None initially until a user claims it)
-        let res = sqlx::query!(
-            "INSERT INTO accounts (mt4_account_number, broker_name) VALUES ($1, $2) RETURNING id",
-            mt4_acc, broker
-        )
-        .fetch_one(pool)
-        .await
-        .ok()?;
-        Some(res.id)
-    }
-}
 
 async fn get_state(
     State(state): State<Arc<CombinedState>>,
     claims: Claims,
     axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
 ) -> Result<Json<AppState>, (axum::http::StatusCode, String)> {
-    let account_id = params.get("account_id").and_then(|id| id.parse::<i32>().ok());
+    let mt4_account = params.get("mt4_account").and_then(|id| id.parse::<i64>().ok());
+    let broker = params.get("broker").map(|s| s.clone());
 
     let mut app_state = AppState::default();
     
@@ -183,20 +161,26 @@ async fn get_state(
         app_state.active_symbols = s.active_symbols.clone();
     }
 
-    // Use if let to handle optional account_id
-    if let Some(id) = account_id {
+    // Use if let to handle optional account context
+    if let (Some(mt4), Some(brk)) = (mt4_account, broker) {
         // Verify ownership
-        let acc = sqlx::query!("SELECT a.id FROM accounts a JOIN user_accounts ua ON a.id = ua.account_id WHERE a.id = $1 AND ua.user_id = $2", id, claims.user_id)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-            .ok_or((axum::http::StatusCode::FORBIDDEN, "Access denied".to_string()))?;
+        let _ = sqlx::query!(
+            "SELECT 1 as \"exists!\" FROM user_accounts WHERE user_id = $1 AND mt4_account = $2 AND broker = $3",
+            claims.user_id, mt4, brk
+        )
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((axum::http::StatusCode::FORBIDDEN, "Access denied".to_string()))?;
 
         // Fetch latest snapshot for this account
-        let status_row = sqlx::query!("SELECT * FROM account_status WHERE account_uuid = $1 ORDER BY timestamp DESC LIMIT 1", acc.id)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let status_row = sqlx::query!(
+            "SELECT * FROM account_status WHERE mt4_account = $1 AND broker = $2 ORDER BY timestamp DESC LIMIT 1",
+            mt4, brk
+        )
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
         
         // Fill from DB snapshot if exists
         if let Some(row) = status_row {
@@ -206,6 +190,8 @@ async fn get_state(
             app_state.account_status.free_margin = row.free_margin.unwrap_or(0.0);
             app_state.account_status.floating_profit = row.floating_profit.unwrap_or(0.0);
             app_state.account_status.timestamp = row.timestamp;
+            app_state.account_status.mt4_account = row.mt4_account.unwrap_or(0);
+            app_state.account_status.broker = row.broker.unwrap_or_default();
             
             if let Some(ps_json) = row.positions_snapshot {
                 app_state.account_status.positions = serde_json::from_str(&ps_json).unwrap_or_default();
@@ -215,14 +201,15 @@ async fn get_state(
         // Overlay real-time memory state for this account
         {
             let s = state.memory.read().unwrap();
+            let key = format!("{}:{}", mt4, brk);
             
             // Use real-time status from memory if available
-            if let Some(real_time_status) = s.account_statuses.get(&acc.id) {
+            if let Some(real_time_status) = s.account_statuses.get(&key) {
                 app_state.account_status = real_time_status.clone();
             }
 
             // Filter logs for this account
-            if let Some(logs) = s.recent_logs.get(&acc.id) {
+            if let Some(logs) = s.recent_logs.get(&key) {
                 app_state.recent_logs = logs.clone();
             }
         }
@@ -244,10 +231,8 @@ async fn handle_market_data(State(state): State<Arc<CombinedState>>, Json(payloa
     }
 
     // Persist to DB
-    let account_uuid = get_or_create_account(&state.db, 0, "").await; // Market data is often global, but could be linked. For now, leave as None.
-
     let res = sqlx::query(
-        "INSERT INTO market_data (symbol, timestamp, open, high, low, close, bid, ask, account_uuid) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"
+        "INSERT INTO market_data (symbol, timestamp, open, high, low, close, bid, ask, mt4_account, broker) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)"
     )
     .bind(&payload.symbol)
     .bind(payload.timestamp as i64)
@@ -257,7 +242,8 @@ async fn handle_market_data(State(state): State<Arc<CombinedState>>, Json(payloa
     .bind(payload.close)
     .bind(payload.bid)
     .bind(payload.ask)
-    .bind(account_uuid)
+    .bind(0i64) // Default/Global account
+    .bind("")   // Default/Global broker
     .execute(&state.db)
     .await;
 
@@ -269,13 +255,11 @@ async fn handle_market_data(State(state): State<Arc<CombinedState>>, Json(payloa
 async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(payload): Json<AccountStatus>) {
     tracing::info!("Account Status Update: Equity:{} Acc:{} Broker:{}", payload.equity, payload.mt4_account, payload.broker);
     
-    // Persist to DB first to get/create account_uuid
-    let account_uuid = get_or_create_account(&state.db, payload.mt4_account, &payload.broker).await;
-    
     // Update Memory
-    if let Some(account_id) = account_uuid {
+    {
         let mut s = state.memory.write().unwrap();
-        let status = s.account_statuses.entry(account_id).or_insert_with(AccountStatus::default);
+        let key = format!("{}:{}", payload.mt4_account, payload.broker);
+        let status = s.account_statuses.entry(key).or_insert_with(AccountStatus::default);
         
         status.balance = payload.balance;
         status.equity = payload.equity;
@@ -284,13 +268,15 @@ async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(pay
         status.floating_profit = payload.floating_profit;
         status.timestamp = payload.timestamp;
         status.positions = payload.positions.clone();
+        status.mt4_account = payload.mt4_account;
+        status.broker = payload.broker.clone();
     }
 
     let positions_json = serde_json::to_string(&payload.positions).unwrap_or_default();
     let timestamp = if payload.timestamp > 0 { payload.timestamp } else { chrono::Utc::now().timestamp() };
 
     let res = sqlx::query(
-        "INSERT INTO account_status (balance, equity, margin, free_margin, floating_profit, timestamp, positions_snapshot, account_uuid) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"
+        "INSERT INTO account_status (balance, equity, margin, free_margin, floating_profit, timestamp, positions_snapshot, mt4_account, broker) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"
     )
     .bind(payload.balance)
     .bind(payload.equity)
@@ -299,7 +285,8 @@ async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(pay
     .bind(payload.floating_profit)
     .bind(timestamp as i64)
     .bind(positions_json)
-    .bind(account_uuid)
+    .bind(payload.mt4_account)
+    .bind(&payload.broker)
     .execute(&state.db)
     .await;
 
@@ -311,15 +298,12 @@ async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(pay
 async fn handle_logs(State(state): State<Arc<CombinedState>>, Json(payload): Json<LogEntry>) {
     tracing::info!("Log [{}]: {}", payload.level, payload.message);
     
-    let account_id = get_or_create_account(&state.db, payload.mt4_account, &payload.broker).await;
-    
-    if let Some(id) = account_id {
-        let mut s = state.memory.write().unwrap();
-        let logs = s.recent_logs.entry(id).or_insert_with(Vec::new);
-        logs.insert(0, payload);
-        if logs.len() > 100 {
-            logs.truncate(100);
-        }
+    let key = format!("{}:{}", payload.mt4_account, payload.broker);
+    let mut s = state.memory.write().unwrap();
+    let logs = s.recent_logs.entry(key).or_insert_with(Vec::new);
+    logs.insert(0, payload);
+    if logs.len() > 100 {
+        logs.truncate(100);
     }
 }
 
@@ -331,23 +315,27 @@ async fn get_account_history(
     claims: Claims,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<Vec<AccountHistory>>, (axum::http::StatusCode, String)> {
-    let account_id = params.get("account_id").and_then(|id| id.parse::<i32>().ok())
-        .ok_or((axum::http::StatusCode::BAD_REQUEST, "Missing account_id".to_string()))?;
+    let mt4_account = params.get("mt4_account").and_then(|id| id.parse::<i64>().ok())
+        .ok_or((axum::http::StatusCode::BAD_REQUEST, "Missing mt4_account".to_string()))?;
+    let broker = params.get("broker").ok_or((axum::http::StatusCode::BAD_REQUEST, "Missing broker".to_string()))?;
 
     // Verify ownership
-    let _ = sqlx::query!("SELECT a.id FROM accounts a JOIN user_accounts ua ON a.id = ua.account_id WHERE a.id = $1 AND ua.user_id = $2", account_id, claims.user_id)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((axum::http::StatusCode::FORBIDDEN, "Access denied".to_string()))?;
+    let _ = sqlx::query!(
+        "SELECT 1 as \"exists!\" FROM user_accounts WHERE user_id = $1 AND mt4_account = $2 AND broker = $3",
+        claims.user_id, mt4_account, broker
+    )
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .ok_or((axum::http::StatusCode::FORBIDDEN, "Access denied".to_string()))?;
 
     let limit = params.get("limit").and_then(|s| s.parse::<i64>().ok()).unwrap_or(200);
     
-    let history = sqlx::query_as::<_, AccountHistory>(
-        "SELECT timestamp, balance, equity FROM account_status WHERE account_uuid = $1 ORDER BY timestamp DESC LIMIT $2"
+    let history = sqlx::query_as!(
+        AccountHistory,
+        "SELECT timestamp, COALESCE(balance, 0.0) as \"balance!\", COALESCE(equity, 0.0) as \"equity!\", mt4_account as \"mt4_account!\", broker as \"broker!\" FROM account_status WHERE mt4_account = $1 AND broker = $2 ORDER BY timestamp DESC LIMIT $3",
+        mt4_account, broker, limit
     )
-    .bind(account_id)
-    .bind(limit)
     .fetch_all(&state.db)
     .await
     .unwrap_or_default();
@@ -362,16 +350,15 @@ async fn handle_trade_history(State(state): State<Arc<CombinedState>>, Json(payl
     tracing::info!("Received {} trade history records", payload.len());
 
     for trade in payload {
-        let account_uuid = get_or_create_account(&state.db, trade.mt4_account, &trade.broker).await;
-
         let res = sqlx::query(
-            "INSERT INTO trade_history (ticket, symbol, open_time, close_time, open_price, close_price, lots, profit, trade_type, magic, mae, mfe, signal_context, account_uuid) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            "INSERT INTO trade_history (ticket, symbol, open_time, close_time, open_price, close_price, lots, profit, trade_type, magic, mae, mfe, signal_context, mt4_account, broker) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
              ON CONFLICT (ticket) DO UPDATE SET 
                 mae = CASE WHEN trade_history.mfe < $12 THEN $11 ELSE trade_history.mae END,
                 mfe = CASE WHEN trade_history.mfe < $12 THEN $12 ELSE trade_history.mfe END,
                 signal_context = COALESCE(trade_history.signal_context, $13),
-                account_uuid = $14"
+                mt4_account = $14,
+                broker = $15"
         )
         .bind(trade.ticket)
         .bind(&trade.symbol)
@@ -386,7 +373,8 @@ async fn handle_trade_history(State(state): State<Arc<CombinedState>>, Json(payl
         .bind(trade.mae)
         .bind(trade.mfe)
         .bind(&trade.signal_context)
-        .bind(account_uuid)
+        .bind(trade.mt4_account)
+        .bind(&trade.broker)
         .execute(&state.db)
         .await;
 
@@ -401,45 +389,52 @@ async fn get_trade_history(
     claims: Claims,
     axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
 ) -> Result<Json<Vec<TradeHistory>>, (axum::http::StatusCode, String)> {
-    let account_id = params.get("account_id").and_then(|id| id.parse::<i32>().ok())
-        .ok_or((axum::http::StatusCode::BAD_REQUEST, "Missing account_id".to_string()))?;
+    let mt4_account = params.get("mt4_account").and_then(|id| id.parse::<i64>().ok())
+        .ok_or((axum::http::StatusCode::BAD_REQUEST, "Missing mt4_account".to_string()))?;
+    let broker = params.get("broker").ok_or((axum::http::StatusCode::BAD_REQUEST, "Missing broker".to_string()))?;
 
     // Verify ownership
-    let _ = sqlx::query!("SELECT a.id FROM accounts a JOIN user_accounts ua ON a.id = ua.account_id WHERE a.id = $1 AND ua.user_id = $2", account_id, claims.user_id)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((axum::http::StatusCode::FORBIDDEN, "Access denied".to_string()))?;
+    let _ = sqlx::query!(
+        "SELECT 1 as \"exists!\" FROM user_accounts WHERE user_id = $1 AND mt4_account = $2 AND broker = $3",
+        claims.user_id, mt4_account, broker
+    )
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .ok_or((axum::http::StatusCode::FORBIDDEN, "Access denied".to_string()))?;
 
-    let trades = sqlx::query_as::<_, TradeHistory>(
+    let trades = sqlx::query_as!(
+        TradeHistory,
         r#"
         SELECT 
-            ticket, symbol, open_time, close_time, 
-            COALESCE(open_price, 0.0) as open_price, 
-            COALESCE(close_price, 0.0) as close_price, 
-            COALESCE(lots, 0.0) as lots, 
-            COALESCE(profit, 0.0) as profit, 
-            trade_type, 
-            COALESCE(magic, 0) as magic, 
-            COALESCE(mae, 0.0) as mae, 
-            COALESCE(mfe, 0.0) as mfe, 
+            ticket as "ticket!", 
+            symbol as "symbol!", 
+            open_time as "open_time!", 
+            close_time as "close_time!", 
+            COALESCE(open_price, 0.0) as "open_price!", 
+            COALESCE(close_price, 0.0) as "close_price!", 
+            COALESCE(lots, 0.0) as "lots!", 
+            COALESCE(profit, 0.0) as "profit!", 
+            trade_type as "trade_type!", 
+            COALESCE(magic, 0) as "magic!", 
+            COALESCE(mae, 0.0) as "mae!", 
+            COALESCE(mfe, 0.0) as "mfe!", 
             signal_context, 
-            account_uuid,
-            0::bigint as mt4_account, 
-            ''::text as broker 
+            mt4_account as "mt4_account!", 
+            broker as "broker!" 
         FROM trade_history 
-        WHERE account_uuid = $1 
+        WHERE mt4_account = $1 AND broker = $2
         ORDER BY close_time DESC LIMIT 100
-        "#
+        "#,
+        mt4_account, broker
     )
-        .bind(account_id)
-        .fetch_all(&state.db)
-        .await
-        .map_err(|e| {
-            tracing::error!("DB Error trade_history: {}", e);
-            e
-        })
-        .unwrap_or_default();
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!("DB Error trade_history: {}", e);
+        e
+    })
+    .unwrap_or_default();
     
     Ok(Json(trades))
 }
@@ -504,7 +499,8 @@ async fn handle_command(State(state): State<Arc<CombinedState>>, Json(payload): 
     // Add to pending queue (in-memory simple queue)
     {
         let mut s = state.memory.write().unwrap();
-        s.pending_commands.entry(payload.mt4_account as i32).or_insert_with(Vec::new).push(payload);
+        let key = format!("{}:{}", payload.mt4_account, payload.broker);
+        s.pending_commands.entry(key).or_insert_with(Vec::new).push(payload);
     }
 }
 
@@ -513,19 +509,24 @@ async fn get_commands(
     claims: Claims,
     axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
 ) -> Result<Json<Vec<Command>>, (axum::http::StatusCode, String)> {
-    let account_id = params.get("account_id").and_then(|id| id.parse::<i32>().ok())
-        .ok_or((axum::http::StatusCode::BAD_REQUEST, "Missing account_id".to_string()))?;
+    let mt4_account = params.get("mt4_account").and_then(|id| id.parse::<i64>().ok())
+        .ok_or((axum::http::StatusCode::BAD_REQUEST, "Missing mt4_account".to_string()))?;
+    let broker = params.get("broker").ok_or((axum::http::StatusCode::BAD_REQUEST, "Missing broker".to_string()))?;
 
     // Verify ownership
-    let _ = sqlx::query!("SELECT a.id FROM accounts a JOIN user_accounts ua ON a.id = ua.account_id WHERE a.id = $1 AND ua.user_id = $2", account_id, claims.user_id)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((axum::http::StatusCode::FORBIDDEN, "Access denied".to_string()))?;
+    let _ = sqlx::query!(
+        "SELECT 1 as \"exists!\" FROM user_accounts WHERE user_id = $1 AND mt4_account = $2 AND broker = $3",
+        claims.user_id, mt4_account, broker
+    )
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .ok_or((axum::http::StatusCode::FORBIDDEN, "Access denied".to_string()))?;
 
+    let key = format!("{}:{}", mt4_account, broker);
     let mut s = state.memory.write().unwrap();
-    let commands = s.pending_commands.get(&account_id).cloned().unwrap_or_default();
-    s.pending_commands.remove(&account_id); // Consume commands
+    let commands = s.pending_commands.get(&key).cloned().unwrap_or_default();
+    s.pending_commands.remove(&key); // Consume commands
     Ok(Json(commands))
 }
 
@@ -634,10 +635,7 @@ async fn list_accounts(
 ) -> Result<Json<Vec<crate::data_models::AccountRecord>>, (axum::http::StatusCode, String)> {
     let accounts = sqlx::query_as!(
         crate::data_models::AccountRecord,
-        "SELECT a.id, a.owner_id, a.mt4_account_number, a.broker_name, a.account_name, COALESCE(a.is_active, true) as \"is_active!\" 
-         FROM accounts a
-         JOIN user_accounts ua ON a.id = ua.account_id
-         WHERE ua.user_id = $1",
+        "SELECT mt4_account, broker, account_name FROM user_accounts WHERE user_id = $1",
         claims.user_id
     )
     .fetch_all(&state.db)
@@ -652,58 +650,25 @@ async fn bind_account(
     claims: Claims,
     Json(payload): Json<crate::data_models::BindAccountRequest>,
 ) -> Result<Json<crate::data_models::AccountRecord>, (axum::http::StatusCode, String)> {
-    // 1. Find if the account exists (auto-registered by EA) or create it
-    let account = sqlx::query_as!(
-        crate::data_models::AccountRecord,
-        "SELECT id, owner_id, mt4_account_number, broker_name, account_name, COALESCE(is_active, true) as \"is_active!\" FROM accounts WHERE mt4_account_number = $1 AND broker_name = $2",
-        payload.mt4_account, payload.broker
-    )
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    let acc_id = if let Some(acc) = account {
-        acc.id
-    } else {
-        // Create it manually
-        let new_acc = sqlx::query!(
-            "INSERT INTO accounts (mt4_account_number, broker_name, account_name) VALUES ($1, $2, $3) RETURNING id",
-            payload.mt4_account, payload.broker, payload.account_name
-        )
-        .fetch_one(&state.db)
-        .await
-        .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-        new_acc.id
-    };
-
-    // 2. Bind to user (idempotent insert)
-    let _ = sqlx::query!(
-        "INSERT INTO user_accounts (user_id, account_id, created_at) VALUES ($1, $2, $3) ON CONFLICT (user_id, account_id) DO NOTHING",
-        claims.user_id, acc_id, chrono::Utc::now().timestamp()
+    // Upsert binding in user_accounts
+    sqlx::query!(
+        "INSERT INTO user_accounts (user_id, mt4_account, broker, account_name, created_at) 
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (user_id, mt4_account, broker) 
+         DO UPDATE SET account_name = $4",
+        claims.user_id, 
+        payload.mt4_account, 
+        payload.broker, 
+        payload.account_name,
+        chrono::Utc::now().timestamp()
     )
     .execute(&state.db)
     .await
     .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // 3. Update account name if provided (optional, last write wins or maybe we shouldn't update it if it's shared? For now let's update it)
-    if let Some(name) = payload.account_name.clone() {
-        let _ = sqlx::query!(
-            "UPDATE accounts SET account_name = $1 WHERE id = $2",
-            name, acc_id
-        )
-        .execute(&state.db)
-        .await;
-    }
-
-    // Return current state
-    let final_acc = sqlx::query_as!(
-        crate::data_models::AccountRecord,
-        "SELECT id, owner_id, mt4_account_number, broker_name, account_name, COALESCE(is_active, true) as \"is_active!\" FROM accounts WHERE id = $1",
-        acc_id
-    )
-    .fetch_one(&state.db)
-    .await
-    .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    Ok(Json(final_acc))
+    Ok(Json(crate::data_models::AccountRecord {
+        mt4_account: payload.mt4_account,
+        broker: payload.broker,
+        account_name: payload.account_name,
+    }))
 }
