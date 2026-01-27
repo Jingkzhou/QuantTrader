@@ -9,9 +9,10 @@ interface Trade {
 interface PerformancePanelProps {
     trades: Trade[];
     selectedSymbol: string;
+    gridClass?: string;
 }
 
-export const PerformancePanel: React.FC<PerformancePanelProps> = ({ trades, selectedSymbol }) => {
+export const PerformancePanel: React.FC<PerformancePanelProps> = ({ trades, selectedSymbol, gridClass }) => {
 
     const stats = useMemo(() => {
         // Filter trades by selected symbol
@@ -69,7 +70,7 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ trades, sele
     );
 
     return (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className={`grid gap-4 mb-6 ${gridClass || 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4'}`}>
             <MetricCard
                 label={`胜率 (${stats.totalTrades}笔)`}
                 value={`${stats.winRate.toFixed(1)}%`}

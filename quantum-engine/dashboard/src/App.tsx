@@ -270,34 +270,23 @@ const App = () => {
       <main className="p-4 md:p-6 space-y-4 md:space-y-6">
         {activePage === 'dashboard' ? (
           <>
-            {/* Performance Panel */}
-            <PerformancePanel trades={history} selectedSymbol={selectedSymbol} />
+            <AccountStatistics
+              positions={data?.account_status?.positions || []}
+              accountStatus={data?.account_status || { balance: 0, equity: 0, floating_profit: 0, margin: 0, free_margin: 0, timestamp: 0, positions: [] }}
+              history={history}
+              selectedSymbol={selectedSymbol}
+              currentDrawdown={drawdown.current}
+              maxDrawdown={drawdown.max}
+            />
+
+
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
 
               {/* Left Column: Market & Chart */}
               <div className="lg:col-span-3 space-y-6">
 
-                {/* Market Ticker */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <MarketCard
-                    label="交易品种"
-                    value={selectedSymbol || "---"}
-                    icon={<Activity className="text-slate-400" />}
-                  />
-                  <MarketCard
-                    label="买入价 (Bid)"
-                    value={currentMarketData?.bid?.toFixed(5) || "0.00000"}
-                    icon={<TrendingDown className="text-rose-500" />}
-                    subValue="实时报价"
-                  />
-                  <MarketCard
-                    label="卖出价 (Ask)"
-                    value={currentMarketData?.ask?.toFixed(5) || "0.00000"}
-                    icon={<TrendingUp className="text-emerald-500" />}
-                    subValue="实时报价"
-                  />
-                </div>
+                {/* Market Ticker (Moved to Right Column) */}
 
                 {/* Main Center Chart */}
                 <div className="flex-1 min-h-0">
@@ -479,15 +468,30 @@ const App = () => {
                   broker={selectedAccount?.broker || null}
                 />
 
-                {/* Account Advanced Statistics (New) */}
-                <AccountStatistics
-                  positions={data?.account_status?.positions || []}
-                  accountStatus={data?.account_status || { balance: 0, equity: 0, floating_profit: 0, margin: 0, free_margin: 0, timestamp: 0, positions: [] }}
-                  history={history}
+                {/* Account Advanced Statistics (Moved to Top) */}
+
+                {/* Performance Metrics (Side) */}
+                <PerformancePanel
+                  trades={history}
                   selectedSymbol={selectedSymbol}
-                  currentDrawdown={drawdown.current}
-                  maxDrawdown={drawdown.max}
+                  gridClass="grid-cols-2 lg:grid-cols-2 gap-3"
                 />
+
+                {/* Market Ticker (Side) */}
+                <div className="grid grid-cols-2 gap-3">
+                  <MarketCard
+                    label="买入价"
+                    value={currentMarketData?.bid?.toFixed(5) || "0.00000"}
+                    icon={<TrendingDown className="text-rose-500 w-4 h-4" />}
+                    subValue="Bid"
+                  />
+                  <MarketCard
+                    label="卖出价"
+                    value={currentMarketData?.ask?.toFixed(5) || "0.00000"}
+                    icon={<TrendingUp className="text-emerald-500 w-4 h-4" />}
+                    subValue="Ask"
+                  />
+                </div>
 
                 {/* Real-time Logs */}
                 <div className="bg-slate-900/50 border border-slate-800 rounded-2xl flex flex-col h-[500px]">
