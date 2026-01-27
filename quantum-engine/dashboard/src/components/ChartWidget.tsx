@@ -152,7 +152,7 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
                 horzLines: { color: '#1e293b' },
             },
             width: chartContainerRef.current.clientWidth,
-            height: 400,
+            height: chartContainerRef.current.clientHeight || 400,
             timeScale: {
                 timeVisible: true,
                 secondsVisible: false,
@@ -194,7 +194,10 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
 
         const handleResize = () => {
             if (chartContainerRef.current) {
-                chart.applyOptions({ width: chartContainerRef.current.clientWidth });
+                chart.applyOptions({
+                    width: chartContainerRef.current.clientWidth,
+                    height: chartContainerRef.current.clientHeight
+                });
                 updateCanvasSize();
                 drawTradeLines();
             }
@@ -421,7 +424,7 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
 
 
     return (
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 h-[400px] md:h-[500px] flex flex-col relative group">
+        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 md:p-6 h-[320px] md:h-[500px] flex flex-col relative group">
             <QuickTradePanel symbol={symbol} />
             {/* Header & Toolbar */}
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-4 gap-3 lg:gap-0">
