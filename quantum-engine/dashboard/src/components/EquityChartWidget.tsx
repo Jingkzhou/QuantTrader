@@ -64,20 +64,34 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
                 const res = await axios.get(`${API_BASE}/account/history?limit=500`);
                 const history = res.data;
 
-                // Map to Series Data and filter nulls
-                const balanceData = history
-                    .filter((h: any) => h.timestamp && h.balance !== undefined && h.balance !== null)
-                    .map((h: any) => ({
-                        time: h.timestamp as Time,
-                        value: Number(h.balance)
-                    }));
+                // Map to Series Data and filter nulls, ensure numeric types
+                const processData = (data: any[], key: string) => {
+                    const mapped = data
+                        .filter((h: any) => h.timestamp && h[key] !== undefined && h[key] !== null)
+                        .map((h: any) => ({
+                            time: Number(h.timestamp) as Time,
+                            value: Number(h[key])
+                        }));
 
-                const equityData = history
-                    .filter((h: any) => h.timestamp && h.equity !== undefined && h.equity !== null)
-                    .map((h: any) => ({
-                        time: h.timestamp as Time,
-                        value: Number(h.equity)
-                    }));
+                    // Deduplicate by time (keep last value for each timestamp)
+                    const unique = Array.from(
+                        mapped.reduce((map, obj) => map.set(obj.time as any, obj), new Map<any, any>()).values()
+                    );
+
+                    // Sort by time ascending
+                    return unique.sort((a, b) => (a.time as number) - (b.time as number));
+                };
+
+                const balanceData = processData(history, 'balance');
+                const equityData = processData(history, 'equity');
+
+                console.log("Equity Chart - Data Processed:", {
+                    original: history.length,
+                    balance: balanceData.length,
+                    equity: equityData.length,
+                    firstTime: balanceData[0]?.time,
+                    lastTime: balanceData[balanceData.length - 1]?.time
+                });
 
                 if (balanceData.length > 0) {
                     balanceSeries.setData(balanceData);
@@ -87,11 +101,10 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
                 }
 
                 // Initialize lastTimeRef with the latest history time
-                if (history.length > 0) {
-                    const validHistory = history.filter((h: any) => h.timestamp);
-                    if (validHistory.length > 0) {
-                        lastTimeRef.current = validHistory[validHistory.length - 1].timestamp;
-                    }
+                if (balanceData.length > 0) {
+                    lastTimeRef.current = balanceData[balanceData.length - 1].time as number;
+                } else if (equityData.length > 0) {
+                    lastTimeRef.current = equityData[equityData.length - 1].time as number;
                 }
 
                 chart.timeScale().fitContent();
@@ -122,7 +135,7 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
         if (!isLoaded || !currentAccountStatus || !balanceSeriesRef.current || !equitySeriesRef.current) return;
 
         let time = currentAccountStatus.timestamp
-            ? (currentAccountStatus.timestamp as number)
+            ? Number(currentAccountStatus.timestamp)
             : Math.floor(Date.now() / 1000);
 
         if (time === 0) return; // Ignore invalid timestamp
