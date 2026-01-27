@@ -102,9 +102,13 @@ const App = () => {
   };
 
   const fetchData = async () => {
-    if (!selectedAccountId || !auth.token) return;
+    if (!auth.token) return;
     try {
-      const response = await axios.get(`${API_BASE}/state?account_id=${selectedAccountId}`, {
+      const stateUrl = selectedAccountId
+        ? `${API_BASE}/state?account_id=${selectedAccountId}`
+        : `${API_BASE}/state`;
+
+      const response = await axios.get(stateUrl, {
         headers: { Authorization: `Bearer ${auth.token}` }
       });
       const newState = response.data;
@@ -114,31 +118,36 @@ const App = () => {
         setSelectedSymbol(newState.active_symbols[0]);
       }
 
-      // Fetch History & Account Performance
-      const [histRes, accHistRes] = await Promise.all([
-        axios.get(`${API_BASE}/trade_history?account_id=${selectedAccountId}`, {
-          headers: { Authorization: `Bearer ${auth.token}` }
-        }),
-        axios.get(`${API_BASE}/account/history?account_id=${selectedAccountId}&limit=1000`, {
-          headers: { Authorization: `Bearer ${auth.token}` }
-        })
-      ]);
-      setHistory(histRes.data);
+      if (selectedAccountId) {
+        // Fetch History & Account Performance
+        const [histRes, accHistRes] = await Promise.all([
+          axios.get(`${API_BASE}/trade_history?account_id=${selectedAccountId}`, {
+            headers: { Authorization: `Bearer ${auth.token}` }
+          }),
+          axios.get(`${API_BASE}/account/history?account_id=${selectedAccountId}&limit=1000`, {
+            headers: { Authorization: `Bearer ${auth.token}` }
+          })
+        ]);
+        setHistory(histRes.data);
 
-      const accHist = accHistRes.data;
-      if (accHist.length > 0) {
-        let peak = 0; let maxDD = 0; let currentDD = 0;
-        const sorted = [...accHist].sort((a: any, b: any) => a.timestamp - b.timestamp);
-        sorted.forEach(h => {
-          const equity = Number(h.equity);
-          if (equity > peak) peak = equity;
-          if (peak > 0) {
-            const dd = (peak - equity) / peak * 100;
-            if (dd > maxDD) maxDD = dd;
-            currentDD = dd;
-          }
-        });
-        setDrawdown({ current: currentDD, max: maxDD });
+        const accHist = accHistRes.data;
+        if (accHist.length > 0) {
+          let peak = 0; let maxDD = 0; let currentDD = 0;
+          const sorted = [...accHist].sort((a: any, b: any) => a.timestamp - b.timestamp);
+          sorted.forEach(h => {
+            const equity = Number(h.equity);
+            if (equity > peak) peak = equity;
+            if (peak > 0) {
+              const dd = (peak - equity) / peak * 100;
+              if (dd > maxDD) maxDD = dd;
+              currentDD = dd;
+            }
+          });
+          setDrawdown({ current: currentDD, max: maxDD });
+        }
+      } else {
+        setHistory([]);
+        setDrawdown({ current: 0, max: 0 });
       }
     } catch (err) {
       console.error("Fetch error:", err);
@@ -203,31 +212,7 @@ const App = () => {
     </div>
   );
 
-  if (!selectedAccountId && accounts.length === 0) return (
-    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-400 p-8 text-center">
-      <div className="max-w-md space-y-6">
-        <div className="bg-slate-900 border border-slate-800 p-8 rounded-3xl">
-          <Activity className="text-cyan-600 w-16 h-16 mx-auto mb-6" />
-          <h2 className="text-2xl font-bold text-white mb-2">欢迎来到 QuantTrader</h2>
-          <p className="text-slate-500 text-sm mb-8">您尚未绑定任何交易账号。请确保您的 MT4 EA 已启动并成功连接至服务器，然后绑定您的账号。</p>
-          <button
-            onClick={() => setIsBindModalOpen(true)}
-            className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 px-6 rounded-xl transition-all shadow-lg shadow-cyan-900/20 active:scale-95"
-          >
-            立即绑定首个账号
-          </button>
-          <button onClick={handleLogout} className="mt-4 text-xs text-slate-600 hover:text-slate-400 font-bold uppercase tracking-widest">登出当前系统</button>
-        </div>
-      </div>
-      {/* Re-use Binding Modal */}
-      {isBindModalOpen && <BindModal
-        onClose={() => setIsBindModalOpen(false)}
-        onBind={handleBindAccount}
-        form={newAccount}
-        setForm={setNewAccount}
-      />}
-    </div>
-  );
+
 
   const currentMarketData = selectedSymbol ? data?.market_data[selectedSymbol] : null;
 
@@ -301,7 +286,7 @@ const App = () => {
 
         {/* Symbol Selector */}
         <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 p-1 rounded-xl">
-          {(data.active_symbols || []).map((sym: string) => (
+          {(data?.active_symbols || []).map((sym: string) => (
             <button
               key={sym}
               onClick={() => setSelectedSymbol(sym)}
@@ -310,7 +295,7 @@ const App = () => {
               {sym}
             </button>
           ))}
-          {(!data.active_symbols || data.active_symbols.length === 0) && (
+          {(!data?.active_symbols || data?.active_symbols.length === 0) && (
             <span className="px-4 py-2 text-sm text-slate-600 italic">正在等待 EA 信号...</span>
           )}
         </div>
@@ -502,7 +487,11 @@ const App = () => {
         <div className="space-y-6">
 
           {/* Equity Curve Chart (New) */}
-          <EquityChartWidget currentAccountStatus={data?.account_status || { balance: 0, equity: 0, floating_profit: 0, margin: 0, free_margin: 0, timestamp: 0, positions: [] }} />
+          <EquityChartWidget
+            currentAccountStatus={data?.account_status || { balance: 0, equity: 0, floating_profit: 0, margin: 0, free_margin: 0, timestamp: 0, positions: [] }}
+            authToken={auth.token}
+            accountId={selectedAccountId}
+          />
 
           {/* Account Advanced Statistics (New) */}
           <AccountStatistics

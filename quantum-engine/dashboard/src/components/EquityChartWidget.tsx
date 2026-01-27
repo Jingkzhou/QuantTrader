@@ -6,11 +6,13 @@ import { AreaChart } from 'lucide-react';
 
 interface EquityChartWidgetProps {
     currentAccountStatus?: any;
+    authToken: string | null;
+    accountId: number | null;
 }
 
 const API_BASE = 'http://127.0.0.1:3001/api/v1';
 
-export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAccountStatus }) => {
+export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAccountStatus, authToken, accountId }) => {
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
     const balanceSeriesRef = useRef<ISeriesApi<"Area"> | null>(null);
@@ -65,8 +67,16 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
 
         // Fetch History
         const fetchHistory = async () => {
+            if (!authToken || !accountId) {
+                // Clear chart if no account
+                balanceSeries.setData([]);
+                equitySeries.setData([]);
+                return;
+            }
             try {
-                const res = await axios.get(`${API_BASE}/account/history?limit=500`);
+                const res = await axios.get(`${API_BASE}/account/history?account_id=${accountId}&limit=500`, {
+                    headers: { Authorization: `Bearer ${authToken}` }
+                });
                 const history = res.data;
 
                 // Map to Series Data and filter nulls, ensure numeric types
@@ -133,7 +143,7 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
             window.removeEventListener('resize', handleResize);
             chart.remove();
         };
-    }, []);
+    }, [authToken, accountId]);
 
     // Real-time Updates
     useEffect(() => {

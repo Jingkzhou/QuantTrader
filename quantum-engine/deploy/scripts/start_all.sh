@@ -4,8 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
-echo "[start_all] starting infrastructure"
-docker-compose up -d
+echo "[start_all] starting infrastructure (forcing build)"
+docker-compose up -d --build
 
 # Handle Mac PATH issues for cargo
 CARGO_BIN="$HOME/.cargo/bin/cargo"

@@ -172,52 +172,59 @@ async fn get_state(
     claims: Claims,
     axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
 ) -> Result<Json<AppState>, (axum::http::StatusCode, String)> {
-    let account_id = params.get("account_id").and_then(|id| id.parse::<i32>().ok())
-        .ok_or((axum::http::StatusCode::BAD_REQUEST, "Missing account_id".to_string()))?;
-
-    // Verify ownership
-    let acc = sqlx::query!("SELECT id FROM accounts WHERE id = $1 AND owner_id = $2", account_id, claims.user_id)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((axum::http::StatusCode::FORBIDDEN, "Access denied".to_string()))?;
-
-    // Fetch latest snapshot for this account
-    let status_row = sqlx::query!("SELECT * FROM account_status WHERE account_uuid = $1 ORDER BY timestamp DESC LIMIT 1", acc.id)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let account_id = params.get("account_id").and_then(|id| id.parse::<i32>().ok());
 
     let mut app_state = AppState::default();
     
-    // Fill from DB snapshot if exists
-    if let Some(row) = status_row {
-        app_state.account_status.balance = row.balance.unwrap_or(0.0);
-        app_state.account_status.equity = row.equity.unwrap_or(0.0);
-        app_state.account_status.margin = row.margin.unwrap_or(0.0);
-        app_state.account_status.free_margin = row.free_margin.unwrap_or(0.0);
-        app_state.account_status.floating_profit = row.floating_profit.unwrap_or(0.0);
-        app_state.account_status.timestamp = row.timestamp;
-        
-        if let Some(ps_json) = row.positions_snapshot {
-            app_state.account_status.positions = serde_json::from_str(&ps_json).unwrap_or_default();
-        }
-    }
-
-    // Market data and memory state for this account
+    // Fill global memory state (Market Data & Active Symbols)
     {
         let s = state.memory.read().unwrap();
         app_state.market_data = s.market_data.clone();
         app_state.active_symbols = s.active_symbols.clone();
+    }
+
+    // Use if let to handle optional account_id
+    if let Some(id) = account_id {
+        // Verify ownership
+        let acc = sqlx::query!("SELECT id FROM accounts WHERE id = $1 AND owner_id = $2", id, claims.user_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+            .ok_or((axum::http::StatusCode::FORBIDDEN, "Access denied".to_string()))?;
+
+        // Fetch latest snapshot for this account
+        let status_row = sqlx::query!("SELECT * FROM account_status WHERE account_uuid = $1 ORDER BY timestamp DESC LIMIT 1", acc.id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
         
-        // Use real-time status from memory if available
-        if let Some(real_time_status) = s.account_statuses.get(&acc.id) {
-            app_state.account_status = real_time_status.clone();
+        // Fill from DB snapshot if exists
+        if let Some(row) = status_row {
+            app_state.account_status.balance = row.balance.unwrap_or(0.0);
+            app_state.account_status.equity = row.equity.unwrap_or(0.0);
+            app_state.account_status.margin = row.margin.unwrap_or(0.0);
+            app_state.account_status.free_margin = row.free_margin.unwrap_or(0.0);
+            app_state.account_status.floating_profit = row.floating_profit.unwrap_or(0.0);
+            app_state.account_status.timestamp = row.timestamp;
+            
+            if let Some(ps_json) = row.positions_snapshot {
+                app_state.account_status.positions = serde_json::from_str(&ps_json).unwrap_or_default();
+            }
         }
 
-        // Filter logs for this account
-        if let Some(logs) = s.recent_logs.get(&acc.id) {
-            app_state.recent_logs = logs.clone();
+        // Overlay real-time memory state for this account
+        {
+            let s = state.memory.read().unwrap();
+            
+            // Use real-time status from memory if available
+            if let Some(real_time_status) = s.account_statuses.get(&acc.id) {
+                app_state.account_status = real_time_status.clone();
+            }
+
+            // Filter logs for this account
+            if let Some(logs) = s.recent_logs.get(&acc.id) {
+                app_state.recent_logs = logs.clone();
+            }
         }
     }
 
