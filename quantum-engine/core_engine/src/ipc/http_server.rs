@@ -170,17 +170,26 @@ async fn get_state(
         )
         .fetch_optional(&state.db)
         .await
-        .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((axum::http::StatusCode::FORBIDDEN, "Access denied".to_string()))?;
+        .map_err(|e: sqlx::Error| {
+            tracing::error!("Ownership verification error: {}", e);
+            (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?
+        .ok_or_else(|| {
+            tracing::error!("Access denied for user {} on account {}:{}", claims.user_id, mt4, brk);
+            (axum::http::StatusCode::FORBIDDEN, "Access denied".to_string())
+        })?;
 
         // Fetch latest snapshot for this account
         let status_row = sqlx::query!(
-            "SELECT * FROM account_status WHERE mt4_account = $1 AND broker = $2 ORDER BY timestamp DESC LIMIT 1",
+            "SELECT balance, equity, margin, free_margin, floating_profit, timestamp, mt4_account, broker, positions_snapshot FROM account_status WHERE mt4_account = $1 AND broker = $2 ORDER BY timestamp DESC LIMIT 1",
             mt4, brk
         )
         .fetch_optional(&state.db)
         .await
-        .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e: sqlx::Error| {
+            tracing::error!("Fetch account status error: {}", e);
+            (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?;
         
         // Fill from DB snapshot if exists
         if let Some(row) = status_row {
