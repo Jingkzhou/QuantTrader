@@ -35,7 +35,7 @@ export const QuickTradePanel: React.FC<QuickTradePanelProps> = ({ symbol }) => {
     };
 
     return (
-        <div className={`fixed bottom-20 right-4 md:absolute md:top-20 md:left-6 md:right-auto md:bottom-auto z-40 bg-slate-900/90 backdrop-blur-md border border-slate-700 rounded-xl shadow-2xl transition-all duration-300 overflow-hidden ${isExpanded ? 'w-56 p-4' : 'w-12 h-12 md:w-32 md:h-auto p-0 md:p-2 flex items-center justify-center'}`}>
+        <div className={`absolute bottom-12 left-4 md:top-24 md:left-6 md:right-auto md:bottom-auto z-40 bg-slate-900/90 backdrop-blur-md border border-slate-700 rounded-xl shadow-2xl transition-all duration-300 overflow-hidden ${isExpanded ? 'w-56 p-4' : 'w-10 h-10 md:w-32 md:h-auto p-0 md:p-2 flex items-center justify-center'}`}>
             <div
                 className={`flex items-center cursor-pointer ${isExpanded ? 'justify-between' : 'justify-center w-full h-full'}`}
                 onClick={() => setIsExpanded(!isExpanded)}

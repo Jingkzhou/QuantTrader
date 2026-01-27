@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createChart, ColorType, CandlestickSeries, LineSeries } from 'lightweight-charts';
 import type { IChartApi as IChartApiType, ISeriesApi as ISeriesApiType, SeriesMarker, Time } from 'lightweight-charts';
 import axios from 'axios';
-import { History, Eye, EyeOff, Activity } from 'lucide-react';
+import { History, Eye, EyeOff, Activity, Settings, ChevronUp } from 'lucide-react';
 import { QuickTradePanel } from './QuickTradePanel';
 import { API_BASE } from '../config';
 
@@ -59,6 +59,7 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
     const [showHistory, setShowHistory] = useState(false);
     const [showPositions, setShowPositions] = useState(false);
     const [showMA, setShowMA] = useState(false);
+    const [isToolbarOpen, setIsToolbarOpen] = useState(false); // Collapsible for mobile
 
     // Handle Timeframe Change
     const handleTimeframeChange = (tf: string) => {
@@ -423,72 +424,98 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
         <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 h-[400px] md:h-[500px] flex flex-col relative group">
             <QuickTradePanel symbol={symbol} />
             {/* Header & Toolbar */}
-            <div className="flex justify-between items-center mb-4">
-                <div className="flex items-center gap-4">
-                    <h3 className="font-bold text-slate-300 flex items-center gap-2 uppercase tracking-wide text-sm">
-                        <History className="w-4 h-4 text-cyan-500" /> K线图 ({timeframe})
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-4 gap-3 lg:gap-0">
+
+                {/* Top Row: Title + Bid/Ask + Mobile Toggle */}
+                <div className="flex items-center justify-between w-full lg:w-auto gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <h3 className="font-bold text-slate-300 flex items-center gap-2 uppercase tracking-wide text-sm whitespace-nowrap">
+                            <History className="w-4 h-4 text-cyan-500" />
+                            <span className="hidden sm:inline">K线图</span>
+                            <span className="sm:hidden">Chart</span>
+                            ({timeframe})
+                        </h3>
+
                         {currentData && (
-                            <div className="flex items-center gap-3 ml-4 bg-slate-900/50 px-3 py-1 rounded-lg border border-slate-700/50">
+                            <div className="flex items-center gap-2 bg-slate-900/50 px-2 py-1 rounded-lg border border-slate-700/50">
                                 <div className="flex flex-col items-end leading-none">
-                                    <span className="text-[9px] text-slate-500 font-bold tracking-wider">BID</span>
-                                    <span className="text-emerald-500 font-mono text-sm font-bold">{currentData.bid}</span>
+                                    <span className="text-[8px] text-slate-500 font-bold tracking-wider">BID</span>
+                                    <span className="text-emerald-500 font-mono text-xs sm:text-sm font-bold">{currentData.bid}</span>
                                 </div>
-                                <div className="h-4 w-px bg-slate-700" />
+                                <div className="h-3 w-px bg-slate-700" />
                                 <div className="flex flex-col items-start leading-none">
-                                    <span className="text-[9px] text-slate-500 font-bold tracking-wider">ASK</span>
-                                    <span className="text-rose-500 font-mono text-sm font-bold">{currentData.ask}</span>
+                                    <span className="text-[8px] text-slate-500 font-bold tracking-wider">ASK</span>
+                                    <span className="text-rose-500 font-mono text-xs sm:text-sm font-bold">{currentData.ask}</span>
                                 </div>
                             </div>
                         )}
-                    </h3>
+                    </div>
 
-                    {/* History Toggle */}
+                    {/* Mobile Menu Toggle Button */}
                     <button
-                        onClick={() => setShowHistory(!showHistory)}
-                        className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider transition-colors ${showHistory ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'bg-slate-800 text-slate-500 border border-slate-700'
-                            }`}
-                        title="显示历史交易标记"
+                        onClick={() => setIsToolbarOpen(!isToolbarOpen)}
+                        className="lg:hidden p-1.5 bg-slate-800 border border-slate-700 rounded-lg text-slate-400 hover:text-cyan-400 transition-colors shadow-lg active:scale-95"
                     >
-                        {showHistory ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                        History
-                    </button>
-
-                    {/* Positions Toggle */}
-                    <button
-                        onClick={() => setShowPositions(!showPositions)}
-                        className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider transition-colors ${showPositions ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'bg-slate-800 text-slate-500 border border-slate-700'
-                            }`}
-                        title="显示当前持仓线"
-                    >
-                        {showPositions ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                        POS
-                    </button>
-
-                    {/* MA Toggle */}
-                    <button
-                        onClick={() => setShowMA(!showMA)}
-                        className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider transition-colors ${showMA ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-slate-800 text-slate-500 border border-slate-700'
-                            }`}
-                        title="显示 SMA(20) 均线"
-                    >
-                        <Activity className="w-3 h-3" />
-                        MA(20)
+                        {isToolbarOpen ? <ChevronUp className="w-5 h-5" /> : <Settings className="w-5 h-5" />}
                     </button>
                 </div>
 
-                <div className="flex bg-slate-800 rounded-lg p-1 gap-1">
-                    {TIMEFRAMES.map((tf) => (
+                {/* Toolbar Content: Hidden on mobile unless toggled */}
+                <div className={`${isToolbarOpen ? 'flex animate-in slide-in-from-top-2 duration-200' : 'hidden'} lg:flex flex-col lg:flex-row items-center w-full lg:w-auto gap-4`}>
+
+                    {/* Display Controls (Hist/POS/MA) */}
+                    <div className="flex items-center gap-2 w-full lg:w-auto justify-end">
+                        {/* History Toggle */}
                         <button
-                            key={tf.value}
-                            onClick={() => handleTimeframeChange(tf.value)}
-                            className={`px-3 py-1 text-xs font-bold rounded transition-colors ${timeframe === tf.value
-                                ? 'bg-cyan-600 text-white shadow-sm'
-                                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700'
+                            onClick={() => setShowHistory(!showHistory)}
+                            className={`flex items-center justify-center h-8 px-3 rounded text-[10px] font-bold uppercase tracking-wider transition-colors ${showHistory ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'bg-slate-800 text-slate-500 border border-slate-700'
                                 }`}
+                            title="显示历史交易标记"
                         >
-                            {tf.label}
+                            {showHistory ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                            <span className="ml-1.5">Hist</span>
                         </button>
-                    ))}
+
+                        {/* Positions Toggle */}
+                        <button
+                            onClick={() => setShowPositions(!showPositions)}
+                            className={`flex items-center justify-center h-8 px-3 rounded text-[10px] font-bold uppercase tracking-wider transition-colors ${showPositions ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'bg-slate-800 text-slate-500 border border-slate-700'
+                                }`}
+                            title="显示当前持仓线"
+                        >
+                            {showPositions ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                            <span className="ml-1.5">POS</span>
+                        </button>
+
+                        {/* MA Toggle */}
+                        <button
+                            onClick={() => setShowMA(!showMA)}
+                            className={`flex items-center justify-center h-8 px-3 rounded text-[10px] font-bold uppercase tracking-wider transition-colors ${showMA ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-slate-800 text-slate-500 border border-slate-700'
+                                }`}
+                            title="显示 SMA(20) 均线"
+                        >
+                            <Activity className="w-3.5 h-3.5" />
+                            <span className="ml-1.5">MA</span>
+                        </button>
+                    </div>
+
+                    {/* Timeframes Scrollable Area */}
+                    <div className="w-full lg:w-auto overflow-x-auto pb-1 lg:pb-0 no-scrollbar">
+                        <div className="flex bg-slate-800 rounded-lg p-1 gap-1 min-w-max">
+                            {TIMEFRAMES.map((tf) => (
+                                <button
+                                    key={tf.value}
+                                    onClick={() => handleTimeframeChange(tf.value)}
+                                    className={`px-3 py-1.5 text-[10px] sm:text-xs font-bold rounded transition-colors whitespace-nowrap ${timeframe === tf.value
+                                        ? 'bg-cyan-600 text-white shadow-sm'
+                                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700'
+                                        }`}
+                                >
+                                    {tf.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
                 </div>
             </div>
 

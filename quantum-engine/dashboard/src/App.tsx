@@ -9,6 +9,7 @@ import { PerformancePanel } from './components/PerformancePanel';
 import { EquityChartWidget } from './components/EquityChartWidget';
 import { AccountStatistics } from './components/AccountStatistics';
 import { RiskAnalysisPanel } from './components/RiskAnalysisPanel';
+import { StrategyAnalysisPanel } from './components/StrategyAnalysisPanel';
 
 import { LoginPage } from './components/LoginPage';
 import { API_BASE } from './config';
@@ -514,6 +515,12 @@ const App = () => {
             />
 
             <RiskAnalysisPanel
+              authToken={auth.token}
+              mt4Account={selectedAccount?.mt4_account || null}
+              broker={selectedAccount?.broker || null}
+            />
+
+            <StrategyAnalysisPanel
               authToken={auth.token}
               mt4Account={selectedAccount?.mt4_account || null}
               broker={selectedAccount?.broker || null}
