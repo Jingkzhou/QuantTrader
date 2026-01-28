@@ -205,10 +205,8 @@ async fn get_state(
         // Overlay real-time memory state for this account
         {
             let s = state.memory.read().unwrap();
-            // Try to find any key starting with mt4: for this account
-            // Since we don't have broker easily, we might just iterate or assume single broker context per account ID
-            // Or better, just don't rely on broker in key? But memory map logic uses it.
-            // Simplified: Iterate keys to find match.
+            
+            // 1. Find account status
             for (key, status) in s.account_statuses.iter() {
                 if key.starts_with(&format!("{}:", mt4)) {
                     app_state.account_status = status.clone();
@@ -216,8 +214,12 @@ async fn get_state(
                 }
             }
 
-            // Filter logs for this account
-                app_state.recent_logs = logs.clone();
+            // 2. Find logs
+            for (key, log_list) in s.recent_logs.iter() {
+                if key.starts_with(&format!("{}:", mt4)) {
+                    app_state.recent_logs = log_list.clone();
+                    break;
+                }
             }
         }
     }
