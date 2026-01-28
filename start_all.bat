@@ -27,7 +27,7 @@ echo [INFO] Checking connectivity...
 REM Check PostgreSQL (TimescaleDB) Port 5432
 powershell -Command "if (-not (Test-NetConnection localhost -Port 5432 -InformationLevel Quiet)) { exit 1 }"
 if %ERRORLEVEL% NEQ 0 (
-    echo [ERROR] PostgreSQL (TimescaleDB) is not reachable at localhost:5432
+    echo [ERROR] PostgreSQL / TimescaleDB is not reachable at localhost:5432
     echo [ERROR] Please ensure your local database is running.
     pause
     exit /b 1
