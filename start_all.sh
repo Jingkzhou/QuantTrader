@@ -5,8 +5,9 @@ set -e
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Check and generate sqlx-data.json if needed
-if [ ! -f "${REPO_ROOT}/quantum-engine/core_engine/sqlx-data.json" ]; then
-    echo "sqlx-data.json not found. Running prepare_sqlx.sh..."
+# Check and generate sqlx data if needed
+if [ ! -f "${REPO_ROOT}/quantum-engine/core_engine/sqlx-data.json" ] && [ ! -d "${REPO_ROOT}/quantum-engine/core_engine/.sqlx" ]; then
+    echo "sqlx data not found. Running prepare_sqlx.sh..."
     "${REPO_ROOT}/prepare_sqlx.sh"
 fi
 

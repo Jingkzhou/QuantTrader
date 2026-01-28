@@ -129,3 +129,56 @@
 *   **v1.21**: Fixed compilation error: Removed duplicate 'lastReportTime' declaration
 *   **v1.20**: 修复 WebRequest 阻塞主线程的致命问题 (深度优化)
 *   **v1.0 Final**: 初始重构版本，完整复刻核心逻辑与 UI 系统。
+
+---
+
+## 服务器端部署系统 (Backend Deployment)
+
+本项目包含一套完整的后端服务（Core Engine, AI Brain, Dashboard, TimescaleDB, Redis, Grafana），并提供了一键式的**增量打包**与**离线部署**工具。
+
+### 1. 构建部署包 (macOS/Linux)
+
+使用根目录下的 `build_images.sh` 脚本生成部署包。该工具支持智能增量构建，输出产物位于 `dist/` 目录。
+
+```bash
+# [推荐] 智能构建变动模块
+# 自动检测 git 变更，只打包代码有修改的服务（Core/Brain/Dashboard）
+./build_images.sh --changed
+
+# 全量构建与打包 (初次部署用)
+# 包含所有应用镜像及 1GB+ 的基础依赖库 (Redis, TimescaleDB...)
+./build_images.sh --all
+
+# 单独构建指定模块
+./build_images.sh --core --dashboard
+```
+
+**生成的产物 (`dist/`):**
+*   `images/*.tar`: 独立的镜像压缩包（支持增量传输）。
+*   `install.bat`: 自动扫描并加载所有镜像的 Windows 脚本。
+*   `start.bat`: 一键启动所有服务的 Windows 脚本。
+
+### 2. Windows Server 生产环境部署
+
+本系统设计为**完全离线部署**，服务器无需安装开发环境或连接 Docker Hub。
+
+1.  **传输文件**:
+    *   将生成的 `dist` 文件夹拷贝到服务器（例如 `C:\QuantTrader`）。
+    *   **增量更新时**：只需拷贝 `dist/images/` 下更新过的 `.tar` 包覆盖即可。
+
+2.  **配置环境**:
+    *   在服务器的 `dist` 目录下创建一个 `.env` 文件，填入数据库密码：
+        ```env
+        POSTGRES_USER=postgres
+        POSTGRES_PASSWORD=your_secure_password
+        POSTGRES_DB=quantum
+        ```
+
+3.  **一键启动**:
+    *   双击 **`install.bat`**: 自动寻找并加载 `images/` 目录下的所有镜像。
+    *   双击 **`start.bat`**: 启动整个量化交易系统。
+    *   (可选) 双击 `view_logs.bat` 查看实时运行日志。
+
+4.  **访问服务**:
+    *   **控制台 (Dashboard)**: `http://localhost:5173`
+    *   **监控面板 (Grafana)**: `http://localhost:3000`
