@@ -1,4 +1,7 @@
-FROM rust:1.78 as builder
+FROM rust:1.84 as builder
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
+ENV SQLX_OFFLINE=true
 WORKDIR /app
 COPY core_engine ./core_engine
 WORKDIR /app/core_engine

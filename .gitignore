@@ -43,3 +43,4 @@ quantum-engine/.env
 *.ex4
 *.ex5
 *.set
+quantum-engine/core_engine/.sqlx/

@@ -9,6 +9,12 @@ if ! docker info > /dev/null 2>&1; then
   exit 1
 fi
 
+# Check and generate sqlx-data.json if needed
+if [ ! -f "quantum-engine/core_engine/sqlx-data.json" ]; then
+    echo "sqlx-data.json not found. Running prepare_sqlx.sh..."
+    ./prepare_sqlx.sh
+fi
+
 echo " Building QuantTrader Core Engine (Rust)..."
 cd quantum-engine
 docker build -f deploy/Dockerfile.rust -t quanttrader/core:latest .

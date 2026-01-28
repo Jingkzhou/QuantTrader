@@ -21,3 +21,8 @@ dotenvy = "0.15"
 chrono = { version = "0.4", features = ["serde"] }
 jsonwebtoken = "9.2"
 bcrypt = "0.15"
+home = "=0.5.11"
+time = "=0.3.36"
+base64ct = "=1.6.0"
+zerocopy = "=0.7.35"
+thiserror = "=1.0.69" # 锁定在 1.0.x 系列，避开 2.0 可能的 MSRV 问题

@@ -27,3 +27,29 @@ services:
       dockerfile: ./deploy/Dockerfile.dashboard
     ports:
       - "5173:80"
+    depends_on:
+      - core_engine
+
+  core_engine:
+    build:
+      context: .
+      dockerfile: ./deploy/Dockerfile.rust
+    image: quanttrader/core:latest
+    ports:
+      - "3001:3001"
+    environment:
+      - TIMESCALE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@timescaledb:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - timescaledb
+      - redis
+
+  ai_brain:
+    build:
+      context: .
+      dockerfile: ./deploy/Dockerfile.python
+    image: quanttrader/brain:latest
+    environment:
+      - TIMESCALE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@timescaledb:5432/${POSTGRES_DB}
+    depends_on:
+      - timescaledb
