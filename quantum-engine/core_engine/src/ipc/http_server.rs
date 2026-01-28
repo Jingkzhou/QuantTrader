@@ -610,7 +610,7 @@ async fn handle_login(
                 .checked_add_signed(chrono::Duration::hours(24))
                 .expect("valid timestamp")
                 .timestamp() as usize;
-
+  
             let claims = Claims {
                 sub: u.username.clone(),
                 user_id: u.id,
