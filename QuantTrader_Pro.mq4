@@ -89,7 +89,6 @@ void ProcessSellLogic(const OrderStats &stats);
 void TrackPendingOrders(const OrderStats &stats, int direction);
 void ShowStopMessage(string msg);
 void ClearStopMessage();
-void ReportMarketData();
 void ReportAccountStatus();
 void RemoteLog(string level, string message);
 int  SendData(string path, string json_body);
@@ -164,7 +163,7 @@ extern string OrderComment1             = "备注1";        // 订单备注1
 extern string OrderComment2             = "备注2";        // 订单备注2
 
 //--- 数据上报参数
-extern string RustServerUrl             = "http://www.trader.com"; // Rust 引擎地址
+extern string RustServerUrl             = "http://www.mondayquest.top"; // Rust 引擎地址
 extern ENUM_CONNECTION_MODE ConnectionMode = MODE_ONLINE;          // 连接模式 (连线/离线)
 extern bool   EnableDataLoop            = true;                    // 是否启用数据循环
 extern int    AccountReportInterval     = 10;                      // 账户状态上报间隔(秒)
@@ -373,7 +372,6 @@ void OnTimer()
       // Frequency Limiter: Max 1 request per 3 seconds to prevent thread blocking
          if(TimeCurrent() - lastReportTime > 3 && IsConnected())
         {
-         ReportMarketData();
          CheckCommands(); // Poll for commands (every 3s aligned with report, or faster?)
          
          static datetime lastAccountReport = 0;
@@ -1476,11 +1474,6 @@ void CleanupOrderGVs(int ticket) {
    GlobalVariableDel(StringFormat("%sSPD_%d", GV_PREFIX, ticket));
 }
 
-void ReportMarketData() {
-   string json = StringFormat("{\"symbol\":\"%s\",\"timestamp\":%lld,\"open\":%.5f,\"high\":%.5f,\"low\":%.5f,\"close\":%.5f,\"bid\":%.5f,\"ask\":%.5f}",
-                              Symbol(), (long)TimeCurrent(), Open[0], High[0], Low[0], Close[0], Bid, Ask);
-   SendData("/api/v1/market", json);
-}
 
 void ReportAccountStatus() {
    OrderStats stats;

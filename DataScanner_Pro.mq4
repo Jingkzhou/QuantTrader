@@ -1,11 +1,11 @@
 //+------------------------------------------------------------------+
 //|                                           DataScanner_Pro.mq4    |
 //|                                  Multi-Symbol Market Data Scanner|
-//|                                            Version 1.3           |
+//|                                            Version 1.4           |
 //+------------------------------------------------------------------+
 #property copyright "QuantTrader Data Scanner"
 #property link      ""
-#property version   "1.30"
+#property version   "1.40"
 #property strict
 
 //+------------------------------------------------------------------+
@@ -20,30 +20,37 @@ enum ENUM_CONNECTION_MODE
 //+------------------------------------------------------------------+
 //|                            输入参数                              |
 //+------------------------------------------------------------------+
-extern string RustServerUrl       = "http://192.168.31.53:3001"; // 服务器地址
-extern string SymbolsList         = "XAUUSD,EURUSD,GBPUSD,USDCAD"; // 扫描品种列表 (逗号分隔)
-extern int    ScanIntervalMs      = 500;                         // 扫描与上报间隔 (毫秒) - 推荐 200ms 以上
-extern ENUM_CONNECTION_MODE ConnectionMode = MODE_ONLINE;        // 连接模式
+input string   RustServerUrl    = "http://www.mondayquest.top"; // 服务器地址
+input string   ApiPath          = "/api/v1/market/batch";      // API 路径
+input int      CollectInterval  = 1;                           // 采集间隔 (秒)
+input bool     UseMarketWatch   = true;                        // true=采集市场报价窗口所有品种, false=只采集下方自定义列表
+input string   CustomSymbols    = "XAUUSD,EURUSD,GBPUSD,USDCAD"; // 自定义品种 (逗号分隔, UseMarketWatch=false时生效)
+input int      BatchSize        = 20;                          // 每次批量上报打包多少个品种
+input ENUM_CONNECTION_MODE ConnectionMode = MODE_ONLINE;       // 连接模式
 
 //+------------------------------------------------------------------+
 //|                            全局变量                              |
 //+------------------------------------------------------------------+
-string g_Symbols[];
-int    g_SymbolCount = 0;
+static datetime g_lastSuccessLog = 0;
+static datetime g_lastError = 0;
 
 //+------------------------------------------------------------------+
 //|                          初始化函数                              |
 //+------------------------------------------------------------------+
 int OnInit()
   {
-   // 使用毫秒计时器实现最小间隔汇报
-   if(ScanIntervalMs < 100) ScanIntervalMs = 100; // 保护性限制，防止过低导致终端卡死
-   EventSetMillisecondTimer(ScanIntervalMs);
+   // 检查是否允许 WebRequest
+   if(!TerminalInfoInteger(TERMINAL_DLLS_ALLOWED)) {
+      Print("Warning: Please check 'Allow WebRequest' in Tools -> Options -> Expert Advisors");
+   }
+
+   // 设置定时器，按秒采集
+   int interval = CollectInterval;
+   if(interval < 1) interval = 1;
+   EventSetTimer(interval);
    
-   // 解析品种列表
-   ParseSymbols();
-   
-   Print("High-Frequency Data Scanner Started. Interval: ", ScanIntervalMs, "ms. Monitoring: ", SymbolsList);
+   string modeInfo = UseMarketWatch ? "Market Watch Symbols" : "Custom List";
+   Print("High-Frequency Data Scanner Started. Mode: ", modeInfo, ". Interval: ", CollectInterval, "s.");
    
    return(INIT_SUCCEEDED);
   }
@@ -51,98 +58,112 @@ int OnInit()
 void OnDeinit(const int reason)
   {
    EventKillTimer();
+   Print("Data Scanner Stopped.");
   }
 
 void OnTimer()
   {
    if(ConnectionMode == MODE_OFFLINE) return;
-   if(IsTradeContextBusy()) return;
+   if(IsTradeContextBusy()) return; 
 
-   // 高频扫描模式：强制批量上报以保证性能
-   string batchJson = "[";
-   bool hasData = false;
+   string symbols_to_scan[];
+   int total_symbols = 0;
 
-   for(int i = 0; i < g_SymbolCount; i++)
-     {
-      string item = GetSymbolDataJSON(g_Symbols[i]);
-      if(item != "")
-        {
-         if(hasData) batchJson += ",";
-         batchJson += item;
-         hasData = true;
-        }
-     }
-   batchJson += "]";
+   // 1. 确定要扫描哪些品种
+   if(UseMarketWatch) {
+      total_symbols = SymbolsTotal(true); 
+      ArrayResize(symbols_to_scan, total_symbols);
+      for(int i=0; i<total_symbols; i++) {
+         symbols_to_scan[i] = SymbolName(i, true);
+      }
+   } else {
+      string split[];
+      ushort sep = StringGetCharacter(",", 0);
+      StringSplit(CustomSymbols, sep, split);
+      total_symbols = ArraySize(split);
+      ArrayResize(symbols_to_scan, total_symbols);
+      for(int i=0; i<total_symbols; i++) {
+         symbols_to_scan[i] = split[i];
+         StringReplace(symbols_to_scan[i], " ", "");
+      }
+   }
 
-   if(hasData)
-     {
-      // 批量上报是高频模式下的唯一可行方案
-      SendData("/api/v1/market/batch", batchJson);
-     }
+   // 2. 分批采集并发送 (Batch Process)
+   string json_array = "";
+   int count_in_batch = 0;
+
+   for(int i=0; i<total_symbols; i++) {
+      string sym = symbols_to_scan[i];
+      
+      // 获取数据 (MarketInfo)
+      double bid = MarketInfo(sym, MODE_BID);
+      double ask = MarketInfo(sym, MODE_ASK);
+      
+      if(bid <= 0 || ask <= 0) continue;
+
+      // 获取 OHLC (当前M1 K线)
+      double open = iOpen(sym, PERIOD_M1, 0);
+      double high = iHigh(sym, PERIOD_M1, 0);
+      double low  = iLow(sym, PERIOD_M1, 0);
+      double close= iClose(sym, PERIOD_M1, 0);
+      long   time = (long)TimeCurrent();
+
+      // 构建单个品种的 JSON 对象 (保持后端兼容的字段名)
+      string item = StringFormat("{\"symbol\":\"%s\",\"timestamp\":%lld,\"open\":%.5f,\"high\":%.5f,\"low\":%.5f,\"close\":%.5f,\"bid\":%.5f,\"ask\":%.5f}",
+                                 sym, time, open, high, low, close, bid, ask);
+      
+      if(count_in_batch > 0) json_array += ",";
+      json_array += item;
+      count_in_batch++;
+
+      // 达到 BatchSize 或 最后一个品种时，发送数据
+      if(count_in_batch >= BatchSize || i == total_symbols - 1) {
+         if(json_array != "") {
+             string final_json = "[" + json_array + "]";
+             SendData(final_json);
+         }
+         json_array = "";
+         count_in_batch = 0;
+      }
+   }
   }
 
 void OnTick()
   {
-   // 逻辑完全由高频 Timer 驱动
+   // 逻辑完全由 OnTimer 驱动
   }
-
-//+------------------------------------------------------------------+
-//|                          内核扫描逻辑                            |
-//+------------------------------------------------------------------+
-
-void ParseSymbols()
-  {
-   string list = SymbolsList;
-   StringReplace(list, " ", ""); 
-   
-   ushort sep = StringGetCharacter(",", 0);
-   g_SymbolCount = StringSplit(list, sep, g_Symbols);
-   
-   // 验证并预选品种
-   for(int i = 0; i < g_SymbolCount; i++)
-     {
-      if(!SymbolSelect(g_Symbols[i], true))
-        {
-         Print("Warning: Symbol not found or could not be selected: ", g_Symbols[i]);
-        }
-     }
-  }
-
-string GetSymbolDataJSON(string sym)
-  {
-   double bid = SymbolInfoDouble(sym, SYMBOL_BID);
-   double ask = SymbolInfoDouble(sym, SYMBOL_ASK);
-   double open  = iOpen(sym, PERIOD_M1, 0);
-   double high  = iHigh(sym, PERIOD_M1, 0);
-   double low   = iLow(sym, PERIOD_M1, 0);
-   double close = iClose(sym, PERIOD_M1, 0);
-   
-   if(bid == 0 || ask == 0) return "";
-
-   // 返回 JSON 对象片段
-   return StringFormat("{\"symbol\":\"%s\",\"timestamp\":%lld,\"open\":%.5f,\"high\":%.5f,\"low\":%.5f,\"close\":%.5f,\"bid\":%.5f,\"ask\":%.5f}",
-                               sym, (long)TimeCurrent(), open, high, low, close, bid, ask);
-}
 
 //+------------------------------------------------------------------+
 //|                          网络通信层                              |
 //+------------------------------------------------------------------+
 
-int SendData(string path, string json_body) {
+int SendData(string json_body) {
    if(ConnectionMode == MODE_OFFLINE) return 200;
    
    char data[], result[];
    string headers = "Content-Type: application/json\r\n";
    StringToCharArray(json_body, data, 0, WHOLE_ARRAY, CP_UTF8);
    
-   // 毫秒级上报必须使用较短的超时时间，防止同步请求阻塞 MT4 主线程
-   int res = WebRequest("POST", RustServerUrl + path, headers, 300, data, result, headers);
+   // WebRequest - 设置 2 秒超时
+   int res = WebRequest("POST", RustServerUrl + ApiPath, headers, 2000, data, result, headers);
    
-   if(res == -1) {
-      static datetime lastError = 0;
-      if(TimeCurrent() - lastError > 60) { 
-         Print("High-Frequency Network Error. Code: ", GetLastError());
-         lastError = TimeCurrent();
+   if(res >= 200 && res <= 299) {
+      // 首次成功或每隔 30 秒打印一次成功日志
+      if(g_lastSuccessLog == 0 || TimeCurrent() - g_lastSuccessLog > 30) {
+         Print("Data Scanner: Batch transmitted successfully to ", RustServerUrl);
+         g_lastSuccessLog = TimeCurrent();
+      }
+   }
+   else if(res == -1) {
+      if(TimeCurrent() - g_lastError > 60) { 
+         Print("High-Frequency Network Error (WebRequest -1). Code: ", GetLastError());
+         g_lastError = TimeCurrent();
+      }
+   }
+   else {
+      if(TimeCurrent() - g_lastError > 60) {
+         Print("Server Error. Response Code: ", res, " Path: ", ApiPath);
+         g_lastError = TimeCurrent();
       }
    }
    return res;
