@@ -252,6 +252,16 @@ const App = () => {
 
   const currentMarketData = selectedSymbol ? data?.market_data[selectedSymbol] : null;
 
+  // Sort active symbols: (1) Has Positions -> (2) Alpha
+  const sortedActiveSymbols = [...(data?.active_symbols || [])].sort((a, b) => {
+    const hasPosA = (data?.account_status?.positions || []).some((p: any) => p.symbol === a);
+    const hasPosB = (data?.account_status?.positions || []).some((p: any) => p.symbol === b);
+
+    if (hasPosA && !hasPosB) return -1;
+    if (!hasPosA && hasPosB) return 1;
+    return a.localeCompare(b);
+  });
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans">
       <Navbar
@@ -263,7 +273,7 @@ const App = () => {
         selectedAccount={selectedAccount}
         setSelectedAccount={setSelectedAccount}
         onBindAccount={() => setIsBindModalOpen(true)}
-        activeSymbols={data?.active_symbols || []}
+        activeSymbols={sortedActiveSymbols}
         selectedSymbol={selectedSymbol}
         setSelectedSymbol={setSelectedSymbol}
       />
