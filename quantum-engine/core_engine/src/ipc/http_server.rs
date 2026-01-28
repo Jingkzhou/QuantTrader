@@ -163,27 +163,21 @@ async fn get_state(
     }
 
     // Use if let to handle optional account context
-    if let (Some(mt4), Some(brk)) = (mt4_account, broker) {
+    if let Some(mt4) = mt4_account {
         // Verify ownership
         let _ = sqlx::query!(
-            "SELECT 1 as \"exists!\" FROM user_accounts WHERE user_id = $1 AND mt4_account = $2 AND broker = $3",
-            claims.user_id, mt4, brk
+            "SELECT 1 as \"exists!\" FROM user_accounts WHERE user_id = $1 AND mt4_account = $2",
+            claims.user_id, mt4
         )
         .fetch_optional(&state.db)
         .await
-        .map_err(|e: sqlx::Error| {
-            tracing::error!("Ownership verification error: {}", e);
-            (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-        })?
-        .ok_or_else(|| {
-            tracing::error!("Access denied for user {} on account {}:{}", claims.user_id, mt4, brk);
-            (axum::http::StatusCode::FORBIDDEN, "Access denied".to_string())
-        })?;
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((axum::http::StatusCode::FORBIDDEN, "Access denied".to_string()))?;
 
         // Fetch latest snapshot for this account
         let status_row = sqlx::query!(
-            "SELECT balance, equity, margin, free_margin, floating_profit, timestamp, mt4_account, broker, positions_snapshot FROM account_status WHERE mt4_account = $1 AND broker = $2 ORDER BY timestamp DESC LIMIT 1",
-            mt4, brk
+            "SELECT balance, equity, margin, free_margin, floating_profit, timestamp, mt4_account, broker, positions_snapshot FROM account_status WHERE mt4_account = $1 ORDER BY timestamp DESC LIMIT 1",
+            mt4
         )
         .fetch_optional(&state.db)
         .await
@@ -211,15 +205,18 @@ async fn get_state(
         // Overlay real-time memory state for this account
         {
             let s = state.memory.read().unwrap();
-            let key = format!("{}:{}", mt4, brk);
-            
-            // Use real-time status from memory if available
-            if let Some(real_time_status) = s.account_statuses.get(&key) {
-                app_state.account_status = real_time_status.clone();
+            // Try to find any key starting with mt4: for this account
+            // Since we don't have broker easily, we might just iterate or assume single broker context per account ID
+            // Or better, just don't rely on broker in key? But memory map logic uses it.
+            // Simplified: Iterate keys to find match.
+            for (key, status) in s.account_statuses.iter() {
+                if key.starts_with(&format!("{}:", mt4)) {
+                    app_state.account_status = status.clone();
+                    break;
+                }
             }
 
             // Filter logs for this account
-            if let Some(logs) = s.recent_logs.get(&key) {
                 app_state.recent_logs = logs.clone();
             }
         }
@@ -339,24 +336,22 @@ async fn get_account_history(
 ) -> Result<Json<Vec<AccountHistory>>, (axum::http::StatusCode, String)> {
     let mt4_account = params.get("mt4_account").and_then(|id| id.parse::<i64>().ok())
         .ok_or((axum::http::StatusCode::BAD_REQUEST, "Missing mt4_account".to_string()))?;
-    let broker = params.get("broker").ok_or((axum::http::StatusCode::BAD_REQUEST, "Missing broker".to_string()))?;
-
     // Verify ownership
     let _ = sqlx::query!(
-        "SELECT 1 as \"exists!\" FROM user_accounts WHERE user_id = $1 AND mt4_account = $2 AND broker = $3",
-        claims.user_id, mt4_account, broker
+        "SELECT 1 as \"exists!\" FROM user_accounts WHERE user_id = $1 AND mt4_account = $2",
+        claims.user_id, mt4_account
     )
     .fetch_optional(&state.db)
     .await
-    .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
     .ok_or((axum::http::StatusCode::FORBIDDEN, "Access denied".to_string()))?;
 
     let limit = params.get("limit").and_then(|s| s.parse::<i64>().ok()).unwrap_or(200);
     
     let history = sqlx::query_as!(
         AccountHistory,
-        "SELECT timestamp, COALESCE(balance, 0.0) as \"balance!\", COALESCE(equity, 0.0) as \"equity!\", mt4_account as \"mt4_account!\", broker as \"broker!\" FROM account_status WHERE mt4_account = $1 AND broker = $2 ORDER BY timestamp DESC LIMIT $3",
-        mt4_account, broker, limit
+        "SELECT timestamp, COALESCE(balance, 0.0) as \"balance!\", COALESCE(equity, 0.0) as \"equity!\", mt4_account as \"mt4_account!\", broker as \"broker!\" FROM account_status WHERE mt4_account = $1 ORDER BY timestamp DESC LIMIT $2",
+        mt4_account, limit
     )
     .fetch_all(&state.db)
     .await
@@ -422,12 +417,10 @@ async fn get_trade_history(
 ) -> Result<Json<TradeHistoryResponse>, (axum::http::StatusCode, String)> {
     let mt4_account = params.get("mt4_account").and_then(|id| id.parse::<i64>().ok())
         .ok_or((axum::http::StatusCode::BAD_REQUEST, "Missing mt4_account".to_string()))?;
-    let broker = params.get("broker").ok_or((axum::http::StatusCode::BAD_REQUEST, "Missing broker".to_string()))?;
-
     // Verify ownership
     let _ = sqlx::query!(
-        "SELECT 1 as \"exists!\" FROM user_accounts WHERE user_id = $1 AND mt4_account = $2 AND broker = $3",
-        claims.user_id, mt4_account, broker
+        "SELECT 1 as \"exists!\" FROM user_accounts WHERE user_id = $1 AND mt4_account = $2",
+        claims.user_id, mt4_account
     )
     .fetch_optional(&state.db)
     .await
@@ -441,8 +434,8 @@ async fn get_trade_history(
 
     // Get Total Count
     let total_record = sqlx::query!(
-        "SELECT count(*) as count FROM trade_history WHERE mt4_account = $1 AND broker = $2",
-        mt4_account, broker
+        "SELECT count(*) as count FROM trade_history WHERE mt4_account = $1",
+        mt4_account
     )
     .fetch_one(&state.db)
     .await
@@ -471,11 +464,11 @@ async fn get_trade_history(
             mt4_account as "mt4_account!", 
             broker as "broker!" 
         FROM trade_history 
-        WHERE mt4_account = $1 AND broker = $2
+        WHERE mt4_account = $1
         ORDER BY close_time DESC 
-        LIMIT $3 OFFSET $4
+        LIMIT $2 OFFSET $3
         "#,
-        mt4_account, broker, limit, offset
+        mt4_account, limit, offset
     )
     .fetch_all(&state.db)
     .await
@@ -565,23 +558,35 @@ async fn get_commands(
 ) -> Result<Json<Vec<Command>>, (axum::http::StatusCode, String)> {
     let mt4_account = params.get("mt4_account").and_then(|id| id.parse::<i64>().ok())
         .ok_or((axum::http::StatusCode::BAD_REQUEST, "Missing mt4_account".to_string()))?;
-    let broker = params.get("broker").ok_or((axum::http::StatusCode::BAD_REQUEST, "Missing broker".to_string()))?;
-
     // Verify ownership
     let _ = sqlx::query!(
-        "SELECT 1 as \"exists!\" FROM user_accounts WHERE user_id = $1 AND mt4_account = $2 AND broker = $3",
-        claims.user_id, mt4_account, broker
+        "SELECT 1 as \"exists!\" FROM user_accounts WHERE user_id = $1 AND mt4_account = $2",
+        claims.user_id, mt4_account
     )
     .fetch_optional(&state.db)
     .await
     .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
     .ok_or((axum::http::StatusCode::FORBIDDEN, "Access denied".to_string()))?;
 
-    let key = format!("{}:{}", mt4_account, broker);
     let mut s = state.memory.write().unwrap();
-    let commands = s.pending_commands.get(&key).cloned().unwrap_or_default();
-    s.pending_commands.remove(&key); // Consume commands
-    Ok(Json(commands))
+    // Similar to logs, we need to find the command queue for this account
+    // Since broker is part of key, we iterate.
+    let mut found_commands = Vec::new();
+    let mut key_to_remove = None;
+    
+    for (key, cmds) in s.pending_commands.iter() {
+        if key.starts_with(&format!("{}:", mt4_account)) {
+            found_commands = cmds.clone();
+            key_to_remove = Some(key.clone());
+            break;
+        }
+    }
+    
+    if let Some(k) = key_to_remove {
+        s.pending_commands.remove(&k);
+    }
+    
+    Ok(Json(found_commands))
 }
 
 async fn handle_login(
