@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldAlert, Info, TrendingDown, Clock, Activity, Skull } from 'lucide-react';
-import { AccountStatus } from '../types';
+import type { AccountStatus } from '../types';
 import { calculateLiquidationPrice, calculateRiskScore } from '../utils/riskCalculations';
 
 interface RiskCockpitProps {

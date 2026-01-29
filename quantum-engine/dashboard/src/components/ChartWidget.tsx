@@ -6,7 +6,7 @@ import axios from 'axios';
 import { Activity, ChevronUp, Eye, EyeOff, History, Settings } from 'lucide-react';
 import { QuickTradePanel } from './QuickTradePanel';
 import { API_BASE } from '../config';
-import { AccountStatus } from '../types';
+import type { AccountStatus } from '../types';
 import { calculateLiquidationPrice } from '../utils/riskCalculations';
 
 

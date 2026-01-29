@@ -14,7 +14,7 @@ import { RiskCockpit } from './components/RiskCockpit';
 
 import { LoginPage } from './components/LoginPage';
 import { API_BASE } from './config';
-import { AuthState, MarketData, AccountStatus, LogEntry, TradeHistory, AccountRecord } from './types';
+import type { AuthState, MarketData, AccountStatus, LogEntry, TradeHistory, AccountRecord } from './types';
 
 // Interfaces moved to types.ts
 interface AppState {

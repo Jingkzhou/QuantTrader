@@ -1,4 +1,4 @@
-import { AccountStatus, MarketData, Position } from '../types';
+import type { AccountStatus, MarketData, Position } from '../types';
 
 export interface RiskMetrics {
     liquidationPrice: number;
