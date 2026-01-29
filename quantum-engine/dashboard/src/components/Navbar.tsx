@@ -30,6 +30,11 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+    // Dropdown States
+    const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
+    const [isSymbolMenuOpen, setIsSymbolMenuOpen] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+
     const NavItem = ({ id, label, icon }: { id: string, label: string, icon: React.ReactNode }) => (
         <button
             onClick={() => {
@@ -70,7 +75,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <div className="hidden md:flex items-center gap-4">
                         {/* Account Switcher */}
                         <div className="relative group z-20">
-                            <div className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 flex items-center gap-3 cursor-pointer hover:border-cyan-500/50 transition-all min-w-[200px]">
+                            <button
+                                onClick={() => setIsAccountMenuOpen(!isAccountMenuOpen)}
+                                onBlur={() => setTimeout(() => setIsAccountMenuOpen(false), 200)}
+                                className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 flex items-center gap-3 cursor-pointer hover:border-cyan-500/50 transition-all min-w-[200px] text-left"
+                            >
                                 <div className="flex flex-col">
                                     <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">当前账户</span>
                                     <span className="text-sm font-bold text-cyan-500 truncate max-w-[160px]">
@@ -80,16 +89,16 @@ export const Navbar: React.FC<NavbarProps> = ({
                                         })()}
                                     </span>
                                 </div>
-                                <ChevronDown size={14} className="text-slate-600 group-hover:text-cyan-500 transition-colors ml-auto" />
-                            </div>
+                                <ChevronDown size={14} className={`text-slate-600 transition-transform ml-auto ${isAccountMenuOpen ? 'rotate-180 text-cyan-500' : ''}`} />
+                            </button>
 
-                            <div className="absolute top-full left-0 mt-2 w-64 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 overflow-hidden">
+                            <div className={`absolute top-full left-0 mt-2 w-64 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl transition-all z-50 overflow-hidden origin-top ${isAccountMenuOpen ? 'opacity-100 scale-100 visible' : 'opacity-0 scale-95 invisible'}`}>
                                 {accounts.map(acc => {
                                     const isActive = selectedAccount?.mt4_account === acc.mt4_account && selectedAccount?.broker === acc.broker;
                                     return (
                                         <div
                                             key={`${acc.mt4_account}:${acc.broker}`}
-                                            onClick={() => setSelectedAccount({ mt4_account: acc.mt4_account, broker: acc.broker })}
+                                            onClick={() => { setSelectedAccount({ mt4_account: acc.mt4_account, broker: acc.broker }); setIsAccountMenuOpen(false); }}
                                             className={`flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-slate-800 transition-colors ${isActive ? 'bg-cyan-600/10' : ''}`}
                                         >
                                             <div className="flex flex-col">
@@ -110,19 +119,68 @@ export const Navbar: React.FC<NavbarProps> = ({
                             </div>
                         </div>
 
-                        {/* Symbol Selector */}
-                        <div className="flex items-center gap-2 overflow-x-auto max-w-[400px] no-scrollbar">
-                            {(activeSymbols || []).map((sym: string) => (
-                                <button
-                                    key={sym}
-                                    onClick={() => setSelectedSymbol(sym)}
-                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${selectedSymbol === sym ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-900/20' : 'text-slate-500 hover:text-slate-300 bg-slate-900 border border-slate-800'}`}
-                                >
-                                    {sym}
-                                </button>
-                            ))}
-                            {(!activeSymbols || activeSymbols.length === 0) && (
-                                <span className="px-3 py-1.5 text-xs text-slate-600 italic">等待信号...</span>
+                        {/* Symbol Selector (Optimized Dropdown) */}
+                        <div className="relative group z-20">
+                            {/* Trigger */}
+                            <button
+                                onClick={() => {
+                                    setIsSymbolMenuOpen(!isSymbolMenuOpen);
+                                    if (!isSymbolMenuOpen) setSearchTerm(''); // Reset search on open
+                                }}
+                                // onBlur handled manually inside dropdown to allow input focus
+                                className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 flex items-center gap-3 cursor-pointer hover:border-cyan-500/50 transition-all min-w-[140px] text-left"
+                            >
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">交易品种</span>
+                                    <span className="text-sm font-bold text-slate-200">
+                                        {selectedSymbol || "未选择"}
+                                    </span>
+                                </div>
+                                <ChevronDown size={14} className={`text-slate-600 transition-transform ml-auto ${isSymbolMenuOpen ? 'rotate-180 text-cyan-500' : ''}`} />
+                            </button>
+
+                            {/* Dropdown Menu */}
+                            {isSymbolMenuOpen && (
+                                <>
+                                    <div className="fixed inset-0 z-40" onClick={() => setIsSymbolMenuOpen(false)}></div>
+                                    <div className="absolute top-full left-0 mt-2 w-56 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-100 z-50 overflow-hidden">
+                                        <div className="p-2 border-b border-slate-800">
+                                            <div className="relative">
+                                                <input
+                                                    type="text"
+                                                    placeholder="搜索品种..."
+                                                    autoFocus
+                                                    className="w-full bg-slate-950 border border-slate-800 rounded-lg py-1.5 pl-8 pr-3 text-xs text-slate-200 focus:outline-none focus:border-cyan-500/50 placeholder:text-slate-600"
+                                                    value={searchTerm}
+                                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                                />
+                                                <div className="absolute left-2.5 top-2 text-slate-600">
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="max-h-[300px] overflow-y-auto p-1 custom-scrollbar">
+                                            {(activeSymbols || [])
+                                                .filter(s => s.toLowerCase().includes(searchTerm.toLowerCase()))
+                                                .map((sym: string) => (
+                                                    <div
+                                                        key={sym}
+                                                        onClick={() => { setSelectedSymbol(sym); setIsSymbolMenuOpen(false); }}
+                                                        className={`flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer hover:bg-slate-800 transition-colors ${selectedSymbol === sym ? 'bg-cyan-600/10 text-cyan-400' : 'text-slate-300'}`}
+                                                    >
+                                                        <span className="text-sm font-bold">{sym}</span>
+                                                        {selectedSymbol === sym && <Check size={14} className="text-cyan-500" />}
+                                                    </div>
+                                                ))}
+                                            {(activeSymbols || []).filter(s => s.toLowerCase().includes(searchTerm.toLowerCase())).length === 0 && (
+                                                <div className="px-4 py-8 text-xs text-slate-500 italic text-center">
+                                                    未找到 "{searchTerm}"
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </>
                             )}
                         </div>
                     </div>
