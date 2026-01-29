@@ -18,32 +18,43 @@ REM ---------------------------------------------------------------------------
 REM ---------------------------------------------------------------------------
 REM Log Rotation & Cleanup (Max 500MB)
 REM ---------------------------------------------------------------------------
+REM ---------------------------------------------------------------------------
+REM Log Rotation & Cleanup (Max 500MB)
+REM ---------------------------------------------------------------------------
 echo [STEP] Rotating and cleaning up logs...
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-    "$logDir = '.'; $archiveDir = 'logs_archive'; " ^
-    "if (!(Test-Path $archiveDir)) { New-Item -ItemType Directory -Path $archiveDir | Out-Null }; " ^
-    "$timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'; " ^
-    "$logs = @('core_engine.log', 'dashboard.log', 'ai_brain.log'); " ^
-    "foreach ($log in $logs) { " ^
-    "    if (Test-Path $log) { " ^
-    "        try { " ^
-    "            Move-Item $log $archiveDir\$log.$timestamp.bak -ErrorAction Stop; " ^
-    "            Write-Host 'Archived: ' $log; " ^
-    "        } catch { Write-Warning 'Could not archive ' $log } " ^
-    "    } " ^
-    "}; " ^
-    "$limit = 500 * 1024 * 1024; " ^
-    "$files = Get-ChildItem $archiveDir | Sort-Object CreationTime; " ^
-    "$currentSize = ($files | Measure-Object -Property Length -Sum).Sum; " ^
-    "Write-Host 'Current Archive Size: ' ([math]::Round($currentSize / 1MB, 2)) 'MB'; " ^
-    "foreach ($file in $files) { " ^
-    "    if ($currentSize -le $limit) { break }; " ^
-    "    try { " ^
-    "        $currentSize -= $file.Length; " ^
-    "        Remove-Item $file.FullName -Force; " ^
-    "        Write-Host 'Cleaned up old log: ' $file.Name; " ^
-    "    } catch { } " ^
-    "}"
+REM Define rotation script content to avoid complex inline escaping issues
+(
+echo $logDir = '.';
+echo $archiveDir = 'logs_archive';
+echo if ^(!^(Test-Path $archiveDir^)^) { New-Item -ItemType Directory -Path $archiveDir ^| Out-Null };
+echo $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss';
+echo $logs = @^('core_engine.log', 'dashboard.log', 'ai_brain.log'^);
+echo foreach ^($log in $logs^) {
+echo     if ^(Test-Path $log^) {
+echo         try {
+echo             Move-Item $log $archiveDir\$log.$timestamp.bak -ErrorAction Stop;
+echo             Write-Host "Archived: $log";
+echo         } catch { Write-Warning "Could not archive $log" }
+echo     }
+echo };
+echo $limit = 500 * 1024 * 1024;
+echo $files = Get-ChildItem $archiveDir ^| Sort-Object CreationTime;
+echo $currentSize = ^($files ^| Measure-Object -Property Length -Sum^).Sum;
+echo if ^($currentSize -eq $null^) { $currentSize = 0 };
+echo Write-Host "Current Archive Size: " ^([math]::Round^($currentSize / 1MB, 2^)^) "MB";
+echo foreach ^($file in $files^) {
+echo     if ^($currentSize -le $limit^) { break };
+echo     try {
+echo         $currentSize -= $file.Length;
+echo         Remove-Item $file.FullName -Force;
+echo         Write-Host "Cleaned up old log: " $file.Name;
+echo     } catch { }
+echo }
+) > rotate_logs.ps1
+
+powershell -NoProfile -ExecutionPolicy Bypass -File rotate_logs.ps1
+del rotate_logs.ps1
+echo [INFO] Log rotation complete.
 
 REM ---------------------------------------------------------------------------
 
@@ -159,8 +170,17 @@ start /B "QuantTrader Dashboard" npm run dev -- --host > "%REPO_ROOT%\dashboard.
 REM Start AI Brain (Python) in background
 echo [STEP] Starting AI Brain...
 cd "%REPO_ROOT%\quantum-engine\ai_brain"
-if exist venv\Scripts\activate.bat (call venv\Scripts\activate.bat)
-start /B "QuantTrader AI Brain" python src\main.py > "%REPO_ROOT%\ai_brain.log" 2>&1
+
+REM Determine Python Executable
+set "PYTHON_EXE=python"
+if exist "venv\Scripts\python.exe" (
+    set "PYTHON_EXE=venv\Scripts\python.exe"
+    echo [INFO] Using virtualenv python: !PYTHON_EXE!
+) else (
+    echo [INFO] Using system python.
+)
+
+start /B "QuantTrader AI Brain" !PYTHON_EXE! src\main.py > "%REPO_ROOT%\ai_brain.log" 2>&1
 
 cd "%REPO_ROOT%"
 
