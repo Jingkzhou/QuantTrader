@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "QuantTrader Pro"
 #property link      ""
-#property version   "1.27"
+#property version   "1.28"
 #property strict
 
 //+------------------------------------------------------------------+
@@ -1504,7 +1504,7 @@ void ReportAccountStatus() {
        AccountStopoutLevel()
    );
 
-   string json = StringFormat("{\"balance\":%.2f,\"equity\":%.2f,\"margin\":%.2f,\"free_margin\":%.2f,\"floating_profit\":%.2f,\"timestamp\":%lld,\"margin_level\":%.2f,\"mt4_account\":%d,\"broker\":\"%s\",\"positions\":[%s],%s}",
+   string json = StringFormat("{\"balance\":%.2f,\"equity\":%.2f,\"margin\":%.2f,\"free_margin\":%.2f,\"floating_profit\":%.2f,\"timestamp\":%I64d,\"margin_level\":%.2f,\"mt4_account\":%d,\"broker\":\"%s\",\"positions\":[%s],%s}",
                                AccountBalance(), AccountEquity(), AccountMargin(), AccountFreeMargin(), stats.buyProfit + stats.sellProfit, (long)TimeCurrent(), marginLevel, AccountNumber(), AccountCompany(), posJson, symbolJson);
    SendData("/api/v1/account", json);
 }
@@ -1518,7 +1518,7 @@ string EscapeJSONString(string val) {
 void RemoteLog(string level, string message) {
    if(ConnectionMode == MODE_OFFLINE) return;
    
-   string json = StringFormat("{\"timestamp\":%lld,\"level\":\"%s\",\"message\":\"%s\",\"mt4_account\":%d,\"broker\":\"%s\"}", 
+   string json = StringFormat("{\"timestamp\":%I64d,\"level\":\"%s\",\"message\":\"%s\",\"mt4_account\":%d,\"broker\":\"%s\"}", 
                               (long)TimeCurrent(), level, message, AccountNumber(), AccountCompany());
                               
    // 使用 WebRequest 发送日志

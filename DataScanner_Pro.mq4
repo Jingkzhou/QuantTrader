@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "QuantTrader Data Scanner"
 #property link      ""
-#property version   "1.40"
+#property version   "1.41"
 #property strict
 
 //+------------------------------------------------------------------+
@@ -109,7 +109,7 @@ void OnTimer()
       long   time = (long)TimeCurrent();
 
       // 构建单个品种的 JSON 对象 (保持后端兼容的字段名)
-      string item = StringFormat("{\"symbol\":\"%s\",\"timestamp\":%lld,\"open\":%.5f,\"high\":%.5f,\"low\":%.5f,\"close\":%.5f,\"bid\":%.5f,\"ask\":%.5f}",
+      string item = StringFormat("{\"symbol\":\"%s\",\"timestamp\":%I64d,\"open\":%.5f,\"high\":%.5f,\"low\":%.5f,\"close\":%.5f,\"bid\":%.5f,\"ask\":%.5f}",
                                  sym, time, open, high, low, close, bid, ask);
       
       if(count_in_batch > 0) json_array += ",";

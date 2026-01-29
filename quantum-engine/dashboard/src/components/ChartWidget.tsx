@@ -400,6 +400,7 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
         if (lastCandleRef.current) {
             // Guard: Prevent updating with older time (Lightweight Charts Error 136)
             if (candleTime < lastCandleRef.current.time) {
+                console.warn(`[ChartWidget] Skipping update: New time ${candleTime} < Last time ${lastCandleRef.current.time}`);
                 return;
             }
 

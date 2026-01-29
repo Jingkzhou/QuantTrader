@@ -61,9 +61,9 @@ if %ERRORLEVEL% NEQ 0 (
 
     if exist "D:\pgsql\bin\pg_ctl.exe" (
         echo [INFO] Starting database from D:\pgsql\bin...
-        pushd "D:\pgsql\bin"
-        .\pg_ctl.exe start -D "D:\pgsql\data" -w
-        popd
+        REM Use start /WAIT /MIN to launch pg_ctl in a separate process but wait for it to complete (it waits for DB up due to -w)
+        REM This ensures the main script waits for readiness, but the DB process is detached from this console.
+        start /WAIT /MIN "PostgreSQL" "D:\pgsql\bin\pg_ctl.exe" start -D "D:\pgsql\data" -w
     ) else (
         echo [ERROR] D:\pgsql\bin\pg_ctl.exe not found! Cannot auto-start database.
     )
