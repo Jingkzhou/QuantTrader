@@ -5,10 +5,14 @@ REM Get the absolute path to the repo root (directory of this script)
 set "REPO_ROOT=%~dp0"
 cd /d "%REPO_ROOT%"
 
-REM Git Pull with provided token
+REM Git Pull with provided credentials
 echo [STEP] Pulling latest code...
-set "GIT_TOKEN=0b17abd0002b5d28db745c0d82cc0ac7"
-git pull https://%GIT_TOKEN%@gitee.com/MondayQuizlet/QuantTrader.git
+REM Password contains special chars, so we use URL encoding for safety in batch
+REM ! -> %21, @ -> %40 (though @ is usually fine in URL if not delimiter)
+REM Password: 1qaz2wsx!@QW
+set "GIT_USER=17710388869"
+set "GIT_PASS=1qaz2wsx%%21%%40QW"
+git pull https://%GIT_USER%:%GIT_PASS%@gitee.com/MondayQuizlet/QuantTrader.git
 if %ERRORLEVEL% NEQ 0 (
     echo [WARN] Git pull failed. Continuing with existing code...
 ) else (
@@ -40,11 +44,18 @@ if %ERRORLEVEL% NEQ 0 (
     echo [WARN] PostgreSQL is not reachable at localhost:5432. Attempting to start...
     if exist "D:\pgsql\bin\pg_ctl.exe" (
         echo [INFO] Found pg_ctl.exe, starting database...
-        REM Switch to bin directory to ensure DLLs are found (fixes 0xC0000135)
-        pushd "D:\pgsql\bin"
-        .\pg_ctl.exe start -D "D:\pgsql\data"
-        popd
-        timeout /t 5 >nul
+        
+        REM Fix 0xC0000135 (DLL not found)
+        REM 1. Add bin and lib to PATH
+        set "PATH=D:\pgsql\bin;D:\pgsql\lib;%PATH%"
+        REM 2. Switch context to bin directory completely
+        cd /d "D:\pgsql\bin"
+        
+        echo [INFO] Running pg_ctl start...
+        .\pg_ctl.exe start -D "D:\pgsql\data" -w
+        
+        REM Return to repo root
+        cd /d "%REPO_ROOT%"
     ) else (
         echo [ERROR] D:\pgsql\bin\pg_ctl.exe not found! Cannot auto-start database.
     )
