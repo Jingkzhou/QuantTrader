@@ -16,8 +16,32 @@ REM ---------------------------------------------------------------------------
 :MAIN_LOOP
 
 REM ---------------------------------------------------------------------------
-REM Log Rotation & Cleanup (Max 500MB)
+REM PRE-FLIGHT CLEANUP (Prevent File Locking)
 REM ---------------------------------------------------------------------------
+echo [STEP] Ensuring previous processes are stopped...
+
+REM Kill known processes (Aggressive)
+taskkill /F /IM "core_engine.exe" >nul 2>&1
+taskkill /F /IM "node.exe" >nul 2>&1
+taskkill /F /IM "python.exe" >nul 2>&1
+taskkill /F /IM "cargo.exe" >nul 2>&1
+taskkill /F /IM "rustc.exe" >nul 2>&1
+
+REM Kill process on Port 3001 (Core Engine)
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":3001" ^| findstr "LISTENING"') do (
+    echo Killing PID %%a on port 3001...
+    taskkill /f /pid %%a >nul 2>&1
+)
+
+REM Kill process on Port 5173 (Dashboard)
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":5173" ^| findstr "LISTENING"') do (
+    echo Killing PID %%a on port 5173...
+    taskkill /f /pid %%a >nul 2>&1
+)
+
+REM Wait a moment for file handles to release
+timeout /t 2 /nobreak >nul
+
 REM ---------------------------------------------------------------------------
 REM Log Rotation & Cleanup (Max 500MB)
 REM ---------------------------------------------------------------------------
