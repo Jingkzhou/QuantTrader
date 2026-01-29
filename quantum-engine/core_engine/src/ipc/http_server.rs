@@ -176,7 +176,7 @@ async fn get_state(
 
         // Fetch latest snapshot for this account
         let status_row = sqlx::query!(
-            "SELECT balance, equity, margin, free_margin, floating_profit, timestamp, mt4_account, broker, positions_snapshot,
+            "SELECT balance, equity, margin, free_margin, floating_profit, timestamp, mt4_account, broker, positions_snapshot::TEXT as positions_snapshot,
              contract_size, tick_value, stop_level, margin_so_level
              FROM account_status WHERE mt4_account = $1 ORDER BY timestamp DESC LIMIT 1",
             mt4
