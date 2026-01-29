@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "QuantTrader Data Scanner"
 #property link      ""
-#property version   "1.41"
+#property version   "1.43"
 #property strict
 
 //+------------------------------------------------------------------+
@@ -25,7 +25,7 @@ input string   ApiPath          = "/api/v1/market/batch";      // API 路径
 input int      CollectInterval  = 5;                           // 采集间隔 (秒)
 input bool     UseMarketWatch   =  false;                        // true=采集市场报价窗口所有品种, false=只采集下方自定义列表
 input string   CustomSymbols    = "XAUUSD,EURUSD,GBPUSD,USDJPY,BTCUSD,NAS100,US30,ETHUSD,AUDUSD,USOIL"; // 自定义品种 (10个热门品种)
-input int      BatchSize        = 20;                          // 每次批量上报打包多少个品种
+input int      BatchSize        = 10;                          // 每次批量上报打包多少个品种 (建议 10-20)
 input ENUM_CONNECTION_MODE ConnectionMode = MODE_ONLINE;       // 连接模式
 
 //+------------------------------------------------------------------+
@@ -143,6 +143,9 @@ int SendData(string json_body) {
    char data[], result[];
    string headers = "Content-Type: application/json\r\n";
    StringToCharArray(json_body, data, 0, WHOLE_ARRAY, CP_UTF8);
+   
+   // Debug: Print payload size
+   // Print("Sending batch: ", StringLen(json_body), " bytes to ", RustServerUrl + ApiPath);
    
    // WebRequest - 设置 2 秒超时
    int res = WebRequest("POST", RustServerUrl + ApiPath, headers, 2000, data, result, headers);
