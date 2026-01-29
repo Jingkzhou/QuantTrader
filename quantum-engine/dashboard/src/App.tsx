@@ -59,7 +59,10 @@ const App = () => {
   };
 
   const handleLogout = () => {
-    localStorage.clear();
+    localStorage.removeItem('token');
+    localStorage.removeItem('username');
+    localStorage.removeItem('role');
+    // Do not clear preferences like lastAccount/lastSymbol
     setAuth({ token: null, username: null, role: null });
   };
 
@@ -80,6 +83,15 @@ const App = () => {
     };
   }, []);
 
+  // Persistence: Save Preferences
+  useEffect(() => {
+    if (selectedSymbol) localStorage.setItem('lastSymbol', selectedSymbol);
+  }, [selectedSymbol]);
+
+  useEffect(() => {
+    if (selectedAccount) localStorage.setItem('lastAccount', JSON.stringify(selectedAccount));
+  }, [selectedAccount]);
+
   const fetchData = async () => {
     if (!auth.token) return;
     try {
@@ -94,10 +106,16 @@ const App = () => {
       setData(newState);
 
       if (!selectedSymbol && newState.active_symbols && newState.active_symbols.length > 0) {
-        // Prefer selecting a symbol with active positions if available
-        const posSymbols = newState.account_status?.positions?.map((p: any) => p.symbol) || [];
-        const preferredSymbol = newState.active_symbols.find((s: string) => posSymbols.includes(s)) || newState.active_symbols[0];
-        setSelectedSymbol(preferredSymbol);
+        // Try restoring last symbol
+        const lastSymbol = localStorage.getItem('lastSymbol');
+        if (lastSymbol && newState.active_symbols.includes(lastSymbol)) {
+          setSelectedSymbol(lastSymbol);
+        } else {
+          // Default: Prefer symbol with active positions
+          const posSymbols = newState.account_status?.positions?.map((p: any) => p.symbol) || [];
+          const preferredSymbol = newState.active_symbols.find((s: string) => posSymbols.includes(s)) || newState.active_symbols[0];
+          setSelectedSymbol(preferredSymbol);
+        }
       }
 
       if (selectedAccount) {
@@ -187,7 +205,18 @@ const App = () => {
         });
         setAccounts(res.data);
         if (res.data.length > 0 && !selectedAccount) {
-          setSelectedAccount({ mt4_account: res.data[0].mt4_account, broker: res.data[0].broker });
+          // Restore last account
+          const lastAccountStr = localStorage.getItem('lastAccount');
+          let targetAccount = res.data[0];
+
+          if (lastAccountStr) {
+            try {
+              const saved = JSON.parse(lastAccountStr);
+              const found = res.data.find((a: any) => a.mt4_account == saved.mt4_account);
+              if (found) targetAccount = found;
+            } catch (e) { }
+          }
+          setSelectedAccount({ mt4_account: targetAccount.mt4_account, broker: targetAccount.broker });
         }
       } catch (e) { console.error(e); }
     };
