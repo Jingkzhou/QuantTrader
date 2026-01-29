@@ -63,23 +63,8 @@ void OnDeinit(const int reason)
 
 void OnTimer()
   {
-   if(ConnectionMode == MODE_OFFLINE) {
-      Print("DEBUG: Offline Mode - No Action");
-      return;
-   }
-   
-   // DEBUG: Heartbeat (强制打印以确认 Timer 存活)
-   // 为了防止刷屏太快，每 5 次 Timer 执行打印一次
-   static int tick_counter = 0;
-   tick_counter++;
-   if(tick_counter % 1 == 0) { // 现在改为每次都打印，排查到底进没进来
-       Print("DEBUG: OnTimer Executing... Symbols to scan: ", UseMarketWatch ? "MarketWatch" : "Custom");
-   }
-
-   if(IsTradeContextBusy()) {
-       Print("DEBUG: Trade Context Busy");
-       return; 
-   }
+   if(ConnectionMode == MODE_OFFLINE) return;
+   if(IsTradeContextBusy()) return; 
 
    string symbols_to_scan[];
    int total_symbols = 0;
@@ -104,12 +89,6 @@ void OnTimer()
    }
 
    // 2. 分批采集并发送 (Batch Process)
-   // DEBUG: 打印品种数量，确认解析成功
-   if(tick_counter % 1 == 0) {
-       Print("DEBUG: Total symbols to scan: ", total_symbols);
-       if(total_symbols > 0) Print("DEBUG: First symbol: '", symbols_to_scan[0], "'");
-   }
-
    string json_array = "";
    int count_in_batch = 0;
 
@@ -121,15 +100,9 @@ void OnTimer()
       double ask = MarketInfo(sym, MODE_ASK);
       
       if(bid <= 0 || ask <= 0) {
-          // DEBUG: 既然是在调试，告诉用户哪个品种获取失败了
-          if(tick_counter % 10 == 0 && i < 5) { // 限制打印数量
-              Print("WARNING: Failed to get price for '", sym, "'. Check symbol name/suffix? (Bid=", bid, ")");
-          }
-          // 这里的 continue 会导致跳过底部的发送逻辑，如果这是最后一个品种，就会丢包！
-          // 所以我们需要在 continue 前检查是否是最后一个，如果是，且 buffer 里有数据，得先发了
+          // Critical Fix: 如果这是最后一个品种，且 buffer 里有数据，得先发了，否则会丢包
           if(i == total_symbols - 1 && json_array != "") {
                string final_json = "[" + json_array + "]";
-               Print("DEBUG: Last symbol invalid, sending accumulated batch...");
                SendData(final_json);
           }
           continue;
@@ -174,9 +147,6 @@ void OnTick()
 int SendData(string json_body) {
    if(ConnectionMode == MODE_OFFLINE) return 200;
    
-   // DEBUG: 确认 SendData 被调用
-   Print("DEBUG: SendData called. Payload size: ", StringLen(json_body));
-
    char data[], result[];
    string headers = "Content-Type: application/json\r\n";
    StringToCharArray(json_body, data, 0, WHOLE_ARRAY, CP_UTF8);
@@ -185,22 +155,23 @@ int SendData(string json_body) {
    int res = WebRequest("POST", RustServerUrl + ApiPath, headers, 2000, data, result, headers);
    
    if(res >= 200 && res <= 299) {
-      string response_body = CharArrayToString(result, 0, WHOLE_ARRAY, CP_UTF8);
-      // DEBUG: 成功日志
-      Print("Data Scanner: Sent ", StringLen(json_body), " bytes | Status: ", res, " | Response: ", response_body);
-      g_lastSuccessLog = TimeCurrent();
+      // 成功日志：每 30 秒打印一次，证明还活着
+      if(g_lastSuccessLog == 0 || TimeCurrent() - g_lastSuccessLog > 30) {
+         Print("Data Scanner: Batch transmitted successfully. Status: ", res);
+         g_lastSuccessLog = TimeCurrent();
+      }
    }
    else if(res == -1) {
-      // DEBUG: 强制打印错误，无视频率限制
-      int err = GetLastError();
-      Print("ERROR: WebRequest failed (-1). Error Code: ", err);
-      if(err == 4060) Print("  -> Hint: Enable 'Allow WebRequest' in Tools > Options > Expert Advisors");
-      g_lastError = TimeCurrent();
+      if(TimeCurrent() - g_lastError > 60) { 
+         Print("High-Frequency Network Error (WebRequest -1). Code: ", GetLastError());
+         g_lastError = TimeCurrent();
+      }
    }
    else {
-      // DEBUG: 强制打印 HTTP 错误
-      Print("ERROR: Server returned HTTP ", res, " Path: ", ApiPath);
-      g_lastError = TimeCurrent();
+      if(TimeCurrent() - g_lastError > 60) {
+         Print("Server Error. Response Code: ", res, " Path: ", ApiPath);
+         g_lastError = TimeCurrent();
+      }
    }
    return res;
 }

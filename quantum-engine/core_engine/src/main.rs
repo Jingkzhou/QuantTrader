@@ -128,6 +128,17 @@ async fn main() {
     .await
     .expect("Failed to create user_accounts table");
 
+    // Performance Optimization: Indices
+    // 1. market_data: used for candles (symbol, timestamp)
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_market_data_symbol_time ON market_data (symbol, timestamp DESC)").execute(&pool).await;
+    
+    // 2. account_status: used for equity charts (mt4_account, timestamp)
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_account_status_account_time ON account_status (mt4_account, timestamp DESC)").execute(&pool).await;
+
+    // 3. trade_history: used for analysis (mt4_account, close_time) and (mt4_account, symbol)
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_trade_history_account_close ON trade_history (mt4_account, close_time DESC)").execute(&pool).await;
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_trade_history_account_symbol ON trade_history (mt4_account, symbol)").execute(&pool).await;
+
     // Start HTTP server for MT4 data ingestion
     ipc::http_server::start_server(pool).await;
 }

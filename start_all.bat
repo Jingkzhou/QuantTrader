@@ -10,6 +10,38 @@ REM Get the absolute path to the repo root (directory of this script)
 set "REPO_ROOT=%~dp0"
 cd /d "%REPO_ROOT%"
 
+REM ---------------------------------------------------------------------------
+REM Log Rotation & Cleanup (Max 500MB)
+REM ---------------------------------------------------------------------------
+echo [STEP] Rotating and cleaning up logs...
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "$logDir = '.'; $archiveDir = 'logs_archive'; " ^
+    "if (!(Test-Path $archiveDir)) { New-Item -ItemType Directory -Path $archiveDir | Out-Null }; " ^
+    "$timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'; " ^
+    "$logs = @('core_engine.log', 'dashboard.log', 'ai_brain.log'); " ^
+    "foreach ($log in $logs) { " ^
+    "    if (Test-Path $log) { " ^
+    "        try { " ^
+    "            Move-Item $log $archiveDir\$log.$timestamp.bak -ErrorAction Stop; " ^
+    "            Write-Host 'Archived: ' $log; " ^
+    "        } catch { Write-Warning 'Could not archive ' $log } " ^
+    "    } " ^
+    "}; " ^
+    "$limit = 500 * 1024 * 1024; " ^
+    "$files = Get-ChildItem $archiveDir | Sort-Object CreationTime; " ^
+    "$currentSize = ($files | Measure-Object -Property Length -Sum).Sum; " ^
+    "Write-Host 'Current Archive Size: ' ([math]::Round($currentSize / 1MB, 2)) 'MB'; " ^
+    "foreach ($file in $files) { " ^
+    "    if ($currentSize -le $limit) { break }; " ^
+    "    try { " ^
+    "        $currentSize -= $file.Length; " ^
+    "        Remove-Item $file.FullName -Force; " ^
+    "        Write-Host 'Cleaned up old log: ' $file.Name; " ^
+    "    } catch { } " ^
+    "}"
+
+REM ---------------------------------------------------------------------------
+
 REM Git Pull with provided credentials
 echo [STEP] Pulling latest code...
 REM Password contains special chars, so we use URL encoding for safety in batch
