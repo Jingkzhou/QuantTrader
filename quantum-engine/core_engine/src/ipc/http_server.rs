@@ -175,12 +175,13 @@ async fn get_state(
         .ok_or((axum::http::StatusCode::FORBIDDEN, "Access denied".to_string()))?;
 
         // Fetch latest snapshot for this account
-        let status_row = sqlx::query!(
-            "SELECT balance, equity, margin, free_margin, floating_profit, timestamp, mt4_account, broker, positions_snapshot::TEXT as positions_snapshot,
+        // Fetch latest snapshot for this account
+        let status_row = sqlx::query(
+            "SELECT balance, equity, margin, free_margin, floating_profit, timestamp, mt4_account, broker, positions_snapshot,
              contract_size, tick_value, stop_level, margin_so_level
              FROM account_status WHERE mt4_account = $1 ORDER BY timestamp DESC LIMIT 1",
-            mt4
         )
+        .bind(mt4)
         .fetch_optional(&state.db)
         .await
         .map_err(|e: sqlx::Error| {
@@ -190,23 +191,26 @@ async fn get_state(
         
         // Fill from DB snapshot if exists
         if let Some(row) = status_row {
-            app_state.account_status.balance = row.balance.unwrap_or(0.0);
-            app_state.account_status.equity = row.equity.unwrap_or(0.0);
-            app_state.account_status.margin = row.margin.unwrap_or(0.0);
-            app_state.account_status.free_margin = row.free_margin.unwrap_or(0.0);
-            app_state.account_status.floating_profit = row.floating_profit.unwrap_or(0.0);
-            app_state.account_status.timestamp = row.timestamp;
-            app_state.account_status.mt4_account = row.mt4_account.unwrap_or(0);
-            app_state.account_status.broker = row.broker.unwrap_or_default();
-            if let Some(ps_json) = row.positions_snapshot {
-                app_state.account_status.positions = serde_json::from_str(&ps_json).unwrap_or_default();
+            use sqlx::Row;
+            app_state.account_status.balance = row.try_get("balance").unwrap_or(0.0);
+            app_state.account_status.equity = row.try_get("equity").unwrap_or(0.0);
+            app_state.account_status.margin = row.try_get("margin").unwrap_or(0.0);
+            app_state.account_status.free_margin = row.try_get("free_margin").unwrap_or(0.0);
+            app_state.account_status.floating_profit = row.try_get("floating_profit").unwrap_or(0.0);
+            app_state.account_status.timestamp = row.try_get("timestamp").unwrap_or(0);
+            app_state.account_status.mt4_account = row.try_get("mt4_account").unwrap_or(0);
+            app_state.account_status.broker = row.try_get("broker").unwrap_or_default();
+
+            let ps_json: Option<String> = row.try_get("positions_snapshot").unwrap_or(None);
+            if let Some(json_str) = ps_json {
+                app_state.account_status.positions = serde_json::from_str(&json_str).unwrap_or_default();
             }
             
             // Risk Fields
-            app_state.account_status.contract_size = row.contract_size.unwrap_or(100.0);
-            app_state.account_status.tick_value = row.tick_value.unwrap_or(0.0);
-            app_state.account_status.stop_level = row.stop_level.unwrap_or(0);
-            app_state.account_status.margin_so_level = row.margin_so_level.unwrap_or(0.0);
+            app_state.account_status.contract_size = row.try_get("contract_size").unwrap_or(100.0);
+            app_state.account_status.tick_value = row.try_get("tick_value").unwrap_or(0.0);
+            app_state.account_status.stop_level = row.try_get("stop_level").unwrap_or(0);
+            app_state.account_status.margin_so_level = row.try_get("margin_so_level").unwrap_or(0.0);
         }
 
         // Overlay real-time memory state for this account
