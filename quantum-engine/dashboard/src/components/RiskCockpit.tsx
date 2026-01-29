@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldAlert, Info, TrendingDown, Clock, Activity, Skull } from 'lucide-react';
+import { ShieldAlert, Info, TrendingDown, Clock, Activity, Skull, HelpCircle } from 'lucide-react';
 import type { AccountStatus } from '../types';
 import { calculateLiquidationPrice, calculateRiskScore } from '../utils/riskCalculations';
 
@@ -9,6 +9,19 @@ interface RiskCockpitProps {
     symbolInfo: { contractSize: number; stopOutLevel: number; tickValue: number };
     atr: number; // Daily ATR
 }
+
+// Simple Tooltip Component
+const Tooltip = ({ content, children }: { content: React.ReactNode; children: React.ReactNode }) => {
+    return (
+        <div className="group relative flex items-center gap-1 cursor-help">
+            {children}
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-slate-800 border border-slate-700 rounded-lg text-xs leading-relaxed text-slate-300 shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none">
+                {content}
+                <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-slate-800" />
+            </div>
+        </div>
+    );
+};
 
 export const RiskCockpit: React.FC<RiskCockpitProps> = ({ accountStatus, currentPrice, symbolInfo, atr }) => {
     const [simulationDrop, setSimulationDrop] = useState(0);
@@ -25,8 +38,6 @@ export const RiskCockpit: React.FC<RiskCockpitProps> = ({ accountStatus, current
             setRiskScore(score);
 
             // Time to death estimation
-            // Speed = ATR / 24h roughly? Or calculate based on recent volatility?
-            // Simple heuristic: If price < Liq and trend is down...
             if (liq > 0 && atr > 0) {
                 const dist = Math.abs(currentPrice - liq);
                 const atrPerHour = atr / 24;
@@ -38,10 +49,6 @@ export const RiskCockpit: React.FC<RiskCockpitProps> = ({ accountStatus, current
         }
     }, [accountStatus, currentPrice, symbolInfo, atr]);
 
-    // Simulation Logic
-    const simulatedPrice = currentPrice ? currentPrice - simulationDrop : 0;
-    // TODO: Add full simulation calc logic here or reuse utils
-
     // Color logic
     const getScoreColor = (score: number) => {
         if (score < 40) return 'text-emerald-500';
@@ -50,15 +57,8 @@ export const RiskCockpit: React.FC<RiskCockpitProps> = ({ accountStatus, current
         return 'text-rose-600 animate-pulse';
     };
 
-    const getScoreBg = (score: number) => {
-        if (score < 40) return 'bg-emerald-500';
-        if (score < 70) return 'bg-yellow-500';
-        if (score < 90) return 'bg-orange-500';
-        return 'bg-rose-600';
-    };
-
     return (
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 relative overflow-hidden group">
+        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 relative overflow-hidden group h-full">
             <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
                 <ShieldAlert className="w-24 h-24 text-slate-500" />
             </div>
@@ -88,19 +88,37 @@ export const RiskCockpit: React.FC<RiskCockpitProps> = ({ accountStatus, current
                             <span className={`text-4xl font-bold font-mono ${getScoreColor(riskScore)}`}>
                                 {Math.round(riskScore)}
                             </span>
-                            <span className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Risk Index</span>
+                            <Tooltip content={
+                                <div>
+                                    <div className="font-bold mb-1 text-slate-200">综合风险评分 (0-100)</div>
+                                    <ul className="list-disc pl-3 text-slate-400 space-y-1">
+                                        <li><span className="text-rose-400">40%</span> - 爆仓距离 (越近越危险)</li>
+                                        <li><span className="text-rose-400">30%</span> - 波动率冲击 (1.5倍ATR波动后的净值回撤)</li>
+                                        <li><span className="text-rose-400">20%</span> - 持仓层数 (重仓风险)</li>
+                                        <li><span className="text-rose-400">10%</span> - 隔夜息费风险</li>
+                                    </ul>
+                                </div>
+                            }>
+                                <span className="text-[10px] uppercase text-slate-500 font-bold tracking-wider flex items-center gap-1">
+                                    Risk Index <HelpCircle className="w-3 h-3" />
+                                </span>
+                            </Tooltip>
                         </div>
                     </div>
 
                     <div className="mt-4 grid grid-cols-2 gap-4 w-full">
                         <div className="bg-slate-950/50 rounded-lg p-3 text-center border border-slate-800/50">
-                            <div className="text-xs text-slate-500 mb-1">生存倒计时</div>
+                            <Tooltip content="基于当前市场波动率 (ATR/24h) 推算的理论生存时间。计算公式：当前价格到爆仓价格的距离 ÷ (每小时预估波幅 × 1.5)。">
+                                <div className="text-xs text-slate-500 mb-1 flex items-center justify-center gap-1">生存倒计时 <Info className="w-3 h-3" /></div>
+                            </Tooltip>
                             <div className="text-sm font-mono font-bold text-rose-400 flex items-center justify-center gap-1">
                                 <Clock className="w-3 h-3" /> {timeToDeath}
                             </div>
                         </div>
                         <div className="bg-slate-950/50 rounded-lg p-3 text-center border border-slate-800/50">
-                            <div className="text-xs text-slate-500 mb-1">爆仓价格</div>
+                            <Tooltip content="当账户净值下跌至预付款比例 (StopOutLevel) 时触发强平的价格。公式：当前价格 ± (可用保证金亏损额 ÷ 总合约价值)。">
+                                <div className="text-xs text-slate-500 mb-1 flex items-center justify-center gap-1">爆仓价格 <Info className="w-3 h-3" /></div>
+                            </Tooltip>
                             <div className="text-sm font-mono font-bold text-rose-500 flex items-center justify-center gap-1">
                                 <Skull className="w-3 h-3" /> {liquidationPrice > 0 ? liquidationPrice.toFixed(2) : '---'}
                             </div>
@@ -110,14 +128,16 @@ export const RiskCockpit: React.FC<RiskCockpitProps> = ({ accountStatus, current
 
                 {/* Right: Simulation */}
                 <div className="space-y-4">
-                    <div className="flex justify-between items-center text-xs font-bold uppercase tracking-widest text-slate-500">
-                        <span>情景推演 (Simulation)</span>
-                        <TrendingDown className="w-4 h-4" />
-                    </div>
+                    <Tooltip content="推演假设市场价格发生单边不利移动时，账户各项风控指标的变化情况。用于提前评估加仓或极端行情下的风险承受力。">
+                        <div className="flex justify-between items-center text-xs font-bold uppercase tracking-widest text-slate-500 cursor-help">
+                            <span className="flex items-center gap-1">情景推演 (Simulation) <Info className="w-3 h-3" /></span>
+                            <TrendingDown className="w-4 h-4" />
+                        </div>
+                    </Tooltip>
 
                     <div className="bg-slate-950 rounded-xl p-4 border border-slate-800">
                         <div className="flex justify-between mb-2 text-sm">
-                            <span className="text-slate-400">假设金价下跌</span>
+                            <span className="text-slate-400">假设不利波动</span>
                             <span className="font-mono font-bold text-cyan-400">${simulationDrop}</span>
                         </div>
                         <input
@@ -125,7 +145,7 @@ export const RiskCockpit: React.FC<RiskCockpitProps> = ({ accountStatus, current
                             min="0" max="50" step="1"
                             value={simulationDrop}
                             onChange={(e) => setSimulationDrop(Number(e.target.value))}
-                            className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+                            className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-500 relative z-20"
                         />
                         <div className="flex justify-between mt-1 text-[10px] text-slate-600 font-mono">
                             <span>$0</span>
@@ -136,14 +156,21 @@ export const RiskCockpit: React.FC<RiskCockpitProps> = ({ accountStatus, current
                     {/* Simulated Metrics */}
                     <div className="space-y-2">
                         <div className="flex justify-between items-center p-2 rounded bg-slate-800/20 text-xs">
-                            <span className="text-slate-400">预计浮亏</span>
-                            {/* Simple mockup calc: 1 lot * 100 * drop */}
-                            <span className="font-mono text-rose-400">-${(simulationDrop * 100 * 1.5).toFixed(0)} (Est)</span>
+                            <span className="text-slate-400">预计浮亏增加</span>
+                            {/* Simple mockup calc: NetLots * ContractSize * Drop */}
+                            <span className="font-mono text-rose-400">
+                                -${(Math.abs(
+                                    accountStatus.positions.reduce((acc, p) => acc + (p.side === 'BUY' ? p.lots : -p.lots), 0)
+                                ) * (symbolInfo.contractSize || 100) * simulationDrop).toFixed(0)}
+                            </span>
                         </div>
                         <div className="flex justify-between items-center p-2 rounded bg-slate-800/20 text-xs">
                             <span className="text-slate-400">预计预付款比例</span>
+                            {/* Simple estimation of margin level drop */}
                             <span className={`font-mono font-bold ${simulationDrop > 20 ? 'text-rose-500' : 'text-emerald-500'}`}>
-                                {Math.max(0, 150 - simulationDrop * 2).toFixed(0)}%
+                                {accountStatus.margin > 0 ? ((accountStatus.equity - (Math.abs(
+                                    accountStatus.positions.reduce((acc, p) => acc + (p.side === 'BUY' ? p.lots : -p.lots), 0)
+                                ) * (symbolInfo.contractSize || 100) * simulationDrop)) / accountStatus.margin * 100).toFixed(0) : 0}%
                             </span>
                         </div>
                     </div>
@@ -151,7 +178,7 @@ export const RiskCockpit: React.FC<RiskCockpitProps> = ({ accountStatus, current
                     <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg flex gap-3 items-start">
                         <Info className="w-4 h-4 text-yellow-500 shrink-0 mt-0.5" />
                         <p className="text-[10px] text-yellow-200/70 leading-relaxed">
-                            当前波动率 ({atr?.toFixed(2)}) 较高。若未来 4 小时单边下跌 ${(atr * 0.5).toFixed(1)}，您的账户可能面临强平风险。建议关注 2015.50 附近的加仓机会。
+                            当前波动率 ({atr?.toFixed(2)}) 较高。若未来 4 小时单边下跌 ${(atr * 0.5).toFixed(1)}，您的账户可能面临强平风险。
                         </p>
                     </div>
                 </div>
