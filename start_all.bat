@@ -40,6 +40,8 @@ if %ERRORLEVEL% NEQ 0 (
     echo [WARN] PostgreSQL is not reachable at localhost:5432. Attempting to start...
     if exist "D:\pgsql\bin\pg_ctl.exe" (
         echo [INFO] Found pg_ctl.exe, starting database...
+        REM Add pgsql\bin to PATH so pg_ctl can find DLLs (fixes 0xC0000135)
+        set "PATH=D:\pgsql\bin;%PATH%"
         "D:\pgsql\bin\pg_ctl.exe" start -D "D:\pgsql\data"
         timeout /t 5 >nul
     ) else (
