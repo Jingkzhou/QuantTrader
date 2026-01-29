@@ -65,6 +65,9 @@ void OnTimer()
   {
    if(ConnectionMode == MODE_OFFLINE) return;
    if(IsTradeContextBusy()) return; 
+   
+   // DEBUG: Heartbeat (每 5 秒至少闪烁一次证明活着，或者干脆每次打印)
+   // Print("DEBUG: OnTimer Tick. Mode: ", EnumToString(ConnectionMode));
 
    string symbols_to_scan[];
    int total_symbols = 0;
@@ -154,12 +157,9 @@ int SendData(string json_body) {
       // 转换返回结果为字符串
       string response_body = CharArrayToString(result, 0, WHOLE_ARRAY, CP_UTF8);
       
-      // 打印详细日志：包含发送字节数、API路径、HTTP状态码、服务器返回内容
-      // 首次成功或每隔 5 秒打印一次 (从 30 秒缩短到 5 秒以便调试)
-      if(g_lastSuccessLog == 0 || TimeCurrent() - g_lastSuccessLog > 5) {
-         Print("Data Scanner: Sent ", StringLen(json_body), " bytes | Status: ", res, " | Response: ", response_body);
-         g_lastSuccessLog = TimeCurrent();
-      }
+      // DEBUG: 强制每次都打印，不进行频率限制
+      Print("Data Scanner: Sent ", StringLen(json_body), " bytes | Status: ", res, " | Response: ", response_body);
+      g_lastSuccessLog = TimeCurrent();
    }
    else if(res == -1) {
       if(TimeCurrent() - g_lastError > 60) { 
