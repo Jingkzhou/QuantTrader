@@ -114,7 +114,13 @@ void OnTimer()
       double bid = MarketInfo(sym, MODE_BID);
       double ask = MarketInfo(sym, MODE_ASK);
       
-      if(bid <= 0 || ask <= 0) continue;
+      if(bid <= 0 || ask <= 0) {
+          // DEBUG: 既然是在调试，告诉用户哪个品种获取失败了
+          if(count_in_batch == 0 && i < 5) { // 限制打印数量，避免刷屏
+              Print("WARNING: Failed to get price for '", sym, "'. Check symbol name/suffix? (Bid=", bid, ")");
+          }
+          continue;
+      }
 
       // 获取 OHLC (当前M1 K线)
       double open = iOpen(sym, PERIOD_M1, 0);
