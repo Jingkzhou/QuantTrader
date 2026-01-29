@@ -151,9 +151,13 @@ int SendData(string json_body) {
    int res = WebRequest("POST", RustServerUrl + ApiPath, headers, 2000, data, result, headers);
    
    if(res >= 200 && res <= 299) {
-      // 首次成功或每隔 30 秒打印一次成功日志
-      if(g_lastSuccessLog == 0 || TimeCurrent() - g_lastSuccessLog > 30) {
-         Print("Data Scanner: Batch transmitted successfully to ", RustServerUrl);
+      // 转换返回结果为字符串
+      string response_body = CharArrayToString(result, 0, WHOLE_ARRAY, CP_UTF8);
+      
+      // 打印详细日志：包含发送字节数、API路径、HTTP状态码、服务器返回内容
+      // 首次成功或每隔 5 秒打印一次 (从 30 秒缩短到 5 秒以便调试)
+      if(g_lastSuccessLog == 0 || TimeCurrent() - g_lastSuccessLog > 5) {
+         Print("Data Scanner: Sent ", StringLen(json_body), " bytes | Status: ", res, " | Response: ", response_body);
          g_lastSuccessLog = TimeCurrent();
       }
    }
