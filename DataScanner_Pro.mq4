@@ -22,9 +22,9 @@ enum ENUM_CONNECTION_MODE
 //+------------------------------------------------------------------+
 input string   RustServerUrl    = "http://www.mondayquest.top"; // 服务器地址
 input string   ApiPath          = "/api/v1/market/batch";      // API 路径
-input int      CollectInterval  = 1;                           // 采集间隔 (秒)
-input bool     UseMarketWatch   = true;                        // true=采集市场报价窗口所有品种, false=只采集下方自定义列表
-input string   CustomSymbols    = "XAUUSD,EURUSD,GBPUSD,USDCAD"; // 自定义品种 (逗号分隔, UseMarketWatch=false时生效)
+input int      CollectInterval  = 5;                           // 采集间隔 (秒)
+input bool     UseMarketWatch   =  false;                        // true=采集市场报价窗口所有品种, false=只采集下方自定义列表
+input string   CustomSymbols    = "XAUUSD,EURUSD,GBPUSD,USDJPY,BTCUSD,NAS100,US30,ETHUSD,AUDUSD,USOIL"; // 自定义品种 (10个热门品种)
 input int      BatchSize        = 20;                          // 每次批量上报打包多少个品种
 input ENUM_CONNECTION_MODE ConnectionMode = MODE_ONLINE;       // 连接模式
 
