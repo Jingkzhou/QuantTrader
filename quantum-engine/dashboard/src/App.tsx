@@ -63,6 +63,23 @@ const App = () => {
     setAuth({ token: null, username: null, role: null });
   };
 
+  // Global Axios Interceptor for Auto-Logout on 401/403
+  useEffect(() => {
+    const interceptor = axios.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+          handleLogout();
+        }
+        return Promise.reject(error);
+      }
+    );
+
+    return () => {
+      axios.interceptors.response.eject(interceptor);
+    };
+  }, []);
+
   const fetchData = async () => {
     if (!auth.token) return;
     try {
