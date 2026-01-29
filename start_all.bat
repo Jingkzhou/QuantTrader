@@ -1,6 +1,11 @@
 @echo off
 setlocal EnableDelayedExpansion
 
+REM Add PostgreSQL bin to PATH at the start to ensure DLLs are always found
+if exist "D:\pgsql\bin" (
+    set "PATH=D:\pgsql\bin;%PATH%"
+)
+
 REM Get the absolute path to the repo root (directory of this script)
 set "REPO_ROOT=%~dp0"
 cd /d "%REPO_ROOT%"
@@ -42,20 +47,18 @@ REM Check PostgreSQL (TimescaleDB) Port 5432
 powershell -Command "if (-not (Test-NetConnection localhost -Port 5432 -InformationLevel Quiet)) { exit 1 }"
 if %ERRORLEVEL% NEQ 0 (
     echo [WARN] PostgreSQL is not reachable at localhost:5432. Attempting to start...
+    
+    REM Check for stale PID file
+    if exist "D:\pgsql\data\postmaster.pid" (
+        echo [INFO] Found stale postmaster.pid, removing it...
+        del /f "D:\pgsql\data\postmaster.pid"
+    )
+
     if exist "D:\pgsql\bin\pg_ctl.exe" (
-        echo [INFO] Found pg_ctl.exe, starting database...
-        
-        REM Fix 0xC0000135 (DLL not found)
-        REM 1. Add bin and lib to PATH
-        set "PATH=D:\pgsql\bin;D:\pgsql\lib;%PATH%"
-        REM 2. Switch context to bin directory completely
-        cd /d "D:\pgsql\bin"
-        
-        echo [INFO] Running pg_ctl start...
+        echo [INFO] Starting database from D:\pgsql\bin...
+        pushd "D:\pgsql\bin"
         .\pg_ctl.exe start -D "D:\pgsql\data" -w
-        
-        REM Return to repo root
-        cd /d "%REPO_ROOT%"
+        popd
     ) else (
         echo [ERROR] D:\pgsql\bin\pg_ctl.exe not found! Cannot auto-start database.
     )
@@ -65,6 +68,7 @@ if %ERRORLEVEL% NEQ 0 (
     if !ERRORLEVEL! NEQ 0 (
         echo [ERROR] PostgreSQL / TimescaleDB is not reachable at localhost:5432
         echo [ERROR] Please ensure your local database is running.
+        echo [TIP] If the error is 0xC0000135, please install Visual C++ Redistributable.
         pause
         exit /b 1
     )
