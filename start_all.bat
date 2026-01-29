@@ -23,32 +23,35 @@ REM Log Rotation & Cleanup (Max 500MB)
 REM ---------------------------------------------------------------------------
 echo [STEP] Rotating and cleaning up logs...
 REM Define rotation script content to avoid complex inline escaping issues
+REM Define rotation script content to avoid complex inline escaping issues
 (
 echo $logDir = '.';
 echo $archiveDir = 'logs_archive';
-echo if ^(!^(Test-Path $archiveDir^)^) { New-Item -ItemType Directory -Path $archiveDir ^| Out-Null };
+echo New-Item -ItemType Directory -Force -Path $archiveDir ^| Out-Null;
 echo $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss';
 echo $logs = @^('core_engine.log', 'dashboard.log', 'ai_brain.log'^);
 echo foreach ^($log in $logs^) {
 echo     if ^(Test-Path $log^) {
 echo         try {
-echo             Move-Item $log $archiveDir\$log.$timestamp.bak -ErrorAction Stop;
+echo             Move-Item -Path $log -Destination "$archiveDir\$log.$timestamp.bak" -ErrorAction Stop;
 echo             Write-Host "Archived: $log";
 echo         } catch { Write-Warning "Could not archive $log" }
 echo     }
 echo };
 echo $limit = 500 * 1024 * 1024;
-echo $files = Get-ChildItem $archiveDir ^| Sort-Object CreationTime;
-echo $currentSize = ^($files ^| Measure-Object -Property Length -Sum^).Sum;
-echo if ^($currentSize -eq $null^) { $currentSize = 0 };
-echo Write-Host "Current Archive Size: " ^([math]::Round^($currentSize / 1MB, 2^)^) "MB";
-echo foreach ^($file in $files^) {
-echo     if ^($currentSize -le $limit^) { break };
-echo     try {
-echo         $currentSize -= $file.Length;
-echo         Remove-Item $file.FullName -Force;
-echo         Write-Host "Cleaned up old log: " $file.Name;
-echo     } catch { }
+echo if ^(Test-Path $archiveDir^) {
+echo     $files = Get-ChildItem $archiveDir ^| Sort-Object CreationTime;
+echo     $currentSize = ^($files ^| Measure-Object -Property Length -Sum^).Sum;
+echo     if ^($null -eq $currentSize^) { $currentSize = 0 };
+echo     Write-Host "Current Archive Size: " ^([math]::Round^($currentSize / 1MB, 2^)^) "MB";
+echo     foreach ^($file in $files^) {
+echo         if ^($currentSize -le $limit^) { break };
+echo         try {
+echo             $currentSize -= $file.Length;
+echo             Remove-Item $file.FullName -Force;
+echo             Write-Host "Cleaned up old log: " $file.Name;
+echo         } catch { }
+echo     }
 echo }
 ) > rotate_logs.ps1
 
