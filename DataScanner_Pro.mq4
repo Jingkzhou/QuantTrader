@@ -122,8 +122,15 @@ void OnTimer()
       
       if(bid <= 0 || ask <= 0) {
           // DEBUG: 既然是在调试，告诉用户哪个品种获取失败了
-          if(count_in_batch == 0 && i < 5) { // 限制打印数量，避免刷屏
+          if(tick_counter % 10 == 0 && i < 5) { // 限制打印数量
               Print("WARNING: Failed to get price for '", sym, "'. Check symbol name/suffix? (Bid=", bid, ")");
+          }
+          // 这里的 continue 会导致跳过底部的发送逻辑，如果这是最后一个品种，就会丢包！
+          // 所以我们需要在 continue 前检查是否是最后一个，如果是，且 buffer 里有数据，得先发了
+          if(i == total_symbols - 1 && json_array != "") {
+               string final_json = "[" + json_array + "]";
+               Print("DEBUG: Last symbol invalid, sending accumulated batch...");
+               SendData(final_json);
           }
           continue;
       }
@@ -167,35 +174,33 @@ void OnTick()
 int SendData(string json_body) {
    if(ConnectionMode == MODE_OFFLINE) return 200;
    
+   // DEBUG: 确认 SendData 被调用
+   Print("DEBUG: SendData called. Payload size: ", StringLen(json_body));
+
    char data[], result[];
    string headers = "Content-Type: application/json\r\n";
    StringToCharArray(json_body, data, 0, WHOLE_ARRAY, CP_UTF8);
-   
-   // Debug: Print payload size
-   // Print("Sending batch: ", StringLen(json_body), " bytes to ", RustServerUrl + ApiPath);
    
    // WebRequest - 设置 2 秒超时
    int res = WebRequest("POST", RustServerUrl + ApiPath, headers, 2000, data, result, headers);
    
    if(res >= 200 && res <= 299) {
-      // 转换返回结果为字符串
       string response_body = CharArrayToString(result, 0, WHOLE_ARRAY, CP_UTF8);
-      
-      // DEBUG: 强制每次都打印，不进行频率限制
+      // DEBUG: 成功日志
       Print("Data Scanner: Sent ", StringLen(json_body), " bytes | Status: ", res, " | Response: ", response_body);
       g_lastSuccessLog = TimeCurrent();
    }
    else if(res == -1) {
-      if(TimeCurrent() - g_lastError > 60) { 
-         Print("High-Frequency Network Error (WebRequest -1). Code: ", GetLastError());
-         g_lastError = TimeCurrent();
-      }
+      // DEBUG: 强制打印错误，无视频率限制
+      int err = GetLastError();
+      Print("ERROR: WebRequest failed (-1). Error Code: ", err);
+      if(err == 4060) Print("  -> Hint: Enable 'Allow WebRequest' in Tools > Options > Expert Advisors");
+      g_lastError = TimeCurrent();
    }
    else {
-      if(TimeCurrent() - g_lastError > 60) {
-         Print("Server Error. Response Code: ", res, " Path: ", ApiPath);
-         g_lastError = TimeCurrent();
-      }
+      // DEBUG: 强制打印 HTTP 错误
+      Print("ERROR: Server returned HTTP ", res, " Path: ", ApiPath);
+      g_lastError = TimeCurrent();
    }
    return res;
 }
