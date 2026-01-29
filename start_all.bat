@@ -5,6 +5,16 @@ REM Get the absolute path to the repo root (directory of this script)
 set "REPO_ROOT=%~dp0"
 cd /d "%REPO_ROOT%"
 
+REM Git Pull with provided token
+echo [STEP] Pulling latest code...
+set "GIT_TOKEN=0b17abd0002b5d28db745c0d82cc0ac7"
+git pull https://%GIT_TOKEN%@gitee.com/MondayQuizlet/QuantTrader.git
+if %ERRORLEVEL% NEQ 0 (
+    echo [WARN] Git pull failed. Continuing with existing code...
+) else (
+    echo [INFO] Code updated successfully.
+)
+
 echo [STEP] Loading environment variables...
 if exist "quantum-engine\.env" (
     REM Read .env file, ignoring comments (#) and empty lines
@@ -27,10 +37,23 @@ echo [INFO] Checking connectivity...
 REM Check PostgreSQL (TimescaleDB) Port 5432
 powershell -Command "if (-not (Test-NetConnection localhost -Port 5432 -InformationLevel Quiet)) { exit 1 }"
 if %ERRORLEVEL% NEQ 0 (
-    echo [ERROR] PostgreSQL / TimescaleDB is not reachable at localhost:5432
-    echo [ERROR] Please ensure your local database is running.
-    pause
-    exit /b 1
+    echo [WARN] PostgreSQL is not reachable at localhost:5432. Attempting to start...
+    if exist "D:\pgsql\bin\pg_ctl.exe" (
+        echo [INFO] Found pg_ctl.exe, starting database...
+        "D:\pgsql\bin\pg_ctl.exe" start -D "D:\pgsql\data"
+        timeout /t 5 >nul
+    ) else (
+        echo [ERROR] D:\pgsql\bin\pg_ctl.exe not found! Cannot auto-start database.
+    )
+
+    REM Re-check PostgreSQL
+    powershell -Command "if (-not (Test-NetConnection localhost -Port 5432 -InformationLevel Quiet)) { exit 1 }"
+    if !ERRORLEVEL! NEQ 0 (
+        echo [ERROR] PostgreSQL / TimescaleDB is not reachable at localhost:5432
+        echo [ERROR] Please ensure your local database is running.
+        pause
+        exit /b 1
+    )
 )
 echo [INFO] Database connection OK.
 
@@ -43,6 +66,22 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 echo [INFO] Redis connection OK.
+
+echo [INFO] checking ports...
+
+REM Kill process on Port 3001 (Core Engine)
+echo [STEP] Cleaning up Port 3001...
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":3001" ^| findstr "LISTENING"') do (
+    echo Killing PID %%a on port 3001...
+    taskkill /f /pid %%a >nul 2>&1
+)
+
+REM Kill process on Port 5173 (Dashboard)
+echo [STEP] Cleaning up Port 5173...
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":5173" ^| findstr "LISTENING"') do (
+    echo Killing PID %%a on port 5173...
+    taskkill /f /pid %%a >nul 2>&1
+)
 
 REM Skip prepare_sqlx as we assume DATABASE_URL is reachable for online verification
 echo [INFO] Skipping sqlx prepare (using local DB)...
