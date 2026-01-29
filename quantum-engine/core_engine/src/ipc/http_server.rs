@@ -104,6 +104,31 @@ pub struct CombinedState {
 
 pub async fn start_server(db_pool: PgPool) {
     let memory_state = Arc::new(RwLock::new(InternalState::default()));
+    
+    // Load existing symbols from database on startup
+    let startup_db = db_pool.clone();
+    let startup_memory = memory_state.clone();
+    tokio::spawn(async move {
+        let rows = sqlx::query!("SELECT DISTINCT symbol FROM market_data")
+            .fetch_all(&startup_db)
+            .await;
+        
+        match rows {
+            Ok(symbols) => {
+                let mut s = startup_memory.write().unwrap();
+                for row in symbols {
+                    if !s.active_symbols.contains(&row.symbol) {
+                        s.active_symbols.push(row.symbol);
+                    }
+                }
+                tracing::info!("Loaded {} symbols from database on startup", s.active_symbols.len());
+            }
+            Err(e) => {
+                tracing::error!("Failed to load symbols on startup: {}", e);
+            }
+        }
+    });
+
     let shared_state = Arc::new(CombinedState {
         memory: memory_state,
         db: db_pool,
