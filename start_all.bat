@@ -48,6 +48,11 @@ powershell -Command "if (-not (Test-NetConnection localhost -Port 5432 -Informat
 if %ERRORLEVEL% NEQ 0 (
     echo [WARN] PostgreSQL is not reachable at localhost:5432. Attempting to start...
     
+    REM Kill any ghost postgres processes that might be locking files (先杀后启动)
+    echo [INFO] Cleaning up any ghost postgres processes...
+    taskkill /f /im postgres.exe >nul 2>&1
+    taskkill /f /im pg_ctl.exe >nul 2>&1
+
     REM Check for stale PID file
     if exist "D:\pgsql\data\postmaster.pid" (
         echo [INFO] Found stale postmaster.pid, removing it...
