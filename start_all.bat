@@ -11,6 +11,11 @@ set "REPO_ROOT=%~dp0"
 cd /d "%REPO_ROOT%"
 
 REM ---------------------------------------------------------------------------
+REM MAIN LOOP: Start / Restart point
+REM ---------------------------------------------------------------------------
+:MAIN_LOOP
+
+REM ---------------------------------------------------------------------------
 REM Log Rotation & Cleanup (Max 500MB)
 REM ---------------------------------------------------------------------------
 echo [STEP] Rotating and cleaning up logs...
@@ -166,3 +171,30 @@ echo [INFO] - dashboard.log
 echo [INFO] - ai_brain.log
 echo [INFO] Core Engine API: http://localhost:3001
 echo [INFO] Dashboard: http://localhost:5173
+
+REM ---------------------------------------------------------------------------
+REM AUTO-UPDATE MONITOR LOOP
+REM ---------------------------------------------------------------------------
+:MONITOR_LOOP
+echo [MONITOR] Watching for git updates (Ctrl+C to stop)...
+timeout /t 20 /nobreak >nul
+
+REM Fetch remote to see if there are updates
+git fetch origin >nul 2>&1
+git status -uno | find "Your branch is behind" >nul
+
+if %ERRORLEVEL%==0 (
+    echo [INFO] ---------------------------------------------------------------
+    echo [INFO] New version detected! Restarting services...
+    echo [INFO] ---------------------------------------------------------------
+    
+    REM Kill known processes to allow update
+    echo [STEP] Stopping services...
+    taskkill /F /IM "core_engine.exe" >nul 2>&1
+    taskkill /F /IM "node.exe" >nul 2>&1
+    taskkill /F /IM "python.exe" >nul 2>&1
+    
+    goto MAIN_LOOP
+)
+
+goto MONITOR_LOOP
