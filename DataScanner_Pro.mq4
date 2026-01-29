@@ -104,6 +104,12 @@ void OnTimer()
    }
 
    // 2. 分批采集并发送 (Batch Process)
+   // DEBUG: 打印品种数量，确认解析成功
+   if(tick_counter % 1 == 0) {
+       Print("DEBUG: Total symbols to scan: ", total_symbols);
+       if(total_symbols > 0) Print("DEBUG: First symbol: '", symbols_to_scan[0], "'");
+   }
+
    string json_array = "";
    int count_in_batch = 0;
 
