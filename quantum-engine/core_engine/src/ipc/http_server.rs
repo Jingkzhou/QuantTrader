@@ -598,6 +598,7 @@ async fn get_candles(
     };
 
     let limit = 1000;
+    let start_timestamp = chrono::Utc::now().timestamp() - (limit * bucket_interval * 3);
 
     let query = format!(
         "SELECT 
@@ -607,7 +608,7 @@ async fn get_candles(
             MIN(bid) as low,
             (array_agg(bid ORDER BY timestamp DESC))[1] as close
          FROM market_data 
-         WHERE symbol = $1
+         WHERE symbol = $1 AND timestamp > $2
          GROUP BY 1
          ORDER BY 1 DESC
          LIMIT {1}",
@@ -616,6 +617,7 @@ async fn get_candles(
 
     let candles = sqlx::query_as::<_, Candle>(&query)
         .bind(symbol)
+        .bind(start_timestamp)
         .fetch_all(&state.db)
         .await
         .unwrap_or_default();
