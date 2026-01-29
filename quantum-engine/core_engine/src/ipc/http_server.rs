@@ -433,52 +433,94 @@ async fn get_trade_history(
     let page = params.get("page").and_then(|p| p.parse::<i64>().ok()).unwrap_or(1);
     let limit = params.get("limit").and_then(|l| l.parse::<i64>().ok()).unwrap_or(100);
     let offset = (page - 1) * limit;
+    let symbol = params.get("symbol").cloned();
 
-    // Get Total Count
-    let total_record = sqlx::query!(
-        "SELECT count(*) as count FROM trade_history WHERE mt4_account = $1",
-        mt4_account
-    )
-    .fetch_one(&state.db)
-    .await
-    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    // Get Total Count and Data with optional symbol filtering
+    let (total, trades) = if let Some(ref sym) = symbol {
+        let total_record = sqlx::query!(
+            "SELECT count(*) as count FROM trade_history WHERE mt4_account = $1 AND symbol = $2",
+            mt4_account, sym
+        )
+        .fetch_one(&state.db)
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let total = total_record.count.unwrap_or(0);
+        let trades = sqlx::query_as!(
+            TradeHistory,
+            r#"
+            SELECT 
+                ticket as "ticket!", 
+                symbol as "symbol!", 
+                open_time as "open_time!", 
+                close_time as "close_time!", 
+                COALESCE(open_price, 0.0) as "open_price!", 
+                COALESCE(close_price, 0.0) as "close_price!", 
+                COALESCE(lots, 0.0) as "lots!", 
+                COALESCE(profit, 0.0) as "profit!", 
+                trade_type as "trade_type!", 
+                COALESCE(magic, 0) as "magic!", 
+                COALESCE(mae, 0.0) as "mae!", 
+                COALESCE(mfe, 0.0) as "mfe!", 
+                signal_context, 
+                mt4_account as "mt4_account!", 
+                broker as "broker!" 
+            FROM trade_history 
+            WHERE mt4_account = $1 AND symbol = $2
+            ORDER BY close_time DESC 
+            LIMIT $3 OFFSET $4
+            "#,
+            mt4_account, sym, limit, offset
+        )
+        .fetch_all(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("DB Error trade_history: {}", e);
+            (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?;
+        (total_record.count.unwrap_or(0), trades)
+    } else {
+        let total_record = sqlx::query!(
+            "SELECT count(*) as count FROM trade_history WHERE mt4_account = $1",
+            mt4_account
+        )
+        .fetch_one(&state.db)
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // Get Paginated Data
-    let trades = sqlx::query_as!(
-        TradeHistory,
-        r#"
-        SELECT 
-            ticket as "ticket!", 
-            symbol as "symbol!", 
-            open_time as "open_time!", 
-            close_time as "close_time!", 
-            COALESCE(open_price, 0.0) as "open_price!", 
-            COALESCE(close_price, 0.0) as "close_price!", 
-            COALESCE(lots, 0.0) as "lots!", 
-            COALESCE(profit, 0.0) as "profit!", 
-            trade_type as "trade_type!", 
-            COALESCE(magic, 0) as "magic!", 
-            COALESCE(mae, 0.0) as "mae!", 
-            COALESCE(mfe, 0.0) as "mfe!", 
-            signal_context, 
-            mt4_account as "mt4_account!", 
-            broker as "broker!" 
-        FROM trade_history 
-        WHERE mt4_account = $1
-        ORDER BY close_time DESC 
-        LIMIT $2 OFFSET $3
-        "#,
-        mt4_account, limit, offset
-    )
-    .fetch_all(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!("DB Error trade_history: {}", e);
-        e
-    })
-    .unwrap_or_default();
+        let trades = sqlx::query_as!(
+            TradeHistory,
+            r#"
+            SELECT 
+                ticket as "ticket!", 
+                symbol as "symbol!", 
+                open_time as "open_time!", 
+                close_time as "close_time!", 
+                COALESCE(open_price, 0.0) as "open_price!", 
+                COALESCE(close_price, 0.0) as "close_price!", 
+                COALESCE(lots, 0.0) as "lots!", 
+                COALESCE(profit, 0.0) as "profit!", 
+                trade_type as "trade_type!", 
+                COALESCE(magic, 0) as "magic!", 
+                COALESCE(mae, 0.0) as "mae!", 
+                COALESCE(mfe, 0.0) as "mfe!", 
+                signal_context, 
+                mt4_account as "mt4_account!", 
+                broker as "broker!" 
+            FROM trade_history 
+            WHERE mt4_account = $1
+            ORDER BY close_time DESC 
+            LIMIT $2 OFFSET $3
+            "#,
+            mt4_account, limit, offset
+        )
+        .fetch_all(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("DB Error trade_history: {}", e);
+            (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?;
+        (total_record.count.unwrap_or(0), trades)
+    };
     
     Ok(Json(TradeHistoryResponse {
         data: trades,

@@ -128,7 +128,7 @@ const App = () => {
       if (selectedAccount) {
         // Fetch History
         try {
-          const histRes = await axios.get(`${API_BASE}/trade_history?mt4_account=${selectedAccount.mt4_account}&page=${pagination.page}&limit=${pagination.limit}`, {
+          const histRes = await axios.get(`${API_BASE}/trade_history?mt4_account=${selectedAccount.mt4_account}&page=${pagination.page}&limit=${pagination.limit}&symbol=${selectedSymbol}`, {
             headers: { Authorization: `Bearer ${auth.token}` }
           });
           // Handle new response format { data, total, page, limit }
@@ -196,6 +196,11 @@ const App = () => {
     const interval = setInterval(fetchData, 2000);
     return () => clearInterval(interval);
   }, [selectedSymbol, auth.token, selectedAccount, pagination.page]); // Depend on page
+
+  // Reset pagination when symbol or account changes
+  useEffect(() => {
+    setPagination(prev => ({ ...prev, page: 1 }));
+  }, [selectedSymbol, selectedAccount?.mt4_account]);
 
   // Fetch Accounts List
   useEffect(() => {
