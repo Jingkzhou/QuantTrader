@@ -3,9 +3,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createChart, ColorType, CandlestickSeries, LineSeries } from 'lightweight-charts';
 import type { IChartApi as IChartApiType, ISeriesApi as ISeriesApiType, SeriesMarker, Time } from 'lightweight-charts';
 import axios from 'axios';
-import { History, Eye, EyeOff, Activity, Settings, ChevronUp } from 'lucide-react';
+import { Activity, ChevronUp, Eye, EyeOff, History, Settings } from 'lucide-react';
 import { QuickTradePanel } from './QuickTradePanel';
 import { API_BASE } from '../config';
+import { AccountStatus } from '../types';
+import { calculateLiquidationPrice } from '../utils/riskCalculations';
 
 
 
@@ -15,6 +17,7 @@ interface ChartWidgetProps {
     authToken: string | null;
     history?: any[];
     positions?: any[];
+    accountStatus?: AccountStatus;
 }
 
 const TIMEFRAMES = [
@@ -45,7 +48,7 @@ function calculateSMA(data: any[], period: number) {
     return smaData;
 }
 
-export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, authToken, history = [], positions = [] }) => {
+export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, authToken, history = [], positions = [], accountStatus }) => {
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const chartRef = useRef<IChartApiType | null>(null);
@@ -53,6 +56,7 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
     const maSeriesRef = useRef<ISeriesApiType<"Line"> | null>(null);
     const lastCandleRef = useRef<{ time: number, open: number, high: number, low: number, close: number } | null>(null);
     const allCandlesRef = useRef<any[]>([]); // Store all candles for MA calc
+    const liquidationLineRef = useRef<any>(null); // Reference for liquidation price line
 
 
     const [timeframe, setTimeframe] = useState(() => localStorage.getItem('chart_timeframe') || 'M1');
@@ -288,6 +292,52 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
         drawTradeLines();
 
     }, [history, showHistory, timeframe, positions, showPositions]); // Added showPositions to deps
+
+    // Update Liquidation Price Line
+    useEffect(() => {
+        if (!seriesRef.current || !accountStatus || !currentData) return;
+
+        const symbolInfo = {
+            contractSize: accountStatus.contract_size || 100,
+            stopOutLevel: accountStatus.margin_so_level || 50,
+            tickValue: accountStatus.tick_value || 1
+        };
+
+        // Only calculate if we have positions for this symbol?
+        // Or global liquidation? Usually liquidation is global account level in MT4/5 unless isolated?
+        // MT4 is global. So we calculate global liquidation price based on net exposure.
+        // But price move is relative to THIS symbol's price change?
+        // Assuming the risk is dominated by this symbol or we validly project 'what if this symbol moves'.
+        // For accurate 'Time to Death' on this specific chart, we simulate if THIS symbol moves, assuming others stay still.
+        // The `calculateLiquidationPrice` function handles this projection.
+
+        const liqPrice = calculateLiquidationPrice(accountStatus, currentData.close, symbolInfo);
+
+        if (liqPrice > 0 && isFinite(liqPrice)) {
+            if (liquidationLineRef.current) {
+                liquidationLineRef.current.applyOptions({
+                    price: liqPrice,
+                    title: `Liquidation @ ${liqPrice.toFixed(5)}`,
+                });
+            } else {
+                liquidationLineRef.current = seriesRef.current.createPriceLine({
+                    price: liqPrice,
+                    color: '#ef4444', // Red 500
+                    lineWidth: 1,
+                    lineStyle: 2, // Dashed
+                    axisLabelVisible: true,
+                    title: `Liquidation @ ${liqPrice.toFixed(5)}`,
+                });
+            }
+        } else {
+            // Remove if invalid or safe
+            if (liquidationLineRef.current) {
+                seriesRef.current.removePriceLine(liquidationLineRef.current);
+                liquidationLineRef.current = null;
+            }
+        }
+
+    }, [accountStatus, currentData, symbol]);
 
     // Fetch Data
     useEffect(() => {

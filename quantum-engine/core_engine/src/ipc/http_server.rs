@@ -176,7 +176,9 @@ async fn get_state(
 
         // Fetch latest snapshot for this account
         let status_row = sqlx::query!(
-            "SELECT balance, equity, margin, free_margin, floating_profit, timestamp, mt4_account, broker, positions_snapshot FROM account_status WHERE mt4_account = $1 ORDER BY timestamp DESC LIMIT 1",
+            "SELECT balance, equity, margin, free_margin, floating_profit, timestamp, mt4_account, broker, positions_snapshot,
+             contract_size, tick_value, stop_level, margin_so_level
+             FROM account_status WHERE mt4_account = $1 ORDER BY timestamp DESC LIMIT 1",
             mt4
         )
         .fetch_optional(&state.db)
@@ -196,10 +198,15 @@ async fn get_state(
             app_state.account_status.timestamp = row.timestamp;
             app_state.account_status.mt4_account = row.mt4_account.unwrap_or(0);
             app_state.account_status.broker = row.broker.unwrap_or_default();
-            
             if let Some(ps_json) = row.positions_snapshot {
                 app_state.account_status.positions = serde_json::from_str(&ps_json).unwrap_or_default();
             }
+            
+            // Risk Fields
+            app_state.account_status.contract_size = row.contract_size.unwrap_or(100.0);
+            app_state.account_status.tick_value = row.tick_value.unwrap_or(0.0);
+            app_state.account_status.stop_level = row.stop_level.unwrap_or(0);
+            app_state.account_status.margin_so_level = row.margin_so_level.unwrap_or(0.0);
         }
 
         // Overlay real-time memory state for this account
@@ -291,13 +298,17 @@ async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(pay
         status.positions = payload.positions.clone();
         status.mt4_account = payload.mt4_account;
         status.broker = payload.broker.clone();
+        status.contract_size = payload.contract_size;
+        status.tick_value = payload.tick_value;
+        status.stop_level = payload.stop_level;
+        status.margin_so_level = payload.margin_so_level;
     }
 
     let positions_json = serde_json::to_string(&payload.positions).unwrap_or_default();
     let timestamp = if payload.timestamp > 0 { payload.timestamp } else { chrono::Utc::now().timestamp() };
 
     let res = sqlx::query(
-        "INSERT INTO account_status (balance, equity, margin, free_margin, floating_profit, timestamp, positions_snapshot, mt4_account, broker) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"
+        "INSERT INTO account_status (balance, equity, margin, free_margin, floating_profit, timestamp, positions_snapshot, mt4_account, broker, contract_size, tick_value, stop_level, margin_so_level) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)"
     )
     .bind(payload.balance)
     .bind(payload.equity)
@@ -308,6 +319,10 @@ async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(pay
     .bind(positions_json)
     .bind(payload.mt4_account)
     .bind(&payload.broker)
+    .bind(payload.contract_size)
+    .bind(payload.tick_value)
+    .bind(payload.stop_level)
+    .bind(payload.margin_so_level)
     .execute(&state.db)
     .await;
 

@@ -1496,8 +1496,16 @@ void ReportAccountStatus() {
    
    double marginLevel = (AccountMargin() > 0) ? AccountEquity() / AccountMargin() * 100.0 : 0;
 
-   string json = StringFormat("{\"balance\":%.2f,\"equity\":%.2f,\"margin\":%.2f,\"free_margin\":%.2f,\"floating_profit\":%.2f,\"timestamp\":%lld,\"margin_level\":%.2f,\"mt4_account\":%d,\"broker\":\"%s\",\"positions\":[%s]}",
-                               AccountBalance(), AccountEquity(), AccountMargin(), AccountFreeMargin(), stats.buyProfit + stats.sellProfit, (long)TimeCurrent(), marginLevel, AccountNumber(), AccountCompany(), posJson);
+   string symbolJson = StringFormat(
+       "\"contract_size\":%.2f,\"tick_value\":%.5f,\"stop_level\":%d,\"margin_so_level\":%.2f",
+       MarketInfo(Symbol(), MODE_LOTSIZE),
+       MarketInfo(Symbol(), MODE_TICKVALUE),
+       (int)MarketInfo(Symbol(), MODE_STOPLEVEL),
+       AccountStopoutLevel()
+   );
+
+   string json = StringFormat("{\"balance\":%.2f,\"equity\":%.2f,\"margin\":%.2f,\"free_margin\":%.2f,\"floating_profit\":%.2f,\"timestamp\":%lld,\"margin_level\":%.2f,\"mt4_account\":%d,\"broker\":\"%s\",\"positions\":[%s],%s}",
+                               AccountBalance(), AccountEquity(), AccountMargin(), AccountFreeMargin(), stats.buyProfit + stats.sellProfit, (long)TimeCurrent(), marginLevel, AccountNumber(), AccountCompany(), posJson, symbolJson);
    SendData("/api/v1/account", json);
 }
 

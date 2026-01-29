@@ -47,6 +47,15 @@ pub struct AccountStatus {
     pub mt4_account: i64,
     #[serde(default)]
     pub broker: String,
+    // Symbol Info for Risk Calc
+    #[serde(default)]
+    pub contract_size: f64,
+    #[serde(default)]
+    pub tick_value: f64,
+    #[serde(default)]
+    pub stop_level: i32,
+    #[serde(default)]
+    pub margin_so_level: f64,
     pub positions: Vec<Position>,
 }
 

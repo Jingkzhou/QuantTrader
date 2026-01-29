@@ -71,6 +71,12 @@ async fn main() {
         .execute(&pool)
         .await;
 
+    // Migration: Add Risk Analysis Fields
+    let _ = sqlx::query("ALTER TABLE account_status ADD COLUMN IF NOT EXISTS contract_size DOUBLE PRECISION DEFAULT 100.0").execute(&pool).await;
+    let _ = sqlx::query("ALTER TABLE account_status ADD COLUMN IF NOT EXISTS tick_value DOUBLE PRECISION DEFAULT 0.0").execute(&pool).await;
+    let _ = sqlx::query("ALTER TABLE account_status ADD COLUMN IF NOT EXISTS stop_level INTEGER DEFAULT 0").execute(&pool).await;
+    let _ = sqlx::query("ALTER TABLE account_status ADD COLUMN IF NOT EXISTS margin_so_level DOUBLE PRECISION DEFAULT 0.0").execute(&pool).await;
+
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS trade_history (
             ticket INTEGER PRIMARY KEY,

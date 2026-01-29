@@ -10,60 +10,18 @@ import { EquityChartWidget } from './components/EquityChartWidget';
 import { AccountStatistics } from './components/AccountStatistics';
 import { RiskAnalysisPanel } from './components/RiskAnalysisPanel';
 import { StrategyAnalysisPanel } from './components/StrategyAnalysisPanel';
+import { RiskCockpit } from './components/RiskCockpit';
 
 import { LoginPage } from './components/LoginPage';
 import { API_BASE } from './config';
+import { AuthState, MarketData, AccountStatus, LogEntry, TradeHistory, AccountRecord } from './types';
 
-
-// Add Interfaces for Auth
-interface AuthState {
-  token: string | null;
-  username: string | null;
-  role: string | null;
-}
-
-interface MarketData {
-  symbol: string;
-  bid: number;
-  ask: number;
-  close: number;
-}
-
-interface AccountStatus {
-  balance: number;
-  equity: number;
-  floating_profit: number;
-  margin: number;
-  free_margin: number;
-  timestamp: number;
-  positions: any[];
-}
-
-interface LogEntry {
-  timestamp: number;
-  level: string;
-  message: string;
-}
-
-interface TradeHistory {
-  ticket: number;
-  symbol: string;
-  open_time: number;
-  close_time: number;
-  open_price: number;
-  close_price: number;
-  lots: number;
-  profit: number;
-  trade_type: string;
-  mae?: number;
-  mfe?: number;
-  signal_context?: string;
-}
-
-interface AccountRecord {
-  mt4_account: number;
-  broker: string;
-  account_name: string | null;
+// Interfaces moved to types.ts
+interface AppState {
+  market_data: Record<string, MarketData>;
+  account_status: AccountStatus;
+  recent_logs: LogEntry[];
+  active_symbols: string[];
 }
 
 interface AppState {
@@ -302,6 +260,18 @@ const App = () => {
               {/* Left Column: Market & Chart */}
               <div className="lg:col-span-3 space-y-6">
 
+                {/* Risk Cockpit (New) */}
+                <RiskCockpit
+                  accountStatus={data?.account_status || { balance: 0, equity: 0, floating_profit: 0, margin: 0, free_margin: 0, timestamp: 0, positions: [], contract_size: 100, tick_value: 1, stop_level: 0, margin_so_level: 50 }}
+                  currentPrice={currentMarketData ? currentMarketData.close : null}
+                  symbolInfo={{
+                    contractSize: data?.account_status?.contract_size || 100,
+                    stopOutLevel: data?.account_status?.margin_so_level || 50,
+                    tickValue: data?.account_status?.tick_value || 1
+                  }}
+                  atr={0.0050} // TODO: Get Real ATR from backend/EA (Using default for now as EA update for ATR is pending/optional in plan but basic calc is ready)
+                />
+
                 {/* Market Ticker (Moved to Right Column) */}
 
                 {/* Main Center Chart */}
@@ -312,6 +282,7 @@ const App = () => {
                     authToken={auth.token}
                     history={history}
                     positions={data?.account_status?.positions || []}
+                    accountStatus={data?.account_status || undefined}
                   />
                 </div>
 
