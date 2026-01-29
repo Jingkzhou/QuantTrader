@@ -15,7 +15,7 @@ const Tooltip = ({ content, children }: { content: React.ReactNode; children: Re
     return (
         <div className="group relative flex items-center gap-1 cursor-help">
             {children}
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-slate-800 border border-slate-700 rounded-lg text-xs leading-relaxed text-slate-300 shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none">
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 md:w-64 p-3 bg-slate-800 border border-slate-700 rounded-lg text-xs leading-relaxed text-slate-300 shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none">
                 {content}
                 <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-slate-800" />
             </div>
@@ -58,7 +58,7 @@ export const RiskCockpit: React.FC<RiskCockpitProps> = ({ accountStatus, current
     };
 
     return (
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 relative overflow-hidden group h-full">
+        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 md:p-6 relative overflow-hidden group h-full">
             <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
                 <ShieldAlert className="w-24 h-24 text-slate-500" />
             </div>
@@ -175,7 +175,7 @@ export const RiskCockpit: React.FC<RiskCockpitProps> = ({ accountStatus, current
                         </div>
                     </div>
 
-                    <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg flex gap-3 items-start">
+                    <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg flex gap-3 items-start opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-500">
                         <Info className="w-4 h-4 text-yellow-500 shrink-0 mt-0.5" />
                         <p className="text-[10px] text-yellow-200/70 leading-relaxed">
                             当前波动率 ({atr?.toFixed(2)}) 较高。若未来 4 小时单边下跌 ${(atr * 0.5).toFixed(1)}，您的账户可能面临强平风险。
