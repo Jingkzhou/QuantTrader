@@ -63,11 +63,23 @@ void OnDeinit(const int reason)
 
 void OnTimer()
   {
-   if(ConnectionMode == MODE_OFFLINE) return;
-   if(IsTradeContextBusy()) return; 
+   if(ConnectionMode == MODE_OFFLINE) {
+      Print("DEBUG: Offline Mode - No Action");
+      return;
+   }
    
-   // DEBUG: Heartbeat (每 5 秒至少闪烁一次证明活着，或者干脆每次打印)
-   // Print("DEBUG: OnTimer Tick. Mode: ", EnumToString(ConnectionMode));
+   // DEBUG: Heartbeat (强制打印以确认 Timer 存活)
+   // 为了防止刷屏太快，每 5 次 Timer 执行打印一次
+   static int tick_counter = 0;
+   tick_counter++;
+   if(tick_counter % 1 == 0) { // 现在改为每次都打印，排查到底进没进来
+       Print("DEBUG: OnTimer Executing... Symbols to scan: ", UseMarketWatch ? "MarketWatch" : "Custom");
+   }
+
+   if(IsTradeContextBusy()) {
+       Print("DEBUG: Trade Context Busy");
+       return; 
+   }
 
    string symbols_to_scan[];
    int total_symbols = 0;
