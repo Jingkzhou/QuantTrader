@@ -109,21 +109,28 @@ for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":5173" ^| findstr "LISTENING
 REM Skip prepare_sqlx as we assume DATABASE_URL is reachable for online verification
 echo [INFO] Skipping sqlx prepare (using local DB)...
 
-REM Start Core Engine (Rust) in a new window
+REM Start Core Engine (Rust) in background
 echo [STEP] Starting Core Engine...
-start "QuantTrader Core Engine" /D "quantum-engine\core_engine" cmd /k "cargo run"
+cd "%REPO_ROOT%\quantum-engine\core_engine"
+start /B "QuantTrader Core Engine" cargo run > "%REPO_ROOT%\core_engine.log" 2>&1
 
-REM Start Dashboard (React) in a new window
+REM Start Dashboard (React) in background
 echo [STEP] Starting Dashboard...
-start "QuantTrader Dashboard" /D "quantum-engine\dashboard" cmd /k "npm run dev -- --host"
+cd "%REPO_ROOT%\quantum-engine\dashboard"
+start /B "QuantTrader Dashboard" npm run dev -- --host > "%REPO_ROOT%\dashboard.log" 2>&1
 
-REM Start AI Brain (Python) in a new window
+REM Start AI Brain (Python) in background
 echo [STEP] Starting AI Brain...
-start "QuantTrader AI Brain" /D "quantum-engine\ai_brain" cmd /k "if exist venv\Scripts\activate.bat (call venv\Scripts\activate.bat) & python src\main.py"
+cd "%REPO_ROOT%\quantum-engine\ai_brain"
+if exist venv\Scripts\activate.bat (call venv\Scripts\activate.bat)
+start /B "QuantTrader AI Brain" python src\main.py > "%REPO_ROOT%\ai_brain.log" 2>&1
 
-echo [INFO] All services launched in separate windows.
+cd "%REPO_ROOT%"
+
+echo [INFO] All services launched in background.
+echo [INFO] Logs are being written to:
+echo [INFO] - core_engine.log
+echo [INFO] - dashboard.log
+echo [INFO] - ai_brain.log
 echo [INFO] Core Engine API: http://localhost:3001
 echo [INFO] Dashboard: http://localhost:5173
-echo.
-echo Press any key to exit this launcher (services will keep running)...
-pause >nul
