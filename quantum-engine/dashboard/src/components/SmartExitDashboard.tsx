@@ -44,40 +44,17 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
     authToken,
     selectedSymbol = 'XAUUSD'
 }) => {
-    // EA Linkage State
+    // --- 1. Hooks (State & Memos) ---
     const [eaLinkageEnabled, setEaLinkageEnabled] = useState(false);
     const [syncStatus, setSyncStatus] = useState<'IDLE' | 'SYNCING' | 'ERROR'>('IDLE');
-
-    // Velocity Data State
+    const [hasUserToggled, setHasUserToggled] = useState(false);
     const [velocityData, setVelocityData] = useState<VelocityData | null>(null);
 
     // Use bid/ask if available, otherwise fall back to close price
     const bid = currentBid ?? currentPrice ?? 0;
     const ask = currentAsk ?? currentPrice ?? 0;
 
-    // Fetch Velocity Data
-    useEffect(() => {
-        if (!authToken || !selectedSymbol) return;
-
-        const fetchVelocity = async () => {
-            try {
-                const res = await axios.get(`${API_BASE}/velocity`, {
-                    params: { symbol: selectedSymbol },
-                    headers: { Authorization: `Bearer ${authToken}` }
-                });
-                setVelocityData(res.data);
-            } catch {
-                // Velocity endpoint may not exist yet, use fallback
-                console.debug("Velocity data not available, using fallback");
-            }
-        };
-
-        fetchVelocity();
-        const interval = setInterval(fetchVelocity, 5000);
-        return () => clearInterval(interval);
-    }, [authToken, selectedSymbol]);
-
-    // 1. Calculate Core Metrics
+    // Core Metrics Memo
     const {
         netLots,
         survivalDistance,
@@ -136,7 +113,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
         };
     }, [accountStatus, bid, ask, symbolInfo, atr, atrH1]);
 
-    // 2. Calculate Smart Exit Metrics
+    // Smart Exit Metrics Memo
     const smartMetrics: SmartExitMetrics = useMemo(() => {
         const velocityM1 = velocityData?.velocityM1 ?? 0;
         const rvol = velocityData?.rvol ?? 1.0;
@@ -155,6 +132,29 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
             liquidationPrice
         };
     }, [survivalDistance, atr, velocityData, accountStatus.positions, liquidationPrice]);
+
+    // --- 2. Side Effects ---
+    // Fetch Velocity Data
+    useEffect(() => {
+        if (!authToken || !selectedSymbol) return;
+
+        const fetchVelocity = async () => {
+            try {
+                const res = await axios.get(`${API_BASE}/velocity`, {
+                    params: { symbol: selectedSymbol },
+                    headers: { Authorization: `Bearer ${authToken}` }
+                });
+                setVelocityData(res.data);
+            } catch {
+                // Velocity endpoint may not exist yet, use fallback
+                console.debug("Velocity data not available, using fallback");
+            }
+        };
+
+        fetchVelocity();
+        const interval = setInterval(fetchVelocity, 5000);
+        return () => clearInterval(interval);
+    }, [authToken, selectedSymbol]);
 
     // 3. Sync Risk State to EA
     // Fetch initial state
@@ -177,9 +177,6 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
 
         fetchRiskState();
     }, [authToken, accountStatus.mt4_account]);
-
-    // Track if user has manually toggled (to avoid syncing on initial load)
-    const [hasUserToggled, setHasUserToggled] = React.useState(false);
 
     const handleToggleLinkage = () => {
         setHasUserToggled(true);
