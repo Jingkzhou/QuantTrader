@@ -176,7 +176,10 @@ pub struct RiskControlState {
     #[serde(default)]
     pub exit_trigger: String, // "NONE" | "LAYER_LOCK" | "TACTICAL_EXIT" | "FORCE_EXIT"
     #[serde(default)]
+    #[serde(default)]
     pub velocity_block: bool, // True if velocity triggered a block
+    #[serde(default)]
+    pub enabled: bool, // EA Linkage Enabled
 }
 
 /// Velocity response data for Smart Exit calculations

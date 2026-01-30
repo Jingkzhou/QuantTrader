@@ -162,6 +162,29 @@ async fn main() {
 
     let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_velocity_symbol_time ON price_velocity (symbol, timestamp DESC)").execute(&pool).await;
 
+    // 4. Persistence for Risk Controls (EA Linkage)
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS risk_controls (
+            mt4_account BIGINT PRIMARY KEY,
+            block_buy BOOLEAN DEFAULT FALSE,
+            block_sell BOOLEAN DEFAULT FALSE,
+            block_all BOOLEAN DEFAULT FALSE,
+            risk_level TEXT DEFAULT 'SAFE',
+            updated_at BIGINT,
+            risk_score DOUBLE PRECISION DEFAULT 0.0,
+            exit_trigger TEXT DEFAULT 'NONE',
+            velocity_block BOOLEAN DEFAULT FALSE,
+            enabled BOOLEAN DEFAULT FALSE
+        )"
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to create risk_controls table");
+
+    // Migration: Add enabled column if not exists
+    let _ = sqlx::query("ALTER TABLE risk_controls ADD COLUMN IF NOT EXISTS enabled BOOLEAN DEFAULT FALSE").execute(&pool).await;
+
+
     // 3. Add feature engineering fields to trade_history for ML optimization
     let _ = sqlx::query("ALTER TABLE trade_history ADD COLUMN IF NOT EXISTS liq_dist_at_open DOUBLE PRECISION").execute(&pool).await;
     let _ = sqlx::query("ALTER TABLE trade_history ADD COLUMN IF NOT EXISTS max_v_m1 DOUBLE PRECISION").execute(&pool).await;

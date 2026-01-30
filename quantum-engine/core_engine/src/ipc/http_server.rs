@@ -129,6 +129,31 @@ pub async fn start_server(db_pool: PgPool) {
             }
         }
     });
+    
+    // Load existing risk controls from database on startup
+    let startup_db_risk = db_pool.clone();
+    let startup_memory_risk = memory_state.clone();
+    tokio::spawn(async move {
+        let rows = sqlx::query_as!(
+            crate::data_models::RiskControlState,
+            "SELECT mt4_account, block_buy, block_sell, block_all, risk_level, updated_at, risk_score, exit_trigger, velocity_block, enabled FROM risk_controls"
+        )
+        .fetch_all(&startup_db_risk)
+        .await;
+
+        match rows {
+            Ok(controls) => {
+                let mut s = startup_memory_risk.write().unwrap();
+                for c in controls {
+                    s.risk_controls.insert(c.mt4_account, c);
+                }
+                tracing::info!("Loaded {} risk control states from database", s.risk_controls.len());
+            }
+            Err(e) => {
+                tracing::error!("Failed to load risk controls: {}", e);
+            }
+        }
+    });
 
     let shared_state = Arc::new(CombinedState {
         memory: memory_state,
@@ -845,6 +870,7 @@ async fn get_risk_control(
         risk_score: 0.0,
         exit_trigger: "NONE".to_string(),
         velocity_block: false,
+        enabled: false,
     });
 
     Ok(Json(control))
@@ -870,9 +896,42 @@ async fn update_risk_control(
         let mut updated_payload = payload.clone();
         updated_payload.updated_at = chrono::Utc::now().timestamp();
         
+        // Persist to DB
+        let db_res = sqlx::query(
+            "INSERT INTO risk_controls (mt4_account, block_buy, block_sell, block_all, risk_level, updated_at, risk_score, exit_trigger, velocity_block, enabled)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+             ON CONFLICT (mt4_account) DO UPDATE SET
+                block_buy = $2,
+                block_sell = $3,
+                block_all = $4,
+                risk_level = $5,
+                updated_at = $6,
+                risk_score = $7,
+                exit_trigger = $8,
+                velocity_block = $9,
+                enabled = $10"
+        )
+        .bind(updated_payload.mt4_account)
+        .bind(updated_payload.block_buy)
+        .bind(updated_payload.block_sell)
+        .bind(updated_payload.block_all)
+        .bind(&updated_payload.risk_level)
+        .bind(updated_payload.updated_at)
+        .bind(updated_payload.risk_score)
+        .bind(&updated_payload.exit_trigger)
+        .bind(updated_payload.velocity_block)
+        .bind(updated_payload.enabled)
+        .execute(&state.db)
+        .await;
+
+        if let Err(e) = db_res {
+            tracing::error!("Failed to persist risk control: {}", e);
+            // We still update memory so UI feels responsive, but log error
+        }
+
         s.risk_controls.insert(payload.mt4_account, updated_payload.clone());
-        tracing::info!("Risk Control Updated for Account {}: Level={} BlockBuy={} BlockSell={}", 
-            payload.mt4_account, payload.risk_level, payload.block_buy, payload.block_sell);
+        tracing::info!("Risk Control Updated for Account {}: Enabled={} Level={} BlockBuy={} BlockSell={}", 
+            payload.mt4_account, payload.enabled, payload.risk_level, payload.block_buy, payload.block_sell);
             
         Ok(Json(updated_payload))
     }

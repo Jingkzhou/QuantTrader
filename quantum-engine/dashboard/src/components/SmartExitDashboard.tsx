@@ -47,6 +47,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
     // EA Linkage State
     const [eaLinkageEnabled, setEaLinkageEnabled] = useState(false);
     const [syncStatus, setSyncStatus] = useState<'IDLE' | 'SYNCING' | 'ERROR'>('IDLE');
+    const [isLoaded, setIsLoaded] = useState(false);
 
     // Velocity Data State
     const [velocityData, setVelocityData] = useState<VelocityData | null>(null);
@@ -157,8 +158,32 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
     }, [survivalDistance, atr, velocityData, accountStatus.positions, liquidationPrice]);
 
     // 3. Sync Risk State to EA
+    // Fetch initial state
     useEffect(() => {
-        if (!eaLinkageEnabled || !authToken || !accountStatus.mt4_account) return;
+        if (!authToken || !accountStatus.mt4_account) return;
+
+        const fetchRiskState = async () => {
+            try {
+                const res = await axios.get(`${API_BASE}/risk_control`, {
+                    params: { mt4_account: accountStatus.mt4_account },
+                    headers: { Authorization: `Bearer ${authToken}` }
+                });
+                if (res.data) {
+                    setEaLinkageEnabled(!!res.data.enabled);
+                }
+            } catch (err) {
+                console.error("Failed to fetch risk control state", err);
+            } finally {
+                setIsLoaded(true);
+            }
+        };
+
+        fetchRiskState();
+    }, [authToken, accountStatus.mt4_account]);
+
+    useEffect(() => {
+        // Skip sync if we haven't loaded state yet
+        if (!isLoaded || !authToken || !accountStatus.mt4_account) return;
 
         const syncToBackend = async () => {
             setSyncStatus('SYNCING');
@@ -167,20 +192,23 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                 let blockSell = false;
                 let blockAll = false;
 
-                if (smartMetrics.exitTrigger === 'FORCE_EXIT' || smartMetrics.exitTrigger === 'TACTICAL_EXIT') {
-                    blockAll = true;
-                    blockBuy = true;
-                    blockSell = true;
-                } else if (smartMetrics.exitTrigger === 'LAYER_LOCK') {
-                    if (dominantDirection === 'BUY') blockBuy = true;
-                    if (dominantDirection === 'SELL') blockSell = true;
-                } else if (riskLevel === 'WARNING') {
-                    if (dominantDirection === 'BUY') blockBuy = true;
-                    if (dominantDirection === 'SELL') blockSell = true;
-                } else if (riskLevel === 'CRITICAL') {
-                    blockAll = true;
-                    blockBuy = true;
-                    blockSell = true;
+                // Only calculate blocks if enabled
+                if (eaLinkageEnabled) {
+                    if (smartMetrics.exitTrigger === 'FORCE_EXIT' || smartMetrics.exitTrigger === 'TACTICAL_EXIT') {
+                        blockAll = true;
+                        blockBuy = true;
+                        blockSell = true;
+                    } else if (smartMetrics.exitTrigger === 'LAYER_LOCK') {
+                        if (dominantDirection === 'BUY') blockBuy = true;
+                        if (dominantDirection === 'SELL') blockSell = true;
+                    } else if (riskLevel === 'WARNING') {
+                        if (dominantDirection === 'BUY') blockBuy = true;
+                        if (dominantDirection === 'SELL') blockSell = true;
+                    } else if (riskLevel === 'CRITICAL') {
+                        blockAll = true;
+                        blockBuy = true;
+                        blockSell = true;
+                    }
                 }
 
                 await axios.put(`${API_BASE}/risk_control`, {
@@ -191,7 +219,8 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                     risk_level: riskLevel,
                     risk_score: smartMetrics.riskScore,
                     exit_trigger: smartMetrics.exitTrigger,
-                    velocity_block: smartMetrics.isVelocityWarning
+                    velocity_block: smartMetrics.isVelocityWarning,
+                    enabled: eaLinkageEnabled
                 }, {
                     headers: { Authorization: `Bearer ${authToken}` }
                 });
@@ -314,7 +343,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                         <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
                             <div
                                 className={`h-full rounded-full transition-all duration-300 ${velocityPercent > 80 ? 'bg-rose-500' :
-                                        velocityPercent > 50 ? 'bg-amber-500' : 'bg-cyan-500'
+                                    velocityPercent > 50 ? 'bg-amber-500' : 'bg-cyan-500'
                                     }`}
                                 style={{ width: `${velocityPercent}%` }}
                             />
@@ -327,7 +356,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                         <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
                             <div
                                 className={`h-full rounded-full transition-all duration-300 ${rvolPercent > 80 ? 'bg-rose-500' :
-                                        rvolPercent > 50 ? 'bg-amber-500' : 'bg-emerald-500'
+                                    rvolPercent > 50 ? 'bg-amber-500' : 'bg-emerald-500'
                                     }`}
                                 style={{ width: `${rvolPercent}%` }}
                             />
@@ -381,7 +410,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                 <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
                     <div
                         className={`h-full rounded-full transition-all duration-500 ${smartMetrics.exitTrigger !== 'NONE' ? 'bg-rose-500' :
-                                riskLevel === 'WARNING' ? 'bg-yellow-500' : 'bg-emerald-500'
+                            riskLevel === 'WARNING' ? 'bg-yellow-500' : 'bg-emerald-500'
                             }`}
                         style={{ width: `${Math.min(100, riskOccupancy)}%` }}
                     />
