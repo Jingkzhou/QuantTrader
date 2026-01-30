@@ -239,6 +239,83 @@ const App = () => {
     }
   };
 
+  const handleExportHistory = async () => {
+    if (!auth.token || !selectedAccount) return;
+
+    try {
+      // 1. Fetch ALL data (limit=100000)
+      const res = await axios.get(`${API_BASE}/trade_history`, {
+        params: {
+          mt4_account: selectedAccount.mt4_account,
+          limit: 100000, // Fetch all for export
+          page: 1,
+          symbol: selectedSymbol
+        },
+        headers: { Authorization: `Bearer ${auth.token}` }
+      });
+
+      let trades: TradeHistory[] = [];
+      if (res.data && Array.isArray(res.data.data)) {
+        trades = res.data.data;
+      } else if (Array.isArray(res.data)) {
+        trades = res.data;
+      }
+
+      if (trades.length === 0) {
+        alert("没有可导出的数据");
+        return;
+      }
+
+      // 2. Convert to CSV
+      const headers = ["订单号", "品种", "方向", "手数", "开仓价格", "平仓价格", "开仓时间", "平仓时间", "利润", "MAE", "MFE", "信号上下文"];
+      const csvContent = [
+        headers.join(","),
+        ...trades.map(t => {
+          const openTime = new Date(t.open_time * 1000).toLocaleString().replace(/,/g, ' ');
+          let closeTimeStr = '';
+          // Handle potential string vs number issues for timestamp
+          if (typeof t.close_time === 'number') {
+            closeTimeStr = new Date(t.close_time * 1000).toLocaleString().replace(/,/g, ' ');
+          } else {
+            closeTimeStr = String(t.close_time).replace(/,/g, ' ');
+          }
+
+          const ctx = t.signal_context ? t.signal_context.replace(/"/g, '""') : '';
+
+          return [
+            t.ticket,
+            t.symbol,
+            t.trade_type,
+            t.lots,
+            t.open_price,
+            t.close_price,
+            openTime,
+            closeTimeStr,
+            t.profit,
+            t.mae || 0,
+            t.mfe || 0,
+            `"${ctx}"` // Wrap context in quotes to handle commas/json
+          ].join(",");
+        })
+      ].join("\n");
+
+      // 3. Trigger Download
+      // Add BOM for Excel utf-8 compatibility
+      const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `trade_history_${selectedAccount.mt4_account}_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+    } catch (err) {
+      console.error("Export failed:", err);
+      alert("导出失败，请稍后重试");
+    }
+  };
+
   if (!auth.token) {
     return <LoginPage onLogin={handleLogin} />;
   }
@@ -333,6 +410,7 @@ const App = () => {
                   selectedSymbol={selectedSymbol}
                   pagination={pagination}
                   setPagination={setPagination}
+                  onExport={handleExportHistory}
                 />
               </div>
 
