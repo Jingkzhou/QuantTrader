@@ -23,7 +23,7 @@ echo [STEP] Ensuring previous processes are stopped...
 REM Kill known processes (Aggressive)
 taskkill /F /IM "core_engine.exe" >nul 2>&1
 taskkill /F /IM "node.exe" >nul 2>&1
-taskkill /F /IM "python.exe" >nul 2>&1
+taskkill /F /IM "esbuild.exe" >nul 2>&1
 taskkill /F /IM "cargo.exe" >nul 2>&1
 taskkill /F /IM "rustc.exe" >nul 2>&1
 
@@ -40,13 +40,12 @@ for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":5173" ^| findstr "LISTENING
 )
 
 REM Wait a moment for file handles to release
-timeout /t 2 /nobreak >nul
+timeout /t 3 /nobreak >nul
 
 REM ---------------------------------------------------------------------------
 REM Log Rotation & Cleanup (Max 500MB)
 REM ---------------------------------------------------------------------------
 echo [STEP] Rotating and cleaning up logs...
-REM Define rotation script content to avoid complex inline escaping issues
 REM Define rotation script content to avoid complex inline escaping issues
 (
 echo $logDir = '.';
@@ -56,10 +55,18 @@ echo $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss';
 echo $logs = @^('core_engine.log', 'dashboard.log', 'ai_brain.log'^);
 echo foreach ^($log in $logs^) {
 echo     if ^(Test-Path $log^) {
-echo         try {
-echo             Move-Item -Path $log -Destination "$archiveDir\$log.$timestamp.bak" -ErrorAction Stop;
-echo             Write-Host "Archived: $log";
-echo         } catch { Write-Warning "Could not archive $log" }
+echo         $retries = 3;
+echo         while ^($retries -gt 0^) {
+echo             try {
+echo                 Move-Item -Path $log -Destination "$archiveDir\$log.$timestamp.bak" -ErrorAction Stop;
+echo                 Write-Host "Archived: $log";
+echo                 break;
+echo             } catch {
+echo                 Start-Sleep -Seconds 1;
+echo                 $retries--;
+echo             }
+echo         }
+echo         if ^($retries -eq 0^) { Write-Warning "Could not archive $log (Locked)" }
 echo     }
 echo };
 echo $limit = 500 * 1024 * 1024;
@@ -81,6 +88,7 @@ echo }
 
 powershell -NoProfile -ExecutionPolicy Bypass -File rotate_logs.ps1
 del rotate_logs.ps1
+timeout /t 1 /nobreak >nul
 echo [INFO] Log rotation complete.
 
 REM ---------------------------------------------------------------------------
@@ -194,28 +202,13 @@ echo [STEP] Starting Dashboard...
 cd "%REPO_ROOT%\quantum-engine\dashboard"
 start /B "QuantTrader Dashboard" npm run dev -- --host > "%REPO_ROOT%\dashboard.log" 2>&1
 
-REM Start AI Brain (Python) in background
-echo [STEP] Starting AI Brain...
-cd "%REPO_ROOT%\quantum-engine\ai_brain"
-
-REM Determine Python Executable
-set "PYTHON_EXE=python"
-if exist "venv\Scripts\python.exe" (
-    set "PYTHON_EXE=venv\Scripts\python.exe"
-    echo [INFO] Using virtualenv python: !PYTHON_EXE!
-) else (
-    echo [INFO] Using system python.
-)
-
-start /B "QuantTrader AI Brain" !PYTHON_EXE! src\main.py > "%REPO_ROOT%\ai_brain.log" 2>&1
-
 cd "%REPO_ROOT%"
 
 echo [INFO] All services launched in background.
 echo [INFO] Logs are being written to:
 echo [INFO] - core_engine.log
 echo [INFO] - dashboard.log
-echo [INFO] - ai_brain.log
+
 echo [INFO] Core Engine API: http://localhost:3001
 echo [INFO] Dashboard: http://localhost:5173
 
@@ -239,7 +232,7 @@ if %ERRORLEVEL%==0 (
     echo [STEP] Stopping services...
     taskkill /F /IM "core_engine.exe" >nul 2>&1
     taskkill /F /IM "node.exe" >nul 2>&1
-    taskkill /F /IM "python.exe" >nul 2>&1
+
     
     goto MAIN_LOOP
 )
