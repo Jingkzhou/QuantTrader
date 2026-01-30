@@ -163,7 +163,7 @@ pub struct Command {
     pub broker: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default, sqlx::FromRow)]
 pub struct RiskControlState {
     pub mt4_account: i64,
     pub block_buy: bool,
