@@ -526,7 +526,7 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
             className={`
                 bg-slate-900/50 border border-slate-800 rounded-2xl flex flex-col group transition-all duration-300 
                 ${isFullScreen
-                    ? 'fixed inset-0 z-[100] bg-slate-900 p-2 rounded-none border-0 portrait:w-[100vh] portrait:h-[100vw] portrait:rotate-90 portrait:origin-center portrait:top-1/2 portrait:left-1/2 portrait:-translate-x-1/2 portrait:-translate-y-1/2'
+                    ? 'fixed inset-0 z-[9999] bg-slate-950 p-4 rounded-none border-0 overscroll-none portrait:w-[100dvh] portrait:h-[100dvw] portrait:rotate-90 portrait:origin-center portrait:top-1/2 portrait:left-1/2 portrait:-translate-x-1/2 portrait:-translate-y-1/2'
                     : 'relative p-4 md:p-6 h-[320px] md:h-[500px]'
                 }
             `}
