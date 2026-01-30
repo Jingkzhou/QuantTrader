@@ -12,7 +12,7 @@ use tower_http::trace::TraceLayer;
 use sqlx::PgPool;
 
 use std::collections::HashMap;
-use jsonwebtoken::{encode, decode, Header, Algorithm, Validation, EncodingKey, DecodingKey};
+use jsonwebtoken::{encode, decode, Header, Validation, EncodingKey, DecodingKey};
 use bcrypt::{hash, verify, DEFAULT_COST};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -134,8 +134,8 @@ pub async fn start_server(db_pool: PgPool) {
     let startup_db_risk = db_pool.clone();
     let startup_memory_risk = memory_state.clone();
     tokio::spawn(async move {
-        let rows = sqlx::query_as!(
-            crate::data_models::RiskControlState,
+        // Use unchecked query because table might be created in this same run
+        let rows = sqlx::query_as::<_, crate::data_models::RiskControlState>(
             "SELECT mt4_account, block_buy, block_sell, block_all, risk_level, updated_at, risk_score, exit_trigger, velocity_block, enabled FROM risk_controls"
         )
         .fetch_all(&startup_db_risk)
@@ -204,7 +204,7 @@ async fn get_state(
     axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
 ) -> Result<Json<AppState>, (axum::http::StatusCode, String)> {
     let mt4_account = params.get("mt4_account").and_then(|id| id.parse::<i64>().ok());
-    let broker = params.get("broker").map(|s| s.clone());
+    let _broker = params.get("broker").map(|s| s.clone());
 
     let mut app_state = AppState::default();
     
