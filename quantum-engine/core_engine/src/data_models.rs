@@ -171,4 +171,19 @@ pub struct RiskControlState {
     pub block_all: bool,
     pub risk_level: String, // "SAFE" | "WARNING" | "CRITICAL"
     pub updated_at: i64,
+    #[serde(default)]
+    pub risk_score: f64, // 0-100 Integrated Risk Score
+    #[serde(default)]
+    pub exit_trigger: String, // "NONE" | "LAYER_LOCK" | "TACTICAL_EXIT" | "FORCE_EXIT"
+    #[serde(default)]
+    pub velocity_block: bool, // True if velocity triggered a block
+}
+
+/// Velocity response data for Smart Exit calculations
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct VelocityData {
+    pub symbol: String,
+    pub velocity_m1: f64,     // 1-min price velocity in $
+    pub rvol: f64,            // Relative volume vs 24h average
+    pub timestamp: i64,
 }

@@ -139,6 +139,35 @@ async fn main() {
     let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_trade_history_account_close ON trade_history (mt4_account, close_time DESC)").execute(&pool).await;
     let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_trade_history_account_symbol ON trade_history (mt4_account, symbol)").execute(&pool).await;
 
+    // ========== Smart Exit System Migrations ==========
+    // 1. Add tick_volume to market_data for RVOL calculation
+    let _ = sqlx::query("ALTER TABLE market_data ADD COLUMN IF NOT EXISTS tick_volume BIGINT DEFAULT 0").execute(&pool).await;
+
+    // 2. Create price_velocity table for real-time momentum tracking
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS price_velocity (
+            id BIGSERIAL PRIMARY KEY,
+            symbol TEXT NOT NULL,
+            timestamp BIGINT NOT NULL,
+            price_1m_ago DOUBLE PRECISION,
+            velocity_m1 DOUBLE PRECISION,
+            avg_tick_volume_24h DOUBLE PRECISION,
+            current_tick_volume BIGINT,
+            rvol DOUBLE PRECISION
+        )"
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to create price_velocity table");
+
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_velocity_symbol_time ON price_velocity (symbol, timestamp DESC)").execute(&pool).await;
+
+    // 3. Add feature engineering fields to trade_history for ML optimization
+    let _ = sqlx::query("ALTER TABLE trade_history ADD COLUMN IF NOT EXISTS liq_dist_at_open DOUBLE PRECISION").execute(&pool).await;
+    let _ = sqlx::query("ALTER TABLE trade_history ADD COLUMN IF NOT EXISTS max_v_m1 DOUBLE PRECISION").execute(&pool).await;
+    let _ = sqlx::query("ALTER TABLE trade_history ADD COLUMN IF NOT EXISTS rvol_at_open DOUBLE PRECISION").execute(&pool).await;
+    let _ = sqlx::query("ALTER TABLE trade_history ADD COLUMN IF NOT EXISTS score_at_close DOUBLE PRECISION").execute(&pool).await;
+
     // Start HTTP server for MT4 data ingestion
     ipc::http_server::start_server(pool).await;
 }

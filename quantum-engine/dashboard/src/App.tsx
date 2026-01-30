@@ -9,7 +9,7 @@ import { EquityChartWidget } from './components/EquityChartWidget';
 import { AccountStatistics } from './components/AccountStatistics';
 import { RiskAnalysisPanel } from './components/RiskAnalysisPanel';
 import { StrategyAnalysisPanel } from './components/StrategyAnalysisPanel';
-import { LiquidationDashboard } from './components/LiquidationDashboard';
+import { SmartExitDashboard } from './components/SmartExitDashboard';
 import { LoginPage } from './components/LoginPage';
 import { BindModal } from './components/BindModal';
 import { DashboardTables } from './components/DashboardTables';
@@ -395,8 +395,8 @@ const App = () => {
               {/* Left Column: Market & Chart */}
               <div className="lg:col-span-3 space-y-6">
 
-                {/* 24H Liquidation Dashboard (NEW) */}
-                <LiquidationDashboard
+                {/* 24H Smart Exit Dashboard */}
+                <SmartExitDashboard
                   accountStatus={data?.account_status || { balance: 0, equity: 0, floating_profit: 0, margin: 0, free_margin: 0, timestamp: 0, positions: [], contract_size: 100, tick_value: 1, stop_level: 0, margin_so_level: 50 }}
                   currentPrice={currentMarketData ? currentMarketData.close : null}
                   currentBid={currentMarketData?.bid}
@@ -408,6 +408,7 @@ const App = () => {
                   }}
                   atr={atr}
                   authToken={auth.token || undefined}
+                  selectedSymbol={selectedSymbol}
                 />
 
 

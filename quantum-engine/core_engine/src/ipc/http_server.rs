@@ -3,7 +3,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use crate::data_models::{MarketData, AccountStatus, LogEntry, Command, Candle, TradeHistory, AccountHistory, RiskControlState};
+use crate::data_models::{MarketData, AccountStatus, LogEntry, Command, Candle, TradeHistory, AccountHistory, RiskControlState, VelocityData};
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
 use serde::{Serialize, Deserialize};
@@ -159,6 +159,7 @@ pub async fn start_server(db_pool: PgPool) {
         .route("/api/v1/accounts", get(list_accounts))
         .route("/api/v1/accounts/bind", post(bind_account))
         .route("/api/v1/risk_control", get(get_risk_control).put(update_risk_control))
+        .route("/api/v1/velocity", get(get_velocity))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(shared_state);
@@ -841,6 +842,9 @@ async fn get_risk_control(
         block_all: false,
         risk_level: "SAFE".to_string(),
         updated_at: chrono::Utc::now().timestamp(),
+        risk_score: 0.0,
+        exit_trigger: "NONE".to_string(),
+        velocity_block: false,
     });
 
     Ok(Json(control))
@@ -872,4 +876,86 @@ async fn update_risk_control(
             
         Ok(Json(updated_payload))
     }
+}
+
+/// Get velocity data for smart exit calculations
+/// Calculates 1-min price velocity and relative volume vs 24h average
+async fn get_velocity(
+    State(state): State<Arc<CombinedState>>,
+    _claims: Claims,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> Result<Json<VelocityData>, (axum::http::StatusCode, String)> {
+    let symbol = params.get("symbol").cloned().unwrap_or_else(|| "XAUUSD".to_string());
+    let now = chrono::Utc::now().timestamp();
+    
+    // 1. Calculate 1-min velocity: (current price - price 1 min ago)
+    let velocity_result = sqlx::query(
+        "SELECT 
+            (array_agg(bid ORDER BY timestamp DESC))[1] as current_price,
+            (array_agg(bid ORDER BY timestamp ASC))[1] as old_price
+         FROM market_data 
+         WHERE symbol = $1 AND timestamp > $2"
+    )
+    .bind(&symbol)
+    .bind(now - 61) // 1 min + 1 sec buffer
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let velocity_m1 = if let Some(row) = velocity_result {
+        use sqlx::Row;
+        let current: f64 = row.try_get("current_price").unwrap_or(0.0);
+        let old: f64 = row.try_get("old_price").unwrap_or(0.0);
+        if old > 0.0 { current - old } else { 0.0 }
+    } else {
+        0.0
+    };
+
+    // 2. Calculate RVOL: current volume / 24h average volume
+    // Since we're using tick data, we count the number of ticks as a proxy for volume
+    let rvol_result = sqlx::query(
+        "WITH 
+         current_period AS (
+             SELECT COUNT(*) as tick_count FROM market_data 
+             WHERE symbol = $1 AND timestamp > $2
+         ),
+         avg_period AS (
+             SELECT COUNT(*) / 24.0 as avg_hourly_ticks FROM market_data 
+             WHERE symbol = $1 AND timestamp > $3
+         )
+         SELECT 
+            cp.tick_count,
+            NULLIF(ap.avg_hourly_ticks, 0) as avg_ticks
+         FROM current_period cp, avg_period ap"
+    )
+    .bind(&symbol)
+    .bind(now - 3600) // Current hour
+    .bind(now - 86400) // Last 24 hours
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let rvol = if let Some(row) = rvol_result {
+        use sqlx::Row;
+        let current_ticks: i64 = row.try_get("tick_count").unwrap_or(0);
+        let avg_ticks: Option<f64> = row.try_get("avg_ticks").ok();
+        if let Some(avg) = avg_ticks {
+            if avg > 0.0 {
+                (current_ticks as f64) / avg
+            } else {
+                1.0
+            }
+        } else {
+            1.0
+        }
+    } else {
+        1.0
+    };
+
+    Ok(Json(VelocityData {
+        symbol,
+        velocity_m1,
+        rvol,
+        timestamp: now,
+    }))
 }
