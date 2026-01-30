@@ -192,6 +192,9 @@ for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":5173" ^| findstr "LISTENING
 REM Skip prepare_sqlx as we assume DATABASE_URL is reachable for online verification
 echo [INFO] Skipping sqlx prepare (using local DB)...
 
+REM Wait slightly for ports to clear
+timeout /t 2 /nobreak >nul
+
 REM Start Core Engine (Rust) in background
 echo [STEP] Starting Core Engine...
 cd "%REPO_ROOT%\quantum-engine\core_engine"
@@ -200,7 +203,23 @@ start /B "QuantTrader Core Engine" cargo run > "%REPO_ROOT%\core_engine.log" 2>&
 REM Start Dashboard (React) in background
 echo [STEP] Starting Dashboard...
 cd "%REPO_ROOT%\quantum-engine\dashboard"
-start /B "QuantTrader Dashboard" npm run dev -- --host > "%REPO_ROOT%\dashboard.log" 2>&1
+
+REM Try to use dashboard.log, but if locked, use a new file
+set "DASH_LOG=dashboard.log"
+if exist "%REPO_ROOT%\dashboard.log" (
+    del /f "%REPO_ROOT%\dashboard.log" >nul 2>&1
+    if exist "%REPO_ROOT%\dashboard.log" (
+        echo [WARN] dashboard.log is locked. Attempting to rename...
+        ren "%REPO_ROOT%\dashboard.log" "dashboard.log.old" >nul 2>&1
+        if exist "%REPO_ROOT%\dashboard.log" (
+            echo [WARN] Could not rename. Switching to a new log file...
+            set "DASH_LOG=dashboard_%RANDOM%.log"
+        )
+    )
+)
+echo [INFO] logging dashboard to !DASH_LOG!
+
+start /B "QuantTrader Dashboard" npm run dev -- --host > "%REPO_ROOT%\!DASH_LOG!" 2>&1
 
 cd "%REPO_ROOT%"
 
