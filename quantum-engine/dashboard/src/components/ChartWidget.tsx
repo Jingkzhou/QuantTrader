@@ -1,5 +1,6 @@
 
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { createChart, ColorType, CandlestickSeries, LineSeries } from 'lightweight-charts';
 import type { IChartApi as IChartApiType, ISeriesApi as ISeriesApiType, SeriesMarker, Time } from 'lightweight-charts';
 import axios from 'axios';
@@ -269,7 +270,7 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
             window.removeEventListener('resize', handleResize);
             chart.remove();
         };
-    }, []);
+    }, [isFullScreen]);
 
     // Toggle MA Visibility
     useEffect(() => {
@@ -519,7 +520,7 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
     }, [currentData, timeframe]);
 
 
-    return (
+    const content = (
         <div
             ref={fullScreenContainerRef}
             className={`
@@ -651,4 +652,9 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
             </div>
         </div>
     );
+
+    if (isFullScreen) {
+        return createPortal(content, document.body);
+    }
+    return content;
 };
