@@ -8,9 +8,7 @@ import { Activity, ChevronUp, Eye, EyeOff, History, Settings, Maximize2, Minimiz
 import { QuickTradePanel } from './QuickTradePanel';
 import { API_BASE } from '../config';
 import type { AccountStatus } from '../types';
-import { calculateLiquidationPrice } from '../utils/riskCalculations';
-
-
+import { calculateLiquidationPrice, calculateSurvivalDistance, calculateRiskLevel, calculateATR } from '../utils/riskCalculations';
 
 interface ChartWidgetProps {
     symbol: string;
@@ -349,30 +347,59 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
             tickValue: accountStatus.tick_value || 1
         };
 
-        // Only calculate if we have positions for this symbol?
-        // Or global liquidation? Usually liquidation is global account level in MT4/5 unless isolated?
-        // MT4 is global. So we calculate global liquidation price based on net exposure.
-        // But price move is relative to THIS symbol's price change?
-        // Assuming the risk is dominated by this symbol or we validly project 'what if this symbol moves'.
-        // For accurate 'Time to Death' on this specific chart, we simulate if THIS symbol moves, assuming others stay still.
-        // The `calculateLiquidationPrice` function handles this projection.
-
         const liqPrice = calculateLiquidationPrice(accountStatus, currentData.close, symbolInfo);
+
+        // Calculate ATR for Risk Coloring
+        let riskColor = '#ef4444'; // Default Red
+        let lineWidth: 1 | 2 | 3 | 4 = 1;
+        let lineStyle = 2; // Dashed
+
+        if (allCandlesRef.current.length > 14) {
+            const atr = calculateATR(allCandlesRef.current, 14);
+            const netLots = accountStatus.positions.reduce((acc, p) => acc + (p.side === 'BUY' ? p.lots : -p.lots), 0);
+
+            const dist = calculateSurvivalDistance(
+                accountStatus.equity,
+                accountStatus.margin,
+                symbolInfo.stopOutLevel,
+                netLots,
+                symbolInfo.contractSize
+            );
+
+            const level = calculateRiskLevel(dist, atr);
+
+            if (level === 'SAFE') {
+                riskColor = '#10b981'; // Emerald 500
+                lineStyle = 2; // Dashed
+                lineWidth = 1;
+            } else if (level === 'WARNING') {
+                riskColor = '#f59e0b'; // Amber 500
+                lineStyle = 2; // Dashed
+                lineWidth = 2;
+            } else { // CRITICAL
+                riskColor = '#ef4444'; // Red 500
+                lineStyle = 0; // Solid
+                lineWidth = 2;
+            }
+        }
 
         if (liqPrice > 0 && isFinite(liqPrice)) {
             if (liquidationLineRef.current) {
                 liquidationLineRef.current.applyOptions({
                     price: liqPrice,
-                    title: `Liquidation @ ${liqPrice.toFixed(5)}`,
+                    color: riskColor,
+                    lineWidth: lineWidth,
+                    lineStyle: lineStyle,
+                    title: `Liquidation @ ${liqPrice.toFixed(2)}`,
                 });
             } else {
                 liquidationLineRef.current = seriesRef.current.createPriceLine({
                     price: liqPrice,
-                    color: '#ef4444', // Red 500
-                    lineWidth: 1,
-                    lineStyle: 2, // Dashed
+                    color: riskColor,
+                    lineWidth: lineWidth,
+                    lineStyle: lineStyle, // Dashed
                     axisLabelVisible: true,
-                    title: `Liquidation @ ${liqPrice.toFixed(5)}`,
+                    title: `Liquidation @ ${liqPrice.toFixed(2)}`,
                 });
             }
         } else {
@@ -493,12 +520,6 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
 
         // Update MA Realtime
         if (maSeriesRef.current && allCandlesRef.current.length >= 20) {
-            // Calculate SMA for the last point only to be efficient? 
-            // Or just recalculate entire SMA for simplicity (array is small usually < 1000)
-            // lightweight-charts optimized `setData` or `update`? 
-            // For line series, `update` adds a new point.
-            // If we updated the current candle (same time), we should update the MA value for that time.
-
             // Recalculate last MA point
             const data = allCandlesRef.current;
             const period = 20;

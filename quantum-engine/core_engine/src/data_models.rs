@@ -162,3 +162,13 @@ pub struct Command {
     pub mt4_account: i64,
     pub broker: String,
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct RiskControlState {
+    pub mt4_account: i64,
+    pub block_buy: bool,
+    pub block_sell: bool,
+    pub block_all: bool,
+    pub risk_level: String, // "SAFE" | "WARNING" | "CRITICAL"
+    pub updated_at: i64,
+}

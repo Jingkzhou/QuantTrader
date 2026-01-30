@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Activity } from 'lucide-react';
 import type { AccountStatus } from '../types';
-import { calculateLiquidationPrice, calculateRiskScore } from '../utils/riskCalculations';
+import { calculateLiquidationPrice, calculateRiskScore, calculateSurvivalDistance } from '../utils/riskCalculations';
 
 interface RiskCockpitProps {
     accountStatus: AccountStatus;
@@ -24,18 +24,30 @@ export const RiskCockpit: React.FC<RiskCockpitProps> = ({ accountStatus, current
             const score = calculateRiskScore(accountStatus, liq, currentPrice, atr, symbolInfo);
             setRiskScore(score);
 
-            // Time to death estimation
-            if (liq > 0 && atr > 0) {
-                const dist = Math.abs(currentPrice - liq);
+            // Time to death estimation using new Survival Distance
+            const buyLots = accountStatus.positions.filter(p => p.side === 'BUY').reduce((acc, p) => acc + p.lots, 0);
+            const sellLots = accountStatus.positions.filter(p => p.side === 'SELL').reduce((acc, p) => acc + p.lots, 0);
+            const netLots = buyLots - sellLots;
+
+            const dist = calculateSurvivalDistance(
+                accountStatus.equity,
+                accountStatus.margin,
+                symbolInfo.stopOutLevel,
+                netLots,
+                symbolInfo.contractSize
+            );
+
+            if (isFinite(dist) && atr > 0) {
                 const atrPerHour = atr / 24;
                 const hours = dist / (atrPerHour * 1.5); // 1.5x accelerated
                 if (hours < 1) setTimeToDeath(`< ${Math.ceil(hours * 60)}m`);
                 else if (hours > 24) setTimeToDeath('> 24h');
                 else setTimeToDeath(`~${hours.toFixed(1)}h`);
+            } else {
+                setTimeToDeath('> 24h');
             }
         }
     }, [accountStatus, currentPrice, symbolInfo, atr]);
-
     // Color logic
     const getScoreColor = (score: number) => {
         if (score < 40) return 'text-emerald-500';

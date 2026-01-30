@@ -1,8 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+
+import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
-import {
-  Activity
-} from 'lucide-react';
+import { Activity } from 'lucide-react';
 import { Navbar } from './components/Navbar';
 import { ChartWidget } from './components/ChartWidget';
 import { PerformancePanel } from './components/PerformancePanel';
@@ -11,15 +10,14 @@ import { AccountStatistics } from './components/AccountStatistics';
 import { RiskAnalysisPanel } from './components/RiskAnalysisPanel';
 import { StrategyAnalysisPanel } from './components/StrategyAnalysisPanel';
 import { RiskCockpit } from './components/RiskCockpit';
-
+import { LiquidationDashboard } from './components/LiquidationDashboard';
 import { LoginPage } from './components/LoginPage';
-// New Components
 import { BindModal } from './components/BindModal';
 import { DashboardTables } from './components/DashboardTables';
 import { RealtimeLogs } from './components/RealtimeLogs';
-
 import { API_BASE } from './config';
 import type { AuthState, MarketData, AccountStatus, LogEntry, TradeHistory, AccountRecord } from './types';
+import { calculateATR } from './utils/riskCalculations';
 
 interface AppState {
   market_data: Record<string, MarketData>;
@@ -39,10 +37,8 @@ const App = () => {
   const [pagination, setPagination] = useState({ page: 1, limit: 100, total: 0 });
   const [activePage, setActivePage] = useState('dashboard');
   const [drawdown, setDrawdown] = useState({ current: 0, max: 0 });
-  // activeTab state moved to DashboardTables or handled there? 
-  // Wait, I put activeTab in DashboardTables state, so check if App usage is needed. 
-  // It wasn't used outside the tabs area. So removing valid.
   const [selectedSymbol, setSelectedSymbol] = useState<string>('');
+  const [atr, setAtr] = useState<number>(0);
 
   // Account Management States
   const [accounts, setAccounts] = useState<AccountRecord[]>([]);
@@ -61,7 +57,6 @@ const App = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('username');
     localStorage.removeItem('role');
-    // Do not clear preferences like lastAccount/lastSymbol
     setAuth({ token: null, username: null, role: null });
   };
 
@@ -90,6 +85,33 @@ const App = () => {
   useEffect(() => {
     if (selectedAccount) localStorage.setItem('lastAccount', JSON.stringify(selectedAccount));
   }, [selectedAccount]);
+
+  // Fetch ATR (D1)
+  useEffect(() => {
+    const fetchATR = async () => {
+      if (!selectedSymbol || !auth.token) return;
+      try {
+        // Fetch 20 days of D1 data for ATR(14) calculation
+        const response = await axios.get(`${API_BASE}/candles`, {
+          params: { symbol: selectedSymbol, timeframe: 'D1' },
+          headers: { Authorization: `Bearer ${auth.token}` }
+        });
+        const candles = response.data;
+        if (candles && candles.length > 14) {
+          const val = calculateATR(candles, 14);
+          setAtr(val);
+        } else {
+          setAtr(0); // Reset if not enough data
+        }
+      } catch (e) {
+        console.error("Failed to fetch ATR data", e);
+        setAtr(0);
+      }
+    };
+    fetchATR();
+    const interval = setInterval(fetchATR, 60000 * 5); // Refresh every 5 min
+    return () => clearInterval(interval);
+  }, [selectedSymbol, auth.token]);
 
   const fetchData = async () => {
     if (!auth.token) return;
@@ -180,10 +202,9 @@ const App = () => {
   useEffect(() => {
     if (!auth.token) return;
     fetchData(); // Initial fetch
-
     const interval = setInterval(fetchData, 2000);
     return () => clearInterval(interval);
-  }, [selectedSymbol, auth.token, selectedAccount, pagination.page]); // Depend on page
+  }, [selectedSymbol, auth.token, selectedAccount, pagination.page]);
 
   // Reset pagination when symbol or account changes
   useEffect(() => {
@@ -273,7 +294,6 @@ const App = () => {
         ...trades.map(t => {
           const openTime = new Date(t.open_time * 1000).toLocaleString().replace(/,/g, ' ');
           let closeTimeStr = '';
-          // Handle potential string vs number issues for timestamp
           if (typeof t.close_time === 'number') {
             closeTimeStr = new Date(t.close_time * 1000).toLocaleString().replace(/,/g, ' ');
           } else {
@@ -294,13 +314,11 @@ const App = () => {
             t.profit,
             t.mae || 0,
             t.mfe || 0,
-            `"${ctx}"` // Wrap context in quotes to handle commas/json
+            `"${ctx}"`
           ].join(",");
         })
       ].join("\n");
 
-      // 3. Trigger Download
-      // Add BOM for Excel utf-8 compatibility
       const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -331,8 +349,7 @@ const App = () => {
 
   const currentMarketData = selectedSymbol && data?.market_data ? data.market_data[selectedSymbol] : null;
 
-  // Memoized Sort active symbols: (1) Has Positions -> (2) Alpha
-  // Optimization: Prevent re-sorting on every render
+  // Memoized Sort active symbols
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const sortedActiveSymbols = useMemo(() => {
     if (!data?.active_symbols) return [];
@@ -379,7 +396,22 @@ const App = () => {
               {/* Left Column: Market & Chart */}
               <div className="lg:col-span-3 space-y-6">
 
-                {/* Risk Cockpit (New) */}
+                {/* 24H Liquidation Dashboard (NEW) */}
+                <LiquidationDashboard
+                  accountStatus={data?.account_status || { balance: 0, equity: 0, floating_profit: 0, margin: 0, free_margin: 0, timestamp: 0, positions: [], contract_size: 100, tick_value: 1, stop_level: 0, margin_so_level: 50 }}
+                  currentPrice={currentMarketData ? currentMarketData.close : null}
+                  currentBid={currentMarketData?.bid}
+                  currentAsk={currentMarketData?.ask}
+                  symbolInfo={{
+                    contractSize: data?.account_status?.contract_size || 100,
+                    stopOutLevel: data?.account_status?.margin_so_level || 50,
+                    tickValue: data?.account_status?.tick_value || 1
+                  }}
+                  atr={atr}
+                  authToken={auth.token || undefined}
+                />
+
+                {/* Risk Cockpit (Legacy/Sim) */}
                 <RiskCockpit
                   accountStatus={data?.account_status || { balance: 0, equity: 0, floating_profit: 0, margin: 0, free_margin: 0, timestamp: 0, positions: [], contract_size: 100, tick_value: 1, stop_level: 0, margin_so_level: 50 }}
                   currentPrice={currentMarketData ? currentMarketData.close : null}
@@ -388,7 +420,7 @@ const App = () => {
                     stopOutLevel: data?.account_status?.margin_so_level || 50,
                     tickValue: data?.account_status?.tick_value || 1
                   }}
-                  atr={0.0050}
+                  atr={atr}
                 />
 
                 {/* Main Center Chart */}
@@ -403,7 +435,7 @@ const App = () => {
                   />
                 </div>
 
-                {/* Dashboard Tables (Positions & History) - Extracted Component */}
+                {/* Dashboard Tables */}
                 <DashboardTables
                   positions={data?.account_status?.positions || []}
                   history={history}
@@ -416,8 +448,6 @@ const App = () => {
 
               {/* Right Column: Account & Logs */}
               <div className="space-y-6">
-
-                {/* Equity Curve Chart */}
                 <EquityChartWidget
                   currentAccountStatus={data?.account_status || { balance: 0, equity: 0, floating_profit: 0, margin: 0, free_margin: 0, timestamp: 0, positions: [] }}
                   authToken={auth.token}
@@ -425,16 +455,13 @@ const App = () => {
                   broker={selectedAccount?.broker || null}
                 />
 
-                {/* Performance Metrics (Side) */}
                 <PerformancePanel
                   trades={history}
                   selectedSymbol={selectedSymbol}
                   gridClass="grid-cols-2 lg:grid-cols-2 gap-3"
                 />
 
-                {/* Real-time Logs - Extracted Component */}
                 <RealtimeLogs logs={data?.recent_logs || []} />
-
               </div>
             </div>
           </>
@@ -472,7 +499,6 @@ const App = () => {
         )}
       </main>
 
-      {/* Binding Modal - Extracted Component */}
       {isBindModalOpen && <BindModal
         onClose={() => setIsBindModalOpen(false)}
         onBind={handleBindAccount}

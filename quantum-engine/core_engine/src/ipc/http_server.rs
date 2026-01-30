@@ -3,7 +3,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use crate::data_models::{MarketData, AccountStatus, LogEntry, Command, Candle, TradeHistory, AccountHistory};
+use crate::data_models::{MarketData, AccountStatus, LogEntry, Command, Candle, TradeHistory, AccountHistory, RiskControlState};
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
 use serde::{Serialize, Deserialize};
@@ -30,6 +30,7 @@ pub struct InternalState {
     pub account_statuses: HashMap<String, AccountStatus>, // Key: "mt4_account:broker"
     pub recent_logs: HashMap<String, Vec<LogEntry>>,     // Key: "mt4_account:broker"
     pub pending_commands: HashMap<String, Vec<Command>>, // Key: "mt4_account:broker"
+    pub risk_controls: HashMap<i64, RiskControlState>,   // Key: mt4_account
     pub active_symbols: Vec<String>,
 }
 
@@ -157,6 +158,7 @@ pub async fn start_server(db_pool: PgPool) {
         .route("/api/v1/auth/register", post(handle_register))
         .route("/api/v1/accounts", get(list_accounts))
         .route("/api/v1/accounts/bind", post(bind_account))
+        .route("/api/v1/risk_control", get(get_risk_control).put(update_risk_control))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(shared_state);
@@ -820,4 +822,54 @@ async fn bind_account(
         broker: payload.broker,
         account_name: payload.account_name,
     }))
+}
+
+async fn get_risk_control(
+    State(state): State<Arc<CombinedState>>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> Result<Json<RiskControlState>, (axum::http::StatusCode, String)> {
+    let mt4_account = params.get("mt4_account").and_then(|id| id.parse::<i64>().ok())
+        .ok_or((axum::http::StatusCode::BAD_REQUEST, "Missing mt4_account".to_string()))?;
+
+    let s = state.memory.read().unwrap();
+    
+    // Return existing state or default (safe) state
+    let control = s.risk_controls.get(&mt4_account).cloned().unwrap_or_else(|| RiskControlState {
+        mt4_account,
+        block_buy: false,
+        block_sell: false,
+        block_all: false,
+        risk_level: "SAFE".to_string(),
+        updated_at: chrono::Utc::now().timestamp(),
+    });
+
+    Ok(Json(control))
+}
+
+async fn update_risk_control(
+    State(state): State<Arc<CombinedState>>,
+    claims: Claims,
+    Json(payload): Json<RiskControlState>,
+) -> Result<Json<RiskControlState>, (axum::http::StatusCode, String)> {
+    // Verify ownership
+    let _ = sqlx::query!(
+        "SELECT 1 as \"exists!\" FROM user_accounts WHERE user_id = $1 AND mt4_account = $2",
+        claims.user_id, payload.mt4_account
+    )
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .ok_or((axum::http::StatusCode::FORBIDDEN, "Access denied".to_string()))?;
+
+    {
+        let mut s = state.memory.write().unwrap();
+        let mut updated_payload = payload.clone();
+        updated_payload.updated_at = chrono::Utc::now().timestamp();
+        
+        s.risk_controls.insert(payload.mt4_account, updated_payload.clone());
+        tracing::info!("Risk Control Updated for Account {}: Level={} BlockBuy={} BlockSell={}", 
+            payload.mt4_account, payload.risk_level, payload.block_buy, payload.block_sell);
+            
+        Ok(Json(updated_payload))
+    }
 }

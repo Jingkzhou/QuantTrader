@@ -207,6 +207,11 @@ datetime g_LastSellOrderTime    = 0;
 datetime g_GlobalResumeTime     = 0;    // NextTime 冷却
 double   g_TotalDeposits        = 0;    // 总入金 (用于计算回报率)
 double   g_SessionMaxDD         = 0;    // 本次运行最大回撤 (Session Max DD)
+// 远程风控阻断状态
+bool     g_RemoteBlockBuy       = false;
+bool     g_RemoteBlockSell      = false;
+bool     g_RemoteBlockAll       = false; // 备用
+datetime g_LastRiskCheckTime    = 0;
 
 // 挂单追踪缓存 (原代码 Zi_14/15, Zi_20/21)
 // 原代码中这些变量是在 start() 循环中实时更新的，这里我们每次 OnTick 重新计算
@@ -384,6 +389,12 @@ void OnTimer()
          lastReportTime = TimeCurrent();
         }
      }
+
+   // [NEW] Remote Risk Control Polling (Every 5s)
+   if(ConnectionMode == MODE_ONLINE && TimeCurrent() - g_LastRiskCheckTime >= 5) {
+      CheckRemoteRiskControl();
+      g_LastRiskCheckTime = TimeCurrent();
+   }
   }
 
 void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
@@ -405,6 +416,21 @@ void OnTick()
    // 原代码使用变量 Zong_29_bo_128 (Buy) 和 Zong_30_bo_129 (Sell)
    bool tickAllowBuy = g_AllowBuy;
    bool tickAllowSell = g_AllowSell;
+
+   // 2.5 [NEW] 检查远程风控拦截
+   if(g_RemoteBlockBuy) {
+       tickAllowBuy = false;
+       // 如果已经开启 Buy (UI上), 但远程拦截了, 可以在这里打日志或显示
+   }
+   if(g_RemoteBlockSell) {
+       tickAllowSell = false;
+   }
+   if(g_RemoteBlockBuy || g_RemoteBlockSell) {
+       string blockMsg = "远程风控拦截: " + (g_RemoteBlockBuy?"[禁多] ":"") + (g_RemoteBlockSell?"[禁空]":"");
+       Comment(blockMsg); 
+   } else {
+       // 清除 Comment? 或者由 UpdatePanel 覆盖
+   }
 
    // 3. 检查 StopAfterClose (Over) 单边停止逻辑
    if(StopAfterClose)
@@ -1652,3 +1678,51 @@ void CheckCommands() {
       }
    }
 }
+
+//+------------------------------------------------------------------+
+//|                      远程风控检查函数                            |
+//+------------------------------------------------------------------+
+void CheckRemoteRiskControl() {
+    if(RustServerUrl == "") return;
+    
+    // Construct URL
+    string url = RustServerUrl + "/api/v1/risk_control?mt4_account=" + IntegerToString(AccountNumber());
+    char postData[];
+    char result[];
+    string headers = "timeout: 3000\r\n";
+    string resultHeaders;
+    
+    ResetLastError();
+    // 使用 WebRequest GET 请求
+    int res = WebRequest("GET", url, headers, 3000, postData, result, resultHeaders);
+    
+    if(res == 200) {
+        string json = CharArrayToString(result);
+        // JSON Parsing (Simple String Search)
+        
+        bool newBlockBuy = (StringFind(json, "\"block_buy\":true") >= 0);
+        bool newBlockSell = (StringFind(json, "\"block_sell\":true") >= 0);
+        bool newBlockAll = (StringFind(json, "\"block_all\":true") >= 0);
+        
+        // Update Globals
+        bool updated = false;
+        
+        if(newBlockAll) {
+            if(!g_RemoteBlockBuy || !g_RemoteBlockSell) updated = true;
+            g_RemoteBlockBuy = true;
+            g_RemoteBlockSell = true;
+        } else {
+            if(g_RemoteBlockBuy != newBlockBuy || g_RemoteBlockSell != newBlockSell) updated = true;
+            g_RemoteBlockBuy = newBlockBuy;
+            g_RemoteBlockSell = newBlockSell;
+        }
+        
+        // Log on change
+        if(updated) {
+             string msg = "Risk Control Updated: BlockBuy=" + (string)g_RemoteBlockBuy + " BlockSell=" + (string)g_RemoteBlockSell;
+             Print(msg);
+             RemoteLog("INFO", msg);
+        }
+    }
+}
+// End of QuantTrader_Pro.mq4
