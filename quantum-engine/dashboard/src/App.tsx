@@ -9,7 +9,6 @@ import { EquityChartWidget } from './components/EquityChartWidget';
 import { AccountStatistics } from './components/AccountStatistics';
 import { RiskAnalysisPanel } from './components/RiskAnalysisPanel';
 import { StrategyAnalysisPanel } from './components/StrategyAnalysisPanel';
-import { RiskCockpit } from './components/RiskCockpit';
 import { LiquidationDashboard } from './components/LiquidationDashboard';
 import { LoginPage } from './components/LoginPage';
 import { BindModal } from './components/BindModal';
@@ -411,17 +410,6 @@ const App = () => {
                   authToken={auth.token || undefined}
                 />
 
-                {/* Risk Cockpit (Legacy/Sim) */}
-                <RiskCockpit
-                  accountStatus={data?.account_status || { balance: 0, equity: 0, floating_profit: 0, margin: 0, free_margin: 0, timestamp: 0, positions: [], contract_size: 100, tick_value: 1, stop_level: 0, margin_so_level: 50 }}
-                  currentPrice={currentMarketData ? currentMarketData.close : null}
-                  symbolInfo={{
-                    contractSize: data?.account_status?.contract_size || 100,
-                    stopOutLevel: data?.account_status?.margin_so_level || 50,
-                    tickValue: data?.account_status?.tick_value || 1
-                  }}
-                  atr={atr}
-                />
 
                 {/* Main Center Chart */}
                 <div className="flex-1 min-h-0">
