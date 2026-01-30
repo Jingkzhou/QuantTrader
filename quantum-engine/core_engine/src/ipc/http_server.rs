@@ -3,6 +3,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use axum::response::IntoResponse;
 use crate::data_models::{MarketData, AccountStatus, LogEntry, Command, Candle, TradeHistory, AccountHistory, RiskControlState, VelocityData};
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
@@ -853,9 +854,11 @@ async fn bind_account(
 async fn get_risk_control(
     State(state): State<Arc<CombinedState>>,
     axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
-) -> Result<Json<RiskControlState>, (axum::http::StatusCode, String)> {
-    let mt4_account = params.get("mt4_account").and_then(|id| id.parse::<i64>().ok())
-        .ok_or((axum::http::StatusCode::BAD_REQUEST, "Missing mt4_account".to_string()))?;
+) -> axum::response::Response {
+    let mt4_account = match params.get("mt4_account").and_then(|id| id.parse::<i64>().ok()) {
+        Some(id) => id,
+        None => return (axum::http::StatusCode::BAD_REQUEST, "Missing mt4_account").into_response(),
+    };
 
     let s = state.memory.read().unwrap();
     
@@ -873,23 +876,31 @@ async fn get_risk_control(
         enabled: false,
     });
 
-    Ok(Json(control))
+    Json(control).into_response()
 }
 
 async fn update_risk_control(
     State(state): State<Arc<CombinedState>>,
     claims: Claims,
     Json(payload): Json<RiskControlState>,
-) -> Result<Json<RiskControlState>, (axum::http::StatusCode, String)> {
+) -> axum::response::Response {
     // Verify ownership
-    let _ = sqlx::query!(
-        "SELECT 1 as \"exists!\" FROM user_accounts WHERE user_id = $1 AND mt4_account = $2",
-        claims.user_id, payload.mt4_account
+    let check_res = sqlx::query(
+        "SELECT 1 FROM user_accounts WHERE user_id = $1 AND mt4_account = $2"
     )
+    .bind(claims.user_id)
+    .bind(payload.mt4_account)
     .fetch_optional(&state.db)
-    .await
-    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-    .ok_or((axum::http::StatusCode::FORBIDDEN, "Access denied".to_string()))?;
+    .await;
+
+    let check = match check_res {
+        Ok(c) => c,
+        Err(e) => return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    };
+
+    if check.is_none() {
+        return (axum::http::StatusCode::FORBIDDEN, "Access denied").into_response();
+    }
 
     {
         let mut s = state.memory.write().unwrap();
@@ -926,14 +937,13 @@ async fn update_risk_control(
 
         if let Err(e) = db_res {
             tracing::error!("Failed to persist risk control: {}", e);
-            // We still update memory so UI feels responsive, but log error
         }
 
         s.risk_controls.insert(payload.mt4_account, updated_payload.clone());
         tracing::info!("Risk Control Updated for Account {}: Enabled={} Level={} BlockBuy={} BlockSell={}", 
             payload.mt4_account, payload.enabled, payload.risk_level, payload.block_buy, payload.block_sell);
             
-        Ok(Json(updated_payload))
+        Json(updated_payload).into_response()
     }
 }
 
