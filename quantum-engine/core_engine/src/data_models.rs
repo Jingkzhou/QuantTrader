@@ -170,6 +170,7 @@ pub struct RiskControlState {
     pub block_sell: bool,
     pub block_all: bool,
     pub risk_level: String, // "SAFE" | "WARNING" | "CRITICAL"
+    #[serde(default)]
     pub updated_at: i64,
     #[serde(default)]
     pub risk_score: f64, // 0-100 Integrated Risk Score
