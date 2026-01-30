@@ -47,7 +47,6 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
     // EA Linkage State
     const [eaLinkageEnabled, setEaLinkageEnabled] = useState(false);
     const [syncStatus, setSyncStatus] = useState<'IDLE' | 'SYNCING' | 'ERROR'>('IDLE');
-    const [isLoaded, setIsLoaded] = useState(false);
 
     // Velocity Data State
     const [velocityData, setVelocityData] = useState<VelocityData | null>(null);
@@ -173,17 +172,23 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                 }
             } catch (err) {
                 console.error("Failed to fetch risk control state", err);
-            } finally {
-                setIsLoaded(true);
             }
         };
 
         fetchRiskState();
     }, [authToken, accountStatus.mt4_account]);
 
+    // Track if user has manually toggled (to avoid syncing on initial load)
+    const [hasUserToggled, setHasUserToggled] = React.useState(false);
+
+    const handleToggleLinkage = () => {
+        setHasUserToggled(true);
+        setEaLinkageEnabled(prev => !prev);
+    };
+
     useEffect(() => {
-        // Skip sync if we haven't loaded state yet
-        if (!isLoaded || !authToken || !accountStatus.mt4_account) return;
+        // Only sync when user has explicitly toggled, not on initial load
+        if (!hasUserToggled || !authToken || !accountStatus.mt4_account) return;
 
         const syncToBackend = async () => {
             setSyncStatus('SYNCING');
@@ -232,7 +237,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
         };
 
         syncToBackend();
-    }, [riskLevel, smartMetrics, dominantDirection, eaLinkageEnabled, accountStatus.mt4_account, authToken]);
+    }, [eaLinkageEnabled, hasUserToggled, accountStatus.mt4_account, authToken]);
 
     // 4. Get trigger config for styling
     const triggerConfig = getExitTriggerConfig(smartMetrics.exitTrigger);
@@ -266,7 +271,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
 
                 <div className="flex flex-col items-end gap-1">
                     <button
-                        onClick={() => setEaLinkageEnabled(!eaLinkageEnabled)}
+                        onClick={handleToggleLinkage}
                         className={`
                             flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-bold border transition-colors
                             ${eaLinkageEnabled
