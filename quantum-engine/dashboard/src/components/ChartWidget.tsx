@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createChart, ColorType, CandlestickSeries, LineSeries } from 'lightweight-charts';
 import type { IChartApi as IChartApiType, ISeriesApi as ISeriesApiType, SeriesMarker, Time } from 'lightweight-charts';
 import axios from 'axios';
-import { Activity, ChevronUp, Eye, EyeOff, History, Settings } from 'lucide-react';
+import { Activity, ChevronUp, Eye, EyeOff, History, Settings, Maximize2, Minimize2 } from 'lucide-react';
 import { QuickTradePanel } from './QuickTradePanel';
 import { API_BASE } from '../config';
 import type { AccountStatus } from '../types';
@@ -50,6 +50,7 @@ function calculateSMA(data: any[], period: number) {
 
 export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, authToken, history = [], positions = [], accountStatus }) => {
     const chartContainerRef = useRef<HTMLDivElement>(null);
+    const fullScreenContainerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const chartRef = useRef<IChartApiType | null>(null);
     const seriesRef = useRef<ISeriesApiType<"Candlestick"> | null>(null);
@@ -64,6 +65,28 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
     const [showPositions, setShowPositions] = useState(false);
     const [showMA, setShowMA] = useState(false);
     const [isToolbarOpen, setIsToolbarOpen] = useState(false); // Collapsible for mobile
+    const [isFullScreen, setIsFullScreen] = useState(false);
+
+    // Toggle Full Screen
+    const toggleFullScreen = () => {
+        if (!document.fullscreenElement) {
+            fullScreenContainerRef.current?.requestFullscreen().catch(err => {
+                console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+            });
+        } else {
+            document.exitFullscreen();
+        }
+    };
+
+    // Listen for Full Screen changes (e.g. via ESC key)
+    useEffect(() => {
+        const handleFullScreenChange = () => {
+            setIsFullScreen(!!document.fullscreenElement);
+        };
+
+        document.addEventListener('fullscreenchange', handleFullScreenChange);
+        return () => document.removeEventListener('fullscreenchange', handleFullScreenChange);
+    }, []);
 
     // Handle Timeframe Change
     const handleTimeframeChange = (tf: string) => {
@@ -475,7 +498,7 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
 
 
     return (
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 md:p-6 h-[320px] md:h-[500px] flex flex-col relative group">
+        <div ref={fullScreenContainerRef} className={`bg-slate-900/50 border border-slate-800 rounded-2xl p-4 md:p-6 flex flex-col relative group transition-all duration-300 ${isFullScreen ? 'bg-slate-900 p-4' : 'h-[320px] md:h-[500px]'}`}>
             <QuickTradePanel symbol={symbol} />
             {/* Header & Toolbar */}
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-4 gap-3 lg:gap-0">
@@ -550,6 +573,17 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
                         >
                             <Activity className="w-3.5 h-3.5" />
                             <span className="ml-1.5">MA</span>
+                        </button>
+
+                        {/* Full Screen Toggle */}
+                        <button
+                            onClick={toggleFullScreen}
+                            className={`flex items-center justify-center h-8 px-3 rounded text-[10px] font-bold uppercase tracking-wider transition-colors ${isFullScreen ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30' : 'bg-slate-800 text-slate-500 border border-slate-700'
+                                }`}
+                            title={isFullScreen ? "退出全屏" : "全屏显示"}
+                        >
+                            {isFullScreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                            <span className="ml-1.5 hidden sm:inline">{isFullScreen ? "Exit" : "Full"}</span>
                         </button>
                     </div>
 
