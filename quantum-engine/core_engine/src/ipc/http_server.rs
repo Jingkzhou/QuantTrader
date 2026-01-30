@@ -902,49 +902,51 @@ async fn update_risk_control(
         return (axum::http::StatusCode::FORBIDDEN, "Access denied").into_response();
     }
 
+    let mut updated_payload = payload.clone();
+    updated_payload.updated_at = chrono::Utc::now().timestamp();
+
+    // Persist to DB first (outside of lock)
+    let db_res = sqlx::query(
+        "INSERT INTO risk_controls (mt4_account, block_buy, block_sell, block_all, risk_level, updated_at, risk_score, exit_trigger, velocity_block, enabled)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         ON CONFLICT (mt4_account) DO UPDATE SET
+            block_buy = $2,
+            block_sell = $3,
+            block_all = $4,
+            risk_level = $5,
+            updated_at = $6,
+            risk_score = $7,
+            exit_trigger = $8,
+            velocity_block = $9,
+            enabled = $10"
+    )
+    .bind(updated_payload.mt4_account)
+    .bind(updated_payload.block_buy)
+    .bind(updated_payload.block_sell)
+    .bind(updated_payload.block_all)
+    .bind(&updated_payload.risk_level)
+    .bind(updated_payload.updated_at)
+    .bind(updated_payload.risk_score)
+    .bind(&updated_payload.exit_trigger)
+    .bind(updated_payload.velocity_block)
+    .bind(updated_payload.enabled)
+    .execute(&state.db)
+    .await;
+
+    if let Err(e) = db_res {
+        tracing::error!("Failed to persist risk control: {}", e);
+    }
+
+    // Update memory state (short lock, no await inside)
     {
         let mut s = state.memory.write().unwrap();
-        let mut updated_payload = payload.clone();
-        updated_payload.updated_at = chrono::Utc::now().timestamp();
-        
-        // Persist to DB
-        let db_res = sqlx::query(
-            "INSERT INTO risk_controls (mt4_account, block_buy, block_sell, block_all, risk_level, updated_at, risk_score, exit_trigger, velocity_block, enabled)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-             ON CONFLICT (mt4_account) DO UPDATE SET
-                block_buy = $2,
-                block_sell = $3,
-                block_all = $4,
-                risk_level = $5,
-                updated_at = $6,
-                risk_score = $7,
-                exit_trigger = $8,
-                velocity_block = $9,
-                enabled = $10"
-        )
-        .bind(updated_payload.mt4_account)
-        .bind(updated_payload.block_buy)
-        .bind(updated_payload.block_sell)
-        .bind(updated_payload.block_all)
-        .bind(&updated_payload.risk_level)
-        .bind(updated_payload.updated_at)
-        .bind(updated_payload.risk_score)
-        .bind(&updated_payload.exit_trigger)
-        .bind(updated_payload.velocity_block)
-        .bind(updated_payload.enabled)
-        .execute(&state.db)
-        .await;
-
-        if let Err(e) = db_res {
-            tracing::error!("Failed to persist risk control: {}", e);
-        }
-
         s.risk_controls.insert(payload.mt4_account, updated_payload.clone());
-        tracing::info!("Risk Control Updated for Account {}: Enabled={} Level={} BlockBuy={} BlockSell={}", 
-            payload.mt4_account, payload.enabled, payload.risk_level, payload.block_buy, payload.block_sell);
-            
-        Json(updated_payload).into_response()
     }
+
+    tracing::info!("Risk Control Updated for Account {}: Enabled={} Level={} BlockBuy={} BlockSell={}", 
+        payload.mt4_account, payload.enabled, payload.risk_level, payload.block_buy, payload.block_sell);
+
+    Json(updated_payload).into_response()
 }
 
 /// Get velocity data for smart exit calculations
