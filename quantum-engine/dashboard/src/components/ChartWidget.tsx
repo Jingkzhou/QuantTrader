@@ -67,26 +67,48 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
     const [isToolbarOpen, setIsToolbarOpen] = useState(false); // Collapsible for mobile
     const [isFullScreen, setIsFullScreen] = useState(false);
 
-    // Toggle Full Screen
+    // Toggle Full Screen with CSS + Native Fallback
     const toggleFullScreen = () => {
-        if (!document.fullscreenElement) {
-            fullScreenContainerRef.current?.requestFullscreen().catch(err => {
-                console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
-            });
+        const nextState = !isFullScreen;
+        setIsFullScreen(nextState);
+
+        if (nextState) {
+            // Attempt Native Fullscreen if supported
+            if (fullScreenContainerRef.current?.requestFullscreen) {
+                fullScreenContainerRef.current.requestFullscreen().catch(err => {
+                    console.warn("Native fullscreen failed or blocked, falling back to CSS overlay:", err);
+                });
+            }
         } else {
-            document.exitFullscreen();
+            // Exit Native Fullscreen if active
+            if (document.fullscreenElement) {
+                document.exitFullscreen().catch(() => { });
+            }
         }
     };
 
-    // Listen for Full Screen changes (e.g. via ESC key)
+    // Listen for Native Full Screen changes (e.g. via ESC key)
     useEffect(() => {
         const handleFullScreenChange = () => {
-            setIsFullScreen(!!document.fullscreenElement);
+            // Only sync if native fullscreen is exited externally (like ESC)
+            // If we are in CSS fullscreen mode but not native, this won't fire.
+            // If we are native and user presses ESC, this fires and document.fullscreenElement becomes null.
+            if (!document.fullscreenElement && isFullScreen) {
+                setIsFullScreen(false);
+            }
         };
 
         document.addEventListener('fullscreenchange', handleFullScreenChange);
-        return () => document.removeEventListener('fullscreenchange', handleFullScreenChange);
-    }, []);
+        // Webkit prefix for iOS/Safari just in case (though standardized now mostly)
+        // @ts-ignore
+        document.addEventListener('webkitfullscreenchange', handleFullScreenChange);
+
+        return () => {
+            document.removeEventListener('fullscreenchange', handleFullScreenChange);
+            // @ts-ignore
+            document.removeEventListener('webkitfullscreenchange', handleFullScreenChange);
+        };
+    }, [isFullScreen]);
 
     // Handle Timeframe Change
     const handleTimeframeChange = (tf: string) => {
@@ -498,7 +520,16 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
 
 
     return (
-        <div ref={fullScreenContainerRef} className={`bg-slate-900/50 border border-slate-800 rounded-2xl p-4 md:p-6 flex flex-col relative group transition-all duration-300 ${isFullScreen ? 'bg-slate-900 p-4' : 'h-[320px] md:h-[500px]'}`}>
+        <div
+            ref={fullScreenContainerRef}
+            className={`
+                bg-slate-900/50 border border-slate-800 rounded-2xl flex flex-col group transition-all duration-300 
+                ${isFullScreen
+                    ? 'fixed inset-0 z-[100] bg-slate-900 p-2 rounded-none border-0 portrait:w-[100vh] portrait:h-[100vw] portrait:rotate-90 portrait:origin-center portrait:top-1/2 portrait:left-1/2 portrait:-translate-x-1/2 portrait:-translate-y-1/2'
+                    : 'relative p-4 md:p-6 h-[320px] md:h-[500px]'
+                }
+            `}
+        >
             <QuickTradePanel symbol={symbol} />
             {/* Header & Toolbar */}
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-4 gap-3 lg:gap-0">
