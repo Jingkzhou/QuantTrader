@@ -530,9 +530,12 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
                 }
             `}
         >
-            <QuickTradePanel symbol={symbol} />
+            <div className={isFullScreen ? 'hidden' : ''}>
+                <QuickTradePanel symbol={symbol} />
+            </div>
+
             {/* Header & Toolbar */}
-            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-4 gap-3 lg:gap-0">
+            <div className={`flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 lg:gap-0 ${isFullScreen ? 'mb-1' : 'mb-4'}`}>
 
                 {/* Top Row: Title + Bid/Ask + Mobile Toggle */}
                 <div className="flex items-center justify-between w-full lg:w-auto gap-3">
@@ -562,17 +565,17 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
                     {/* Mobile Menu Toggle Button */}
                     <button
                         onClick={() => setIsToolbarOpen(!isToolbarOpen)}
-                        className="lg:hidden p-1.5 bg-slate-800 border border-slate-700 rounded-lg text-slate-400 hover:text-cyan-400 transition-colors shadow-lg active:scale-95"
+                        className={`lg:hidden p-1.5 bg-slate-800 border border-slate-700 rounded-lg text-slate-400 hover:text-cyan-400 transition-colors shadow-lg active:scale-95 ${isFullScreen ? 'hidden' : ''}`}
                     >
                         {isToolbarOpen ? <ChevronUp className="w-5 h-5" /> : <Settings className="w-5 h-5" />}
                     </button>
                 </div>
 
-                {/* Toolbar Content: Hidden on mobile unless toggled */}
-                <div className={`${isToolbarOpen ? 'flex animate-in slide-in-from-top-2 duration-200' : 'hidden'} lg:flex flex-col lg:flex-row items-center w-full lg:w-auto gap-4`}>
+                {/* Toolbar Content: Hidden on mobile unless toggled, always visible in FS */}
+                <div className={`${isToolbarOpen || isFullScreen ? 'flex animate-in slide-in-from-top-2 duration-200' : 'hidden'} lg:flex ${isFullScreen ? 'flex-row justify-between' : 'flex-col lg:flex-row'} items-center w-full lg:w-auto gap-4`}>
 
                     {/* Display Controls (Hist/POS/MA) */}
-                    <div className="flex items-center gap-2 w-full lg:w-auto justify-end">
+                    <div className={`flex items-center gap-2 lg:w-auto justify-end ${isFullScreen ? 'w-auto' : 'w-full'}`}>
                         {/* History Toggle */}
                         <button
                             onClick={() => setShowHistory(!showHistory)}
@@ -619,7 +622,7 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
                     </div>
 
                     {/* Timeframes Scrollable Area */}
-                    <div className="w-full lg:w-auto overflow-x-auto pb-1 lg:pb-0 no-scrollbar">
+                    <div className={`lg:w-auto overflow-x-auto pb-1 lg:pb-0 no-scrollbar ${isFullScreen ? 'w-auto' : 'w-full'}`}>
                         <div className="flex bg-slate-800 rounded-lg p-1 gap-1 min-w-max">
                             {TIMEFRAMES.map((tf) => (
                                 <button
