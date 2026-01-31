@@ -956,29 +956,64 @@ async fn update_risk_control(
     tracing::info!("Risk Control Updated for Account {}: Enabled={} Level={} BlockBuy={} BlockSell={}", 
         payload.mt4_account, payload.enabled, payload.risk_level, payload.block_buy, payload.block_sell);
 
-    // Insert operation log
-    let action = if payload.enabled {
-        if payload.block_all { "BLOCK_ALL".to_string() }
-        else if payload.block_buy && payload.block_sell { "BLOCK_BUY_SELL".to_string() }
-        else if payload.block_buy { "BLOCK_BUY".to_string() }
-        else if payload.block_sell { "BLOCK_SELL".to_string() }
-        else { "ENABLED".to_string() }
-    } else {
-        "DISABLED".to_string()
+    // Insert operation log ONLY when directives change
+    // Get previous state to compare
+    let prev_state = {
+        let s = state.memory.read().unwrap();
+        s.risk_controls.get(&payload.mt4_account).cloned()
     };
 
-    let _ = sqlx::query(
-        "INSERT INTO risk_control_logs (mt4_account, action, risk_level, risk_score, exit_trigger, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6)"
-    )
-    .bind(payload.mt4_account)
-    .bind(&action)
-    .bind(&payload.risk_level)
-    .bind(payload.risk_score)
-    .bind(&payload.exit_trigger)
-    .bind(chrono::Utc::now().timestamp())
-    .execute(&state.db)
-    .await;
+    let now = chrono::Utc::now().timestamp();
+
+    if let Some(prev) = &prev_state {
+        // Each directive change gets its own log entry
+        if !prev.block_buy && payload.block_buy {
+            let _ = sqlx::query("INSERT INTO risk_control_logs (mt4_account, action, risk_level, risk_score, exit_trigger, created_at) VALUES ($1, $2, $3, $4, $5, $6)")
+                .bind(payload.mt4_account).bind("禁止买入").bind(&payload.risk_level).bind(payload.risk_score).bind(&payload.exit_trigger).bind(now)
+                .execute(&state.db).await;
+        }
+        if prev.block_buy && !payload.block_buy {
+            let _ = sqlx::query("INSERT INTO risk_control_logs (mt4_account, action, risk_level, risk_score, exit_trigger, created_at) VALUES ($1, $2, $3, $4, $5, $6)")
+                .bind(payload.mt4_account).bind("允许买入").bind(&payload.risk_level).bind(payload.risk_score).bind(&payload.exit_trigger).bind(now)
+                .execute(&state.db).await;
+        }
+        if !prev.block_sell && payload.block_sell {
+            let _ = sqlx::query("INSERT INTO risk_control_logs (mt4_account, action, risk_level, risk_score, exit_trigger, created_at) VALUES ($1, $2, $3, $4, $5, $6)")
+                .bind(payload.mt4_account).bind("禁止卖出").bind(&payload.risk_level).bind(payload.risk_score).bind(&payload.exit_trigger).bind(now)
+                .execute(&state.db).await;
+        }
+        if prev.block_sell && !payload.block_sell {
+            let _ = sqlx::query("INSERT INTO risk_control_logs (mt4_account, action, risk_level, risk_score, exit_trigger, created_at) VALUES ($1, $2, $3, $4, $5, $6)")
+                .bind(payload.mt4_account).bind("允许卖出").bind(&payload.risk_level).bind(payload.risk_score).bind(&payload.exit_trigger).bind(now)
+                .execute(&state.db).await;
+        }
+        if !prev.block_all && payload.block_all {
+            let _ = sqlx::query("INSERT INTO risk_control_logs (mt4_account, action, risk_level, risk_score, exit_trigger, created_at) VALUES ($1, $2, $3, $4, $5, $6)")
+                .bind(payload.mt4_account).bind("全部禁止").bind(&payload.risk_level).bind(payload.risk_score).bind(&payload.exit_trigger).bind(now)
+                .execute(&state.db).await;
+        }
+        if prev.block_all && !payload.block_all {
+            let _ = sqlx::query("INSERT INTO risk_control_logs (mt4_account, action, risk_level, risk_score, exit_trigger, created_at) VALUES ($1, $2, $3, $4, $5, $6)")
+                .bind(payload.mt4_account).bind("解除全禁").bind(&payload.risk_level).bind(payload.risk_score).bind(&payload.exit_trigger).bind(now)
+                .execute(&state.db).await;
+        }
+        if prev.exit_trigger != payload.exit_trigger && payload.exit_trigger != "NONE" {
+            let trigger_action = match payload.exit_trigger.as_str() {
+                "FORCE_EXIT" => "强制退出",
+                "TACTICAL_EXIT" => "战术退出",
+                "LAYER_LOCK" => "锁定加仓",
+                _ => "触发变更"
+            };
+            let _ = sqlx::query("INSERT INTO risk_control_logs (mt4_account, action, risk_level, risk_score, exit_trigger, created_at) VALUES ($1, $2, $3, $4, $5, $6)")
+                .bind(payload.mt4_account).bind(trigger_action).bind(&payload.risk_level).bind(payload.risk_score).bind(&payload.exit_trigger).bind(now)
+                .execute(&state.db).await;
+        }
+    } else if payload.enabled {
+        // First time activation
+        let _ = sqlx::query("INSERT INTO risk_control_logs (mt4_account, action, risk_level, risk_score, exit_trigger, created_at) VALUES ($1, $2, $3, $4, $5, $6)")
+            .bind(payload.mt4_account).bind("系统启动").bind(&payload.risk_level).bind(payload.risk_score).bind(&payload.exit_trigger).bind(now)
+            .execute(&state.db).await;
+    }
 
     Json(updated_payload).into_response()
 }
