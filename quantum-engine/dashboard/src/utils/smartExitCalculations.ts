@@ -174,19 +174,22 @@ export const calculateLayerScore = (
  * 5.5 回撤评分计算 (30%) 🆕
  * 回撤越高，评分越高（危险）
  * 
- * 阈值设计：
- * - 10% 回撤: 6 分
- * - 25% 回撤: 15 分
+ * 采用非线性（指数1.5次方）加重：
+ * - 5% 以下回撤: 0 分 (安全区)
+ * - 10% 回撤: ~1.9 分
+ * - 25% 回撤: ~11.9 分
+ * - 40% 回撤: ~24.0 分
  * - 50% 回撤: 30 分（满分）
- * - >50% 回撤: 直接 30 分
  * 
- * @param maxDrawdown - 最大回撤百分比 (0-100)
+ * @param currentDrawdown - 当前/最大回撤百分比 (0-100)
  * @returns 回撤分 (0-30)
  */
-export const calculateDrawdownScore = (maxDrawdown: number): number => {
-    if (maxDrawdown <= 0) return 0;
-    if (maxDrawdown >= 50) return 30;
-    return 30 * (maxDrawdown / 50);
+export const calculateDrawdownScore = (currentDrawdown: number): number => {
+    if (currentDrawdown <= 5) return 0;  // 5% 以下安全区
+    if (currentDrawdown >= 50) return 30;
+
+    // 使用平方项增加敏感度：(dd/50)^1.5 * 30
+    return Math.min(30, Math.pow(currentDrawdown / 50, 1.5) * 30);
 };
 
 /**
