@@ -240,6 +240,43 @@ const App = () => {
     return () => clearInterval(interval);
   }, [auth.token]);
 
+  // Memoized Sort active symbols
+  const sortedActiveSymbols = useMemo(() => {
+    if (!data?.active_symbols) return [];
+    return [...data.active_symbols].sort((a, b) => {
+      const hasPosA = (data?.account_status?.positions || []).some((p: any) => p.symbol === a);
+      const hasPosB = (data?.account_status?.positions || []).some((p: any) => p.symbol === b);
+
+      if (hasPosA && !hasPosB) return -1;
+      if (!hasPosA && hasPosB) return 1;
+      return a.localeCompare(b);
+    });
+  }, [data?.active_symbols, data?.account_status?.positions]);
+
+  // 🆕 计算交易统计 (用于马丁策略检测)
+  const tradeStats = useMemo(() => {
+    if (!history || history.length === 0) return undefined;
+
+    // 过滤当前品种的交易
+    const filteredTrades = selectedSymbol
+      ? history.filter(t => t.symbol === selectedSymbol)
+      : history;
+
+    if (filteredTrades.length < 5) return undefined; // 样本太少不计算
+
+    const wins = filteredTrades.filter(t => t.profit > 0);
+    const losses = filteredTrades.filter(t => t.profit < 0);
+
+    const winRate = (wins.length / filteredTrades.length) * 100;
+    const grossProfit = wins.reduce((acc, t) => acc + t.profit, 0);
+    const grossLoss = Math.abs(losses.reduce((acc, t) => acc + t.profit, 0));
+    const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? 999 : 0;
+    const avgWin = wins.length > 0 ? grossProfit / wins.length : 0;
+    const avgLoss = losses.length > 0 ? grossLoss / losses.length : 0;
+
+    return { winRate, profitFactor, avgWin, avgLoss };
+  }, [history, selectedSymbol]);
+
   const handleBindAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -333,6 +370,7 @@ const App = () => {
     }
   };
 
+  // 3. Render Logic (Early Returns)
   if (!auth.token) {
     return <LoginPage onLogin={handleLogin} />;
   }
@@ -347,45 +385,6 @@ const App = () => {
   );
 
   const currentMarketData = selectedSymbol && data?.market_data ? data.market_data[selectedSymbol] : null;
-
-  // Memoized Sort active symbols
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const sortedActiveSymbols = useMemo(() => {
-    if (!data?.active_symbols) return [];
-    return [...data.active_symbols].sort((a, b) => {
-      const hasPosA = (data?.account_status?.positions || []).some((p: any) => p.symbol === a);
-      const hasPosB = (data?.account_status?.positions || []).some((p: any) => p.symbol === b);
-
-      if (hasPosA && !hasPosB) return -1;
-      if (!hasPosA && hasPosB) return 1;
-      return a.localeCompare(b);
-    });
-  }, [data?.active_symbols, data?.account_status?.positions]);
-
-  // 🆕 计算交易统计 (用于马丁策略检测)
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const tradeStats = useMemo(() => {
-    if (!history || history.length === 0) return undefined;
-
-    // 过滤当前品种的交易
-    const filteredTrades = selectedSymbol
-      ? history.filter(t => t.symbol === selectedSymbol)
-      : history;
-
-    if (filteredTrades.length < 5) return undefined; // 样本太少不计算
-
-    const wins = filteredTrades.filter(t => t.profit > 0);
-    const losses = filteredTrades.filter(t => t.profit < 0);
-
-    const winRate = (wins.length / filteredTrades.length) * 100;
-    const grossProfit = wins.reduce((acc, t) => acc + t.profit, 0);
-    const grossLoss = Math.abs(losses.reduce((acc, t) => acc + t.profit, 0));
-    const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? 999 : 0;
-    const avgWin = wins.length > 0 ? grossProfit / wins.length : 0;
-    const avgLoss = losses.length > 0 ? grossLoss / losses.length : 0;
-
-    return { winRate, profitFactor, avgWin, avgLoss };
-  }, [history, selectedSymbol]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans">
