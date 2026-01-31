@@ -319,9 +319,19 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
 
                 <div className="flex flex-col items-center justify-center bg-slate-900/50 rounded-lg p-2 border border-slate-800/50">
                     <span className="text-[9px] text-slate-500 mb-0.5">综合评分</span>
-                    <span className={`text-2xl font-mono font-bold ${triggerConfig.color}`}>
-                        {smartMetrics.riskScore.toFixed(0)}
-                    </span>
+                    <div className="flex items-center gap-1">
+                        <span className={`text-2xl font-mono font-bold ${triggerConfig.color}`}>
+                            {smartMetrics.riskScore.toFixed(0)}
+                        </span>
+                        {smartMetrics.isMartingalePattern && (
+                            <span
+                                className="cursor-help text-sm animate-pulse"
+                                title="🧪 检测到马丁特征：高胜率+低盈亏比，风险集中于单次亏损"
+                            >
+                                🧪
+                            </span>
+                        )}
+                    </div>
                     <span className="text-[8px] text-slate-500">/100</span>
                 </div>
             </div>
