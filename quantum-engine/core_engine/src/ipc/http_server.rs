@@ -304,6 +304,14 @@ async fn handle_market_data_batch(State(state): State<Arc<CombinedState>>, Json(
 }
 
 async fn process_market_data(state: &Arc<CombinedState>, payload: MarketData) {
+    // Filter Weekend Data (Professional Standard)
+    let dt = chrono::DateTime::from_timestamp(payload.timestamp as i64, 0).unwrap_or_default();
+    let weekday = dt.weekday();
+    if weekday == chrono::Weekday::Sat || weekday == chrono::Weekday::Sun {
+        // tracing::warn!("Skipping weekend data: {} on {:?}", payload.symbol, weekday);
+        return;
+    }
+
     tracing::info!("Market Data: {} Bid:{} Ask:{}", payload.symbol, payload.bid, payload.ask);
     
     // Update Memory
