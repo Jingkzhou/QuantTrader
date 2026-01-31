@@ -186,6 +186,7 @@ pub async fn start_server(db_pool: PgPool) {
         .route("/api/v1/accounts", get(list_accounts))
         .route("/api/v1/accounts/bind", post(bind_account))
         .route("/api/v1/risk_control", get(get_risk_control).put(update_risk_control))
+        .route("/api/v1/risk_control_logs", get(get_risk_control_logs))
         .route("/api/v1/velocity", get(get_velocity))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
@@ -955,6 +956,30 @@ async fn update_risk_control(
     tracing::info!("Risk Control Updated for Account {}: Enabled={} Level={} BlockBuy={} BlockSell={}", 
         payload.mt4_account, payload.enabled, payload.risk_level, payload.block_buy, payload.block_sell);
 
+    // Insert operation log
+    let action = if payload.enabled {
+        if payload.block_all { "BLOCK_ALL".to_string() }
+        else if payload.block_buy && payload.block_sell { "BLOCK_BUY_SELL".to_string() }
+        else if payload.block_buy { "BLOCK_BUY".to_string() }
+        else if payload.block_sell { "BLOCK_SELL".to_string() }
+        else { "ENABLED".to_string() }
+    } else {
+        "DISABLED".to_string()
+    };
+
+    let _ = sqlx::query(
+        "INSERT INTO risk_control_logs (mt4_account, action, risk_level, risk_score, exit_trigger, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6)"
+    )
+    .bind(payload.mt4_account)
+    .bind(&action)
+    .bind(&payload.risk_level)
+    .bind(payload.risk_score)
+    .bind(&payload.exit_trigger)
+    .bind(chrono::Utc::now().timestamp())
+    .execute(&state.db)
+    .await;
+
     Json(updated_payload).into_response()
 }
 
@@ -1038,4 +1063,52 @@ async fn get_velocity(
         rvol,
         timestamp: now,
     }))
+}
+
+// ========== Risk Control Logs ==========
+#[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+struct RiskControlLog {
+    id: i64,
+    mt4_account: i64,
+    action: String,
+    risk_level: Option<String>,
+    risk_score: Option<f64>,
+    exit_trigger: Option<String>,
+    created_at: i64,
+}
+
+async fn get_risk_control_logs(
+    State(state): State<Arc<CombinedState>>,
+    claims: Claims,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> Result<Json<Vec<RiskControlLog>>, (axum::http::StatusCode, String)> {
+    let mt4_account = params.get("mt4_account").and_then(|id| id.parse::<i64>().ok())
+        .ok_or((axum::http::StatusCode::BAD_REQUEST, "Missing mt4_account".to_string()))?;
+    
+    // Verify ownership
+    let _ = sqlx::query!(
+        "SELECT 1 as \"exists!\" FROM user_accounts WHERE user_id = $1 AND mt4_account = $2",
+        claims.user_id, mt4_account
+    )
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .ok_or((axum::http::StatusCode::FORBIDDEN, "Access denied".to_string()))?;
+
+    let limit = params.get("limit").and_then(|l| l.parse::<i64>().ok()).unwrap_or(20);
+
+    let logs = sqlx::query_as::<_, RiskControlLog>(
+        "SELECT id, mt4_account, action, risk_level, risk_score, exit_trigger, created_at 
+         FROM risk_control_logs 
+         WHERE mt4_account = $1 
+         ORDER BY created_at DESC 
+         LIMIT $2"
+    )
+    .bind(mt4_account)
+    .bind(limit)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(logs))
 }

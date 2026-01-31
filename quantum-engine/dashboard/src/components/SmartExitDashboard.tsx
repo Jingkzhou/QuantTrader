@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import axios from 'axios';
 import {
     Activity, TrendingDown, TrendingUp, AlertTriangle,
-    Shield, ShieldAlert, ShieldCheck, Radar, Target
+    Shield, ShieldAlert, ShieldCheck, Radar, Target, Clock
 } from 'lucide-react';
 import type { AccountStatus } from '../types';
 import { API_BASE } from '../config';
@@ -132,6 +132,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
     const [syncStatus, setSyncStatus] = useState<'IDLE' | 'SYNCING' | 'ERROR'>('IDLE');
     const [hasUserToggled, setHasUserToggled] = useState(false);
     const [velocityData, setVelocityData] = useState<VelocityData | null>(null);
+    const [operationLogs, setOperationLogs] = useState<any[]>([]);
 
     // Use bid/ask if available, otherwise fall back to close price
     const bid = currentBid ?? currentPrice ?? 0;
@@ -260,6 +261,27 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
         fetchRiskState();
     }, [authToken, accountStatus.mt4_account]);
 
+    // Fetch Operation Logs
+    useEffect(() => {
+        if (!authToken || !accountStatus.mt4_account) return;
+
+        const fetchLogs = async () => {
+            try {
+                const res = await axios.get(`${API_BASE}/risk_control_logs`, {
+                    params: { mt4_account: accountStatus.mt4_account, limit: 10 },
+                    headers: { Authorization: `Bearer ${authToken}` }
+                });
+                setOperationLogs(res.data || []);
+            } catch {
+                // Endpoint may not exist yet
+            }
+        };
+
+        fetchLogs();
+        const interval = setInterval(fetchLogs, 10000);
+        return () => clearInterval(interval);
+    }, [authToken, accountStatus.mt4_account]);
+
     const handleToggleLinkage = () => {
         setHasUserToggled(true);
         setEaLinkageEnabled(prev => !prev);
@@ -331,8 +353,8 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
             `}>
             {/* Ambient Glow Gradient */}
             <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r ${riskLevel === 'CRITICAL' ? 'from-rose-500 via-rose-400 to-rose-600' :
-                    riskLevel === 'WARNING' ? 'from-amber-500 via-amber-400 to-amber-600' :
-                        'from-emerald-500 via-cyan-500 to-emerald-600'
+                riskLevel === 'WARNING' ? 'from-amber-500 via-amber-400 to-amber-600' :
+                    'from-emerald-500 via-cyan-500 to-emerald-600'
                 } opacity-80`} />
 
             {/* Main Content Grid */}
@@ -472,6 +494,40 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                     {smartMetrics.exitTrigger !== 'NONE' && (
                         <div className={`px-2 py-1 rounded text-[9px] font-bold text-center border ${triggerConfig.bgColor} ${triggerConfig.color} ${triggerConfig.borderColor}`}>
                             {smartMetrics.triggerReason}
+                        </div>
+                    )}
+
+                    {/* Operation History Bar */}
+                    {operationLogs.length > 0 && (
+                        <div className="relative group/logs">
+                            <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-900/50 rounded border border-slate-800 cursor-pointer hover:border-slate-700 transition-colors">
+                                <Clock size={10} className="text-slate-500" />
+                                <span className="text-[9px] text-slate-500">最近 {operationLogs.length} 条操作</span>
+                                <div className="flex-1 h-1 bg-slate-800 rounded-full overflow-hidden">
+                                    <div
+                                        className="h-full bg-gradient-to-r from-cyan-500 to-indigo-500 transition-all duration-300"
+                                        style={{ width: `${Math.min(100, operationLogs.length * 10)}%` }}
+                                    />
+                                </div>
+                            </div>
+                            {/* Hover Tooltip */}
+                            <div className="absolute bottom-full left-0 right-0 mb-1 hidden group-hover/logs:block z-50">
+                                <div className="bg-slate-950 border border-slate-700 rounded-lg p-2 shadow-xl max-h-40 overflow-y-auto">
+                                    <div className="text-[9px] text-slate-400 font-bold mb-1.5 uppercase tracking-wider">操作历史</div>
+                                    {operationLogs.map((log, i) => (
+                                        <div key={log.id || i} className="flex items-center justify-between gap-2 py-1 border-b border-slate-800 last:border-0">
+                                            <span className={`text-[9px] font-mono font-bold ${log.action === 'DISABLED' ? 'text-slate-500' :
+                                                    log.action?.includes('BLOCK') ? 'text-rose-400' : 'text-cyan-400'
+                                                }`}>
+                                                {log.action}
+                                            </span>
+                                            <span className="text-[8px] text-slate-600">
+                                                {new Date(log.created_at * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
                     )}
                 </div>

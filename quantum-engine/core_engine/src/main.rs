@@ -184,6 +184,24 @@ async fn main() {
     // Migration: Add enabled column if not exists
     let _ = sqlx::query("ALTER TABLE risk_controls ADD COLUMN IF NOT EXISTS enabled BOOLEAN DEFAULT FALSE").execute(&pool).await;
 
+    // 5. Risk Control Logs for EA Operation History
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS risk_control_logs (
+            id BIGSERIAL PRIMARY KEY,
+            mt4_account BIGINT NOT NULL,
+            action TEXT NOT NULL,
+            risk_level TEXT,
+            risk_score DOUBLE PRECISION,
+            exit_trigger TEXT,
+            created_at BIGINT NOT NULL
+        )"
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to create risk_control_logs table");
+
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_rcl_account_time ON risk_control_logs (mt4_account, created_at DESC)").execute(&pool).await;
+
 
     // 3. Add feature engineering fields to trade_history for ML optimization
     let _ = sqlx::query("ALTER TABLE trade_history ADD COLUMN IF NOT EXISTS liq_dist_at_open DOUBLE PRECISION").execute(&pool).await;
