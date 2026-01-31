@@ -969,22 +969,22 @@ async fn update_risk_control(
         // Each directive change gets its own log entry
         if !prev.block_buy && payload.block_buy {
             let _ = sqlx::query("INSERT INTO risk_control_logs (mt4_account, action, risk_level, risk_score, exit_trigger, created_at) VALUES ($1, $2, $3, $4, $5, $6)")
-                .bind(payload.mt4_account).bind("禁止买入").bind(&payload.risk_level).bind(payload.risk_score).bind(&payload.exit_trigger).bind(now)
+                .bind(payload.mt4_account).bind("禁止做多").bind(&payload.risk_level).bind(payload.risk_score).bind(&payload.exit_trigger).bind(now)
                 .execute(&state.db).await;
         }
         if prev.block_buy && !payload.block_buy {
             let _ = sqlx::query("INSERT INTO risk_control_logs (mt4_account, action, risk_level, risk_score, exit_trigger, created_at) VALUES ($1, $2, $3, $4, $5, $6)")
-                .bind(payload.mt4_account).bind("允许买入").bind(&payload.risk_level).bind(payload.risk_score).bind(&payload.exit_trigger).bind(now)
+                .bind(payload.mt4_account).bind("允许做多").bind(&payload.risk_level).bind(payload.risk_score).bind(&payload.exit_trigger).bind(now)
                 .execute(&state.db).await;
         }
         if !prev.block_sell && payload.block_sell {
             let _ = sqlx::query("INSERT INTO risk_control_logs (mt4_account, action, risk_level, risk_score, exit_trigger, created_at) VALUES ($1, $2, $3, $4, $5, $6)")
-                .bind(payload.mt4_account).bind("禁止卖出").bind(&payload.risk_level).bind(payload.risk_score).bind(&payload.exit_trigger).bind(now)
+                .bind(payload.mt4_account).bind("禁止做空").bind(&payload.risk_level).bind(payload.risk_score).bind(&payload.exit_trigger).bind(now)
                 .execute(&state.db).await;
         }
         if prev.block_sell && !payload.block_sell {
             let _ = sqlx::query("INSERT INTO risk_control_logs (mt4_account, action, risk_level, risk_score, exit_trigger, created_at) VALUES ($1, $2, $3, $4, $5, $6)")
-                .bind(payload.mt4_account).bind("允许卖出").bind(&payload.risk_level).bind(payload.risk_score).bind(&payload.exit_trigger).bind(now)
+                .bind(payload.mt4_account).bind("允许做空").bind(&payload.risk_level).bind(payload.risk_score).bind(&payload.exit_trigger).bind(now)
                 .execute(&state.db).await;
         }
         if !prev.block_all && payload.block_all {
