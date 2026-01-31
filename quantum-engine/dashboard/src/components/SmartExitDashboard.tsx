@@ -82,7 +82,7 @@ const RiskGauge = ({ score, level }: { score: number, level: RiskLevel }) => {
                     }`}>
                     {score.toFixed(0)}
                 </span>
-                <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider mt-[-2px]">RISK</span>
+                <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider mt-[-2px]">风险指数</span>
             </div>
             {/* Holographic Bloom */}
             <div className={`absolute inset-0 rounded-full blur-xl opacity-20 ${level === 'CRITICAL' ? 'bg-rose-500' : level === 'WARNING' ? 'bg-amber-500' : 'bg-emerald-500'
@@ -348,7 +348,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                             dominantDirection === 'SELL' ? <TrendingDown size={12} className="text-rose-400" /> :
                                 <Activity size={12} className="text-slate-400" />}
                         <span className="text-[10px] font-bold tracking-wider text-slate-300">
-                            {dominantDirection === 'BUY' ? 'LONG' : dominantDirection === 'SELL' ? 'SHORT' : 'HEDGE'}
+                            {dominantDirection === 'BUY' ? '做多' : dominantDirection === 'SELL' ? '做空' : '对冲'}
                         </span>
                     </div>
 
@@ -368,15 +368,15 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                     <div className="col-span-1 bg-slate-900/50 rounded-xl p-3 border border-slate-800 flex flex-col justify-between relative overflow-hidden group-hover:border-slate-700 transition-colors">
                         <div className="flex items-center gap-2 mb-1">
                             <Target size={12} className="text-slate-500" />
-                            <span className="text-[10px] text-slate-500 uppercase font-mono tracking-wider">Liquidation</span>
+                            <span className="text-[10px] text-slate-500 uppercase font-mono tracking-wider">强平价格</span>
                         </div>
                         <div className="text-lg font-mono font-bold text-slate-200 tracking-tight">
                             {liquidationPrice > 0 ? liquidationPrice.toFixed(2) : '---'}
                         </div>
                         <div className="text-[9px] text-slate-600 font-mono mt-1">
                             {currentPrice && liquidationPrice > 0
-                                ? `Gap: ${(Math.abs(liquidationPrice - currentPrice) / currentPrice * 100).toFixed(2)}%`
-                                : 'No Exposure'}
+                                ? `偏离: ${(Math.abs(liquidationPrice - currentPrice) / currentPrice * 100).toFixed(2)}%`
+                                : '无敞口'}
                         </div>
                         {/* Decorative Line */}
                         <div className="absolute bottom-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-rose-500/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -386,7 +386,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                     <div className="col-span-1 bg-slate-900/50 rounded-xl p-3 border border-slate-800 flex flex-col justify-between overflow-hidden group-hover:border-slate-700 transition-colors">
                         <div className="flex items-center gap-2 mb-1">
                             <Shield size={12} className="text-slate-500" />
-                            <span className="text-[10px] text-slate-500 uppercase font-mono tracking-wider">Distance</span>
+                            <span className="text-[10px] text-slate-500 uppercase font-mono tracking-wider">生存距离</span>
                         </div>
                         <div className={`text-lg font-mono font-bold tracking-tight ${survivalDistance < atr ? 'text-rose-400' : 'text-emerald-400'}`}>
                             {survivalDistance !== Infinity ? survivalDistance.toFixed(0) : '∞'}
@@ -401,13 +401,13 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                     <div className="col-span-2 bg-slate-900/50 rounded-xl p-3 border border-slate-800 flex flex-col gap-2.5">
                         <div className="flex items-center gap-2">
                             <Radar size={12} className="text-cyan-500" />
-                            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Risk Factors</span>
+                            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">风险因子</span>
                         </div>
                         <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-                            <DataBar label="LAYER LOAD" value={smartMetrics.layerScore} max={20} color="bg-cyan-500" warningThreshold={15} />
-                            <DataBar label="DRAWDOWN" value={smartMetrics.drawdownScore} max={30} color="bg-orange-500" warningThreshold={20} />
-                            <DataBar label="VELOCITY" value={smartMetrics.velocityScore} max={20} color="bg-indigo-500" warningThreshold={15} />
-                            <DataBar label="DISTANCE" value={smartMetrics.distanceScore} max={30} color="bg-emerald-500" warningThreshold={25} />
+                            <DataBar label="层级负荷" value={smartMetrics.layerScore} max={20} color="bg-cyan-500" warningThreshold={15} />
+                            <DataBar label="回撤深度" value={smartMetrics.drawdownScore} max={30} color="bg-orange-500" warningThreshold={20} />
+                            <DataBar label="价格速度" value={smartMetrics.velocityScore} max={20} color="bg-indigo-500" warningThreshold={15} />
+                            <DataBar label="生存空间" value={smartMetrics.distanceScore} max={30} color="bg-emerald-500" warningThreshold={25} />
                         </div>
                     </div>
                 </div>
@@ -417,7 +417,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                     {/* Velocity Monitor Panel */}
                     <div className="bg-slate-900/40 rounded-xl p-3 border border-slate-800 relative overflow-hidden">
                         <div className="flex justify-between items-center mb-2">
-                            <span className="text-[10px] text-slate-500 font-bold uppercase">Market Pulse</span>
+                            <span className="text-[10px] text-slate-500 font-bold uppercase">市场脉搏</span>
                             <Activity size={12} className={smartMetrics.isVelocityWarning ? 'text-rose-500 animate-pulse' : 'text-slate-600'} />
                         </div>
 
@@ -433,13 +433,13 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
 
                         <div className="flex justify-between text-[10px] font-mono border-t border-slate-800/50 pt-1.5">
                             <div className="flex flex-col">
-                                <span className="text-slate-600 text-[8px]">M1 Velo</span>
+                                <span className="text-slate-600 text-[8px]">M1 速度</span>
                                 <span className={smartMetrics.velocityM1 > 5 ? 'text-rose-400' : 'text-slate-300'}>
                                     ${smartMetrics.velocityM1.toFixed(2)}
                                 </span>
                             </div>
                             <div className="flex flex-col items-end">
-                                <span className="text-slate-600 text-[8px]">RVOL</span>
+                                <span className="text-slate-600 text-[8px]">相对量能</span>
                                 <span className={smartMetrics.rvol > 2 ? 'text-amber-400' : 'text-slate-300'}>
                                     {smartMetrics.rvol.toFixed(1)}x
                                 </span>
@@ -459,7 +459,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                         `}
                     >
                         {eaLinkageEnabled ? <ShieldCheck size={14} /> : <ShieldAlert size={14} />}
-                        {eaLinkageEnabled ? 'EA ARMED' : 'EA DISARMED'}
+                        {eaLinkageEnabled ? 'EA 警戒中' : 'EA 已解除'}
 
                         {/* Scanning Effect */}
                         {eaLinkageEnabled && (
@@ -482,7 +482,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                 <div className="absolute inset-0 z-50 pointer-events-none flex items-center justify-center bg-rose-950/20 backdrop-blur-[1px]">
                     <div className="border border-rose-500/50 bg-black/80 text-rose-500 px-6 py-4 rounded-xl shadow-[0_0_50px_rgba(244,63,94,0.5)] animate-pulse flex flex-col items-center">
                         <AlertTriangle size={32} className="mb-2" />
-                        <span className="text-xl font-bold font-mono tracking-widest">CRITICAL EXIT</span>
+                        <span className="text-xl font-bold font-mono tracking-widest">紧急逃生</span>
                         <span className="text-xs text-rose-400 mt-1">{smartMetrics.triggerReason}</span>
                     </div>
                 </div>
