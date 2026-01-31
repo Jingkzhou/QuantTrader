@@ -20,11 +20,12 @@ export interface SmartExitMetrics {
     velocityM1: number;            // 1分钟价格动量 (USD)
     rvol: number;                  // 相对成交量因子
 
-    // 综合评分
+    // 综合评分 (新权重: 距离30% + 速度20% + 层级20% + 回撤30% = 100%)
     riskScore: number;             // 0-100 综合风险评分
-    distanceScore: number;         // 距离分 (40%)
-    velocityScore: number;         // 速度分 (30%)
-    layerScore: number;            // 层级分 (30%)
+    distanceScore: number;         // 距离分 (30%)
+    velocityScore: number;         // 速度分 (20%)
+    layerScore: number;            // 层级分 (20%)
+    drawdownScore: number;         // 回撤分 (30%) 🆕
 
     // 触发状态
     exitTrigger: ExitTrigger;
@@ -33,6 +34,10 @@ export interface SmartExitMetrics {
     // 辅助信息
     isVelocityWarning: boolean;    // Velocity 接近阈值
     isRvolWarning: boolean;        // 放量下跌警告
+
+    // 马丁策略检测 🆕
+    isMartingalePattern: boolean;  // 是否有马丁特征
+    martingaleWarning: string;     // 马丁警告信息
 }
 
 export interface VelocityData {
@@ -166,8 +171,62 @@ export const calculateLayerScore = (
 };
 
 /**
+ * 5.5 回撤评分计算 (30%) 🆕
+ * 回撤越高，评分越高（危险）
+ * 
+ * 阈值设计：
+ * - 10% 回撤: 6 分
+ * - 25% 回撤: 15 分
+ * - 50% 回撤: 30 分（满分）
+ * - >50% 回撤: 直接 30 分
+ * 
+ * @param maxDrawdown - 最大回撤百分比 (0-100)
+ * @returns 回撤分 (0-30)
+ */
+export const calculateDrawdownScore = (maxDrawdown: number): number => {
+    if (maxDrawdown <= 0) return 0;
+    if (maxDrawdown >= 50) return 30;
+    return 30 * (maxDrawdown / 50);
+};
+
+/**
+ * 5.6 马丁策略特征检测 🆕
+ * 检测条件：高胜率 + 低盈亏比 = 典型抗单策略
+ * 
+ * @param winRate - 胜率 (0-100)
+ * @param profitFactor - 盈亏比
+ * @param avgWin - 平均盈利
+ * @param avgLoss - 平均亏损
+ * @returns 马丁检测结果
+ */
+export const detectMartingalePattern = (
+    winRate: number,
+    profitFactor: number,
+    avgWin: number,
+    avgLoss: number
+): { isMartingale: boolean; warning: string } => {
+    // 条件1: 高胜率 (>65%) + 低盈亏比 (<1.2)
+    if (winRate > 65 && profitFactor < 1.2) {
+        return {
+            isMartingale: true,
+            warning: '⚠️ 高胜率低盈亏比，疑似马丁策略'
+        };
+    }
+
+    // 条件2: 平均亏损 > 3倍平均盈利
+    if (avgLoss > 0 && avgWin > 0 && avgLoss > avgWin * 3) {
+        return {
+            isMartingale: true,
+            warning: '⚠️ 单笔亏损远超盈利，风险集中'
+        };
+    }
+
+    return { isMartingale: false, warning: '' };
+};
+
+/**
  * 6. 综合风险评分计算
- * 整合三维评分
+ * 整合四维评分（新权重: 距离30% + 速度20% + 层级20% + 回撤30%）
  */
 export const calculateIntegratedRiskScore = (
     survivalDistance: number,
@@ -175,7 +234,9 @@ export const calculateIntegratedRiskScore = (
     velocityM1: number,
     rvol: number,
     positions: Position[],
-    maxLayerAllowed: number = SMART_EXIT_CONFIG.DEFAULT_MAX_LAYER
+    maxLayerAllowed: number = SMART_EXIT_CONFIG.DEFAULT_MAX_LAYER,
+    maxDrawdown: number = 0,      // 🆕 账户最大回撤 (%)
+    tradeStats?: { winRate: number; profitFactor: number; avgWin: number; avgLoss: number }  // 🆕
 ): SmartExitMetrics => {
     // 计算基础信息
     const buyPositions = positions.filter(p => p.side === 'BUY');
@@ -192,21 +253,43 @@ export const calculateIntegratedRiskScore = (
     // 计算层数（最大单边持仓数）
     const layerCount = Math.max(buyPositions.length, sellPositions.length);
 
-    // 计算三维评分
-    const distanceScore = calculateDistanceScore(survivalDistance, atr);
-    const velocityScore = calculateVelocityScore(velocityM1, dominantDirection);
-    const layerScore = calculateLayerScore(layerCount, maxLayerAllowed);
+    // ========== 四维评分计算 ==========
+    // 原始评分（基于旧权重）
+    const distanceScoreRaw = calculateDistanceScore(survivalDistance, atr);  // 0-40
+    const velocityScoreRaw = calculateVelocityScore(velocityM1, dominantDirection);  // 0-30
+    const layerScoreRaw = calculateLayerScore(layerCount, maxLayerAllowed);  // 0-30
+
+    // 重新映射为新权重
+    const distanceScore = distanceScoreRaw * 0.75;   // 40 -> 30 (0.75倍)
+    const velocityScore = velocityScoreRaw * 0.667;  // 30 -> 20 (0.667倍)
+    const layerScore = layerScoreRaw * 0.667;        // 30 -> 20 (0.667倍)
+
+    // 🆕 回撤评分 (30%)
+    const drawdownScore = calculateDrawdownScore(maxDrawdown);
 
     // 综合评分
-    let riskScore = distanceScore + velocityScore + layerScore;
+    let riskScore = distanceScore + velocityScore + layerScore + drawdownScore;
 
     // RVOL 加速器：放量时加重评分
     if (rvol >= SMART_EXIT_CONFIG.RVOL_CRITICAL) {
-        // 放量下跌确认，评分 * 1.2
         riskScore = Math.min(100, riskScore * 1.2);
     } else if (rvol >= SMART_EXIT_CONFIG.RVOL_WARNING) {
-        // 轻微放量，评分 * 1.1
         riskScore = Math.min(100, riskScore * 1.1);
+    }
+
+    // 🆕 马丁策略检测
+    const martingaleResult = tradeStats
+        ? detectMartingalePattern(
+            tradeStats.winRate,
+            tradeStats.profitFactor,
+            tradeStats.avgWin,
+            tradeStats.avgLoss
+        )
+        : { isMartingale: false, warning: '' };
+
+    // 马丁策略惩罚：如果检测到马丁特征，额外加 10 分
+    if (martingaleResult.isMartingale) {
+        riskScore = Math.min(100, riskScore + 10);
     }
 
     // 确定触发状态
@@ -230,10 +313,13 @@ export const calculateIntegratedRiskScore = (
         distanceScore: Math.round(distanceScore * 10) / 10,
         velocityScore: Math.round(velocityScore * 10) / 10,
         layerScore: Math.round(layerScore * 10) / 10,
+        drawdownScore: Math.round(drawdownScore * 10) / 10,
         exitTrigger,
         triggerReason,
         isVelocityWarning,
-        isRvolWarning
+        isRvolWarning,
+        isMartingalePattern: martingaleResult.isMartingale,
+        martingaleWarning: martingaleResult.warning
     };
 };
 

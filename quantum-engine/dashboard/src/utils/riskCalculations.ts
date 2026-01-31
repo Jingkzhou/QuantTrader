@@ -1,4 +1,4 @@
-import type { AccountStatus, MarketData, Position } from '../types';
+import type { AccountStatus } from '../types';
 
 export interface RiskMetrics {
     liquidationPrice: number;
@@ -88,7 +88,6 @@ export const calculateRiskScore = (
 
     if (atr > 0 && Math.abs(netLots) > 0) {
         const stressLoss = Math.abs(netLots) * (1.5 * atr) * symbolInfo.contractSize;
-        const equityAfterStress = account.equity - stressLoss;
         const stressImpact = stressLoss / account.equity;
 
         // If loss > 20% of equity, full 30 points.

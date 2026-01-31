@@ -31,6 +31,8 @@ interface SmartExitDashboardProps {
     atrH1?: number;
     authToken?: string;
     selectedSymbol?: string;
+    maxDrawdown?: number;  // 🆕 最大回撤 (%)
+    tradeStats?: { winRate: number; profitFactor: number; avgWin: number; avgLoss: number };  // 🆕 交易统计
 }
 
 export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
@@ -42,7 +44,9 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
     atr,
     atrH1 = 0,
     authToken,
-    selectedSymbol = 'XAUUSD'
+    selectedSymbol = 'XAUUSD',
+    maxDrawdown = 0,  // 🆕
+    tradeStats         // 🆕
 }) => {
     // --- 1. Hooks (State & Memos) ---
     const [eaLinkageEnabled, setEaLinkageEnabled] = useState(false);
@@ -124,14 +128,16 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
             velocityM1,
             rvol,
             accountStatus.positions,
-            SMART_EXIT_CONFIG.DEFAULT_MAX_LAYER
+            SMART_EXIT_CONFIG.DEFAULT_MAX_LAYER,
+            maxDrawdown,   // 🆕 传递回撤参数
+            tradeStats     // 🆕 传递交易统计参数
         );
 
         return {
             ...metrics,
             liquidationPrice
         };
-    }, [survivalDistance, atr, velocityData, accountStatus.positions, liquidationPrice]);
+    }, [survivalDistance, atr, velocityData, accountStatus.positions, liquidationPrice, maxDrawdown, tradeStats]);
 
     // --- 2. Side Effects ---
     // Fetch Velocity Data
@@ -381,27 +387,42 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                 )}
             </div>
 
-            {/* Score Breakdown */}
-            <div className="grid grid-cols-3 gap-2 mb-3">
+            {/* Score Breakdown - 四维评分 */}
+            <div className="grid grid-cols-4 gap-2 mb-3">
                 <div className="text-center bg-slate-900/30 rounded px-2 py-1.5 border border-slate-800/30">
                     <div className="text-[8px] text-slate-500 mb-0.5">距离分</div>
                     <div className="text-[11px] font-mono font-bold text-slate-300">
-                        {smartMetrics.distanceScore.toFixed(0)}<span className="text-slate-600">/40</span>
+                        {smartMetrics.distanceScore.toFixed(0)}<span className="text-slate-600">/30</span>
                     </div>
                 </div>
                 <div className="text-center bg-slate-900/30 rounded px-2 py-1.5 border border-slate-800/30">
                     <div className="text-[8px] text-slate-500 mb-0.5">速度分</div>
                     <div className="text-[11px] font-mono font-bold text-slate-300">
-                        {smartMetrics.velocityScore.toFixed(0)}<span className="text-slate-600">/30</span>
+                        {smartMetrics.velocityScore.toFixed(0)}<span className="text-slate-600">/20</span>
                     </div>
                 </div>
                 <div className="text-center bg-slate-900/30 rounded px-2 py-1.5 border border-slate-800/30">
                     <div className="text-[8px] text-slate-500 mb-0.5">层级分</div>
                     <div className="text-[11px] font-mono font-bold text-slate-300">
-                        {smartMetrics.layerScore.toFixed(0)}<span className="text-slate-600">/30</span>
+                        {smartMetrics.layerScore.toFixed(0)}<span className="text-slate-600">/20</span>
+                    </div>
+                </div>
+                <div className={`text-center bg-slate-900/30 rounded px-2 py-1.5 border ${smartMetrics.drawdownScore > 15 ? 'border-rose-500/50' : 'border-slate-800/30'}`}>
+                    <div className="text-[8px] text-slate-500 mb-0.5">回撤分</div>
+                    <div className={`text-[11px] font-mono font-bold ${smartMetrics.drawdownScore > 20 ? 'text-rose-400' : smartMetrics.drawdownScore > 10 ? 'text-amber-400' : 'text-slate-300'}`}>
+                        {smartMetrics.drawdownScore.toFixed(0)}<span className="text-slate-600">/30</span>
                     </div>
                 </div>
             </div>
+
+            {/* 马丁策略警告 🆕 */}
+            {smartMetrics.isMartingalePattern && (
+                <div className="mb-3 px-3 py-2 rounded-lg text-[10px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center gap-2">
+                    <AlertTriangle size={12} />
+                    <span>{smartMetrics.martingaleWarning}</span>
+                </div>
+            )}
+
 
             {/* Risk Occupancy Bar */}
             <div className="space-y-1.5 mb-3">
@@ -417,6 +438,17 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                         style={{ width: `${Math.min(100, riskOccupancy)}%` }}
                     />
                 </div>
+                {/* 🆕 主要风险源提示 */}
+                {(smartMetrics.drawdownScore > 15 || smartMetrics.layerScore > 10 || smartMetrics.isMartingalePattern) && (
+                    <div className="mt-1 flex justify-between items-center text-[9px] font-mono">
+                        <span className="text-slate-500">主要风险源:</span>
+                        <span className="text-amber-400">
+                            {smartMetrics.drawdownScore > 15 ? '资金回撤 ' : ''}
+                            {smartMetrics.layerScore > 10 ? '持仓过重 ' : ''}
+                            {smartMetrics.isMartingalePattern ? '策略抗单' : ''}
+                        </span>
+                    </div>
+                )}
             </div>
 
             {/* Footer */}

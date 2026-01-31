@@ -362,6 +362,31 @@ const App = () => {
     });
   }, [data?.active_symbols, data?.account_status?.positions]);
 
+  // 🆕 计算交易统计 (用于马丁策略检测)
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const tradeStats = useMemo(() => {
+    if (!history || history.length === 0) return undefined;
+
+    // 过滤当前品种的交易
+    const filteredTrades = selectedSymbol
+      ? history.filter(t => t.symbol === selectedSymbol)
+      : history;
+
+    if (filteredTrades.length < 5) return undefined; // 样本太少不计算
+
+    const wins = filteredTrades.filter(t => t.profit > 0);
+    const losses = filteredTrades.filter(t => t.profit < 0);
+
+    const winRate = (wins.length / filteredTrades.length) * 100;
+    const grossProfit = wins.reduce((acc, t) => acc + t.profit, 0);
+    const grossLoss = Math.abs(losses.reduce((acc, t) => acc + t.profit, 0));
+    const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? 999 : 0;
+    const avgWin = wins.length > 0 ? grossProfit / wins.length : 0;
+    const avgLoss = losses.length > 0 ? grossLoss / losses.length : 0;
+
+    return { winRate, profitFactor, avgWin, avgLoss };
+  }, [history, selectedSymbol]);
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans">
       <Navbar
@@ -409,6 +434,8 @@ const App = () => {
                   atr={atr}
                   authToken={auth.token || undefined}
                   selectedSymbol={selectedSymbol}
+                  maxDrawdown={drawdown.max}
+                  tradeStats={tradeStats}
                 />
 
 
