@@ -1,7 +1,8 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import axios from 'axios';
 import {
-    Zap, ZapOff, Activity, TrendingDown, TrendingUp, AlertTriangle, Gauge
+    Activity, TrendingDown, TrendingUp, AlertTriangle,
+    Shield, ShieldAlert, ShieldCheck, Radar, Target
 } from 'lucide-react';
 import type { AccountStatus } from '../types';
 import { API_BASE } from '../config';
@@ -31,9 +32,87 @@ interface SmartExitDashboardProps {
     atrH1?: number;
     authToken?: string;
     selectedSymbol?: string;
-    maxDrawdown?: number;  // 🆕 最大回撤 (%)
-    tradeStats?: { winRate: number; profitFactor: number; avgWin: number; avgLoss: number };  // 🆕 交易统计
+    maxDrawdown?: number;
+    tradeStats?: { winRate: number; profitFactor: number; avgWin: number; avgLoss: number };
 }
+
+// ✨ Quantum HUD Components
+const RiskGauge = ({ score, level }: { score: number, level: RiskLevel }) => {
+    const radius = 36;
+    const stroke = 6;
+    const normalizedScore = Math.min(100, Math.max(0, score));
+    const circumference = radius * 2 * Math.PI;
+    const offset = circumference - (normalizedScore / 100) * circumference;
+
+    // Color logic
+    const colorClass = level === 'CRITICAL' ? 'text-rose-500 shadow-[0_0_15px_rgba(244,63,94,0.6)]' :
+        level === 'WARNING' ? 'text-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.5)]' :
+            'text-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.4)]';
+
+    return (
+        <div className="relative w-24 h-24 flex items-center justify-center">
+            {/* Background Ring */}
+            <svg className="transform -rotate-90 w-full h-full drop-shadow-xl">
+                <circle
+                    className="text-slate-800"
+                    strokeWidth={stroke}
+                    stroke="currentColor"
+                    fill="transparent"
+                    r={radius}
+                    cx="50%"
+                    cy="50%"
+                />
+                {/* Progress Ring */}
+                <circle
+                    className={`${colorClass} transition-all duration-1000 ease-out`}
+                    strokeWidth={stroke}
+                    strokeDasharray={circumference}
+                    strokeDashoffset={offset}
+                    strokeLinecap="round"
+                    stroke="currentColor"
+                    fill="transparent"
+                    r={radius}
+                    cx="50%"
+                    cy="50%"
+                />
+            </svg>
+            {/* Center Text */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
+                <span className={`text-2xl font-bold font-mono tracking-tighter ${level === 'CRITICAL' ? 'text-rose-400' : level === 'WARNING' ? 'text-amber-400' : 'text-emerald-400'
+                    }`}>
+                    {score.toFixed(0)}
+                </span>
+                <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider mt-[-2px]">RISK</span>
+            </div>
+            {/* Holographic Bloom */}
+            <div className={`absolute inset-0 rounded-full blur-xl opacity-20 ${level === 'CRITICAL' ? 'bg-rose-500' : level === 'WARNING' ? 'bg-amber-500' : 'bg-emerald-500'
+                }`} />
+        </div>
+    );
+};
+
+const DataBar = ({ label, value, max = 100, color = 'bg-cyan-500', warningThreshold = 80 }: any) => {
+    const percent = Math.min(100, Math.max(0, (value / max) * 100));
+    const isWarning = percent > warningThreshold;
+    const finalColor = isWarning ? 'bg-rose-500' : color;
+
+    return (
+        <div className="flex flex-col gap-1 w-full">
+            <div className="flex justify-between items-end">
+                <span className="text-[10px] text-slate-500 font-mono tracking-wider uppercase">{label}</span>
+                <span className={`text-[10px] font-bold font-mono ${isWarning ? 'text-rose-400' : 'text-slate-300'}`}>
+                    {value.toFixed(0)}<span className="text-[8px] text-slate-600">/{max}</span>
+                </span>
+            </div>
+            <div className="h-1.5 w-full bg-slate-800/50 rounded-sm overflow-hidden border border-slate-800">
+                <div
+                    className={`h-full ${finalColor} shadow-[0_0_8px_currentColor] transition-all duration-500`}
+                    style={{ width: `${percent}%` }}
+                />
+            </div>
+        </div>
+    );
+};
 
 export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
     accountStatus,
@@ -45,8 +124,8 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
     atrH1 = 0,
     authToken,
     selectedSymbol = 'XAUUSD',
-    maxDrawdown = 0,  // 🆕
-    tradeStats         // 🆕
+    maxDrawdown = 0,
+    tradeStats
 }) => {
     // --- 1. Hooks (State & Memos) ---
     const [eaLinkageEnabled, setEaLinkageEnabled] = useState(false);
@@ -60,9 +139,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
 
     // Core Metrics Memo
     const {
-        netLots,
         survivalDistance,
-        riskOccupancy,
         riskLevel,
         liquidationPrice,
         dominantDirection
@@ -129,8 +206,8 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
             rvol,
             accountStatus.positions,
             SMART_EXIT_CONFIG.DEFAULT_MAX_LAYER,
-            maxDrawdown,   // 🆕 传递回撤参数
-            tradeStats     // 🆕 传递交易统计参数
+            maxDrawdown,
+            tradeStats
         );
 
         return {
@@ -163,7 +240,6 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
     }, [authToken, selectedSymbol]);
 
     // 3. Sync Risk State to EA
-    // Fetch initial state
     useEffect(() => {
         if (!authToken || !accountStatus.mt4_account) return;
 
@@ -190,7 +266,6 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
     };
 
     useEffect(() => {
-        // Only sync when user has explicitly toggled, not on initial load
         if (!hasUserToggled || !authToken || !accountStatus.mt4_account) return;
 
         const syncToBackend = async () => {
@@ -200,7 +275,6 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                 let blockSell = false;
                 let blockAll = false;
 
-                // Only calculate blocks if enabled
                 if (eaLinkageEnabled) {
                     if (smartMetrics.exitTrigger === 'FORCE_EXIT' || smartMetrics.exitTrigger === 'TACTICAL_EXIT') {
                         blockAll = true;
@@ -245,245 +319,173 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
     // 4. Get trigger config for styling
     const triggerConfig = getExitTriggerConfig(smartMetrics.exitTrigger);
 
-    // 5. Velocity bar percentage
-    const velocityPercent = Math.min(100, (Math.abs(smartMetrics.velocityM1) / SMART_EXIT_CONFIG.VELOCITY_CRITICAL_THRESHOLD) * 100);
-    const rvolPercent = Math.min(100, (smartMetrics.rvol / SMART_EXIT_CONFIG.RVOL_CRITICAL) * 100);
-
     // Survival Time with velocity consideration
     const survivalTime = estimateSurvivalTime(survivalDistance, atr, smartMetrics.velocityM1);
 
     return (
         <div className={`
-            relative overflow-hidden rounded-xl border p-4 transition-all duration-300
-            ${triggerConfig.borderColor} ${triggerConfig.bgColor}
-            ${smartMetrics.exitTrigger !== 'NONE' ? 'shadow-[0_0_20px_rgba(244,63,94,0.2)]' : ''}
-        `}>
-            {/* Header */}
-            <div className="flex justify-between items-start mb-4">
-                <div className="flex items-center gap-2">
-                    <div className={`p-1.5 rounded-lg bg-slate-900 border border-slate-700 ${triggerConfig.color}`}>
-                        <Gauge size={18} />
+                relative overflow-hidden rounded-2xl border transition-all duration-300 group
+                bg-slate-950/80 backdrop-blur-xl
+                ${triggerConfig.borderColor}
+                ${smartMetrics.exitTrigger !== 'NONE' ? 'shadow-[0_0_30px_rgba(244,63,94,0.3)]' : 'shadow-2xl'}
+            `}>
+            {/* Ambient Glow Gradient */}
+            <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r ${riskLevel === 'CRITICAL' ? 'from-rose-500 via-rose-400 to-rose-600' :
+                    riskLevel === 'WARNING' ? 'from-amber-500 via-amber-400 to-amber-600' :
+                        'from-emerald-500 via-cyan-500 to-emerald-600'
+                } opacity-80`} />
+
+            {/* Main Content Grid */}
+            <div className="p-5 flex flex-col md:flex-row gap-6 items-center md:items-stretch">
+
+                {/* 1. Left: Risk Radar & Gauge */}
+                <div className="flex flex-col items-center justify-center min-w-[120px] relative">
+                    <RiskGauge score={smartMetrics.riskScore} level={riskLevel} />
+
+                    {/* Direction Badge */}
+                    <div className="mt-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900 border border-slate-700/50 shadow-inner">
+                        {dominantDirection === 'BUY' ? <TrendingUp size={12} className="text-emerald-400" /> :
+                            dominantDirection === 'SELL' ? <TrendingDown size={12} className="text-rose-400" /> :
+                                <Activity size={12} className="text-slate-400" />}
+                        <span className="text-[10px] font-bold tracking-wider text-slate-300">
+                            {dominantDirection === 'BUY' ? 'LONG' : dominantDirection === 'SELL' ? 'SHORT' : 'HEDGE'}
+                        </span>
                     </div>
-                    <div>
-                        <h3 className="text-sm font-bold text-slate-200">24H 智能风控仪表盘</h3>
-                        <p className="text-[10px] text-slate-500 font-mono">
-                            {selectedSymbol} • {dominantDirection === 'BUY' ? '📈 多头' : dominantDirection === 'SELL' ? '📉 空头' : '⚖️ 对冲'}
-                        </p>
+
+                    {/* Martingale Warning Badge */}
+                    {smartMetrics.isMartingalePattern && (
+                        <div className="absolute -top-2 -right-2 animate-pulse">
+                            <div className="bg-amber-950/90 text-amber-500 border border-amber-500/50 p-1 rounded-md shadow-[0_0_10px_rgba(245,158,11,0.3)]">
+                                <AlertTriangle size={14} />
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* 2. Middle: Critical Telemetry */}
+                <div className="flex-1 w-full grid grid-cols-2 gap-3 min-w-[240px]">
+                    {/* Liquidation Card */}
+                    <div className="col-span-1 bg-slate-900/50 rounded-xl p-3 border border-slate-800 flex flex-col justify-between relative overflow-hidden group-hover:border-slate-700 transition-colors">
+                        <div className="flex items-center gap-2 mb-1">
+                            <Target size={12} className="text-slate-500" />
+                            <span className="text-[10px] text-slate-500 uppercase font-mono tracking-wider">Liquidation</span>
+                        </div>
+                        <div className="text-lg font-mono font-bold text-slate-200 tracking-tight">
+                            {liquidationPrice > 0 ? liquidationPrice.toFixed(2) : '---'}
+                        </div>
+                        <div className="text-[9px] text-slate-600 font-mono mt-1">
+                            {currentPrice && liquidationPrice > 0
+                                ? `Gap: ${(Math.abs(liquidationPrice - currentPrice) / currentPrice * 100).toFixed(2)}%`
+                                : 'No Exposure'}
+                        </div>
+                        {/* Decorative Line */}
+                        <div className="absolute bottom-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-rose-500/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+
+                    {/* Survival Card */}
+                    <div className="col-span-1 bg-slate-900/50 rounded-xl p-3 border border-slate-800 flex flex-col justify-between overflow-hidden group-hover:border-slate-700 transition-colors">
+                        <div className="flex items-center gap-2 mb-1">
+                            <Shield size={12} className="text-slate-500" />
+                            <span className="text-[10px] text-slate-500 uppercase font-mono tracking-wider">Distance</span>
+                        </div>
+                        <div className={`text-lg font-mono font-bold tracking-tight ${survivalDistance < atr ? 'text-rose-400' : 'text-emerald-400'}`}>
+                            {survivalDistance !== Infinity ? survivalDistance.toFixed(0) : '∞'}
+                        </div>
+                        <div className="text-[9px] text-slate-600 font-mono mt-1 flex items-center justify-between">
+                            <span>{survivalTime}</span>
+                            <span>{atr ? `${(survivalDistance / atr).toFixed(1)}ATR` : ''}</span>
+                        </div>
+                    </div>
+
+                    {/* Risk Factors (Compact Bars) */}
+                    <div className="col-span-2 bg-slate-900/50 rounded-xl p-3 border border-slate-800 flex flex-col gap-2.5">
+                        <div className="flex items-center gap-2">
+                            <Radar size={12} className="text-cyan-500" />
+                            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Risk Factors</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                            <DataBar label="LAYER LOAD" value={smartMetrics.layerScore} max={20} color="bg-cyan-500" warningThreshold={15} />
+                            <DataBar label="DRAWDOWN" value={smartMetrics.drawdownScore} max={30} color="bg-orange-500" warningThreshold={20} />
+                            <DataBar label="VELOCITY" value={smartMetrics.velocityScore} max={20} color="bg-indigo-500" warningThreshold={15} />
+                            <DataBar label="DISTANCE" value={smartMetrics.distanceScore} max={30} color="bg-emerald-500" warningThreshold={25} />
+                        </div>
                     </div>
                 </div>
 
-                <div className="flex flex-col items-end gap-1">
+                {/* 3. Right: Market Pulse & Controls */}
+                <div className="flex flex-col gap-3 min-w-[200px] w-full md:w-auto">
+                    {/* Velocity Monitor Panel */}
+                    <div className="bg-slate-900/40 rounded-xl p-3 border border-slate-800 relative overflow-hidden">
+                        <div className="flex justify-between items-center mb-2">
+                            <span className="text-[10px] text-slate-500 font-bold uppercase">Market Pulse</span>
+                            <Activity size={12} className={smartMetrics.isVelocityWarning ? 'text-rose-500 animate-pulse' : 'text-slate-600'} />
+                        </div>
+
+                        {/* Fake Waveform Visual (CSS) */}
+                        <div className="flex items-end justify-between h-8 gap-0.5 opacity-50 mb-2">
+                            {[...Array(10)].map((_, i) => (
+                                <div key={i}
+                                    className={`w-1.5 rounded-t-sm transition-all duration-300 ${smartMetrics.velocityM1 > 0 ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                                    style={{ height: `${20 + Math.random() * 60}%` }}
+                                />
+                            ))}
+                        </div>
+
+                        <div className="flex justify-between text-[10px] font-mono border-t border-slate-800/50 pt-1.5">
+                            <div className="flex flex-col">
+                                <span className="text-slate-600 text-[8px]">M1 Velo</span>
+                                <span className={smartMetrics.velocityM1 > 5 ? 'text-rose-400' : 'text-slate-300'}>
+                                    ${smartMetrics.velocityM1.toFixed(2)}
+                                </span>
+                            </div>
+                            <div className="flex flex-col items-end">
+                                <span className="text-slate-600 text-[8px]">RVOL</span>
+                                <span className={smartMetrics.rvol > 2 ? 'text-amber-400' : 'text-slate-300'}>
+                                    {smartMetrics.rvol.toFixed(1)}x
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Action Button (Tactical Switch) */}
                     <button
                         onClick={handleToggleLinkage}
                         className={`
-                            flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-bold border transition-colors
+                            relative overflow-hidden w-full py-2.5 rounded-lg border flex items-center justify-center gap-2
+                            transition-all duration-300 text-xs font-bold tracking-wider uppercase group/btn
                             ${eaLinkageEnabled
-                                ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20'
-                                : 'bg-slate-800 border-slate-700 text-slate-500 hover:text-slate-400'}
+                                ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.15)] hover:bg-cyan-500/20'
+                                : 'bg-slate-800 border-slate-700 text-slate-500 hover:bg-slate-800/80 hover:text-slate-400'}
                         `}
                     >
-                        {eaLinkageEnabled ? <Zap size={10} className="fill-current" /> : <ZapOff size={10} />}
-                        {eaLinkageEnabled ? 'EA联动' : '未联动'}
-                        {syncStatus === 'SYNCING' && <span className="animate-spin ml-1">⟳</span>}
+                        {eaLinkageEnabled ? <ShieldCheck size={14} /> : <ShieldAlert size={14} />}
+                        {eaLinkageEnabled ? 'EA ARMED' : 'EA DISARMED'}
+
+                        {/* Scanning Effect */}
+                        {eaLinkageEnabled && (
+                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-cyan-400/10 to-transparent -translate-x-full animate-[shimmer_2s_infinite]" />
+                        )}
+                        {syncStatus === 'SYNCING' && <span className="absolute right-2 animate-spin text-cyan-500">⟳</span>}
                     </button>
 
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${triggerConfig.bgColor} ${triggerConfig.color}`}>
-                        {triggerConfig.icon} {triggerConfig.label}
-                    </span>
-                </div>
-            </div>
-
-            {/* Top Row: Key Metrics */}
-            <div className="grid grid-cols-3 gap-3 mb-4">
-                <div className="flex flex-col bg-slate-900/50 rounded-lg p-2 border border-slate-800/50">
-                    <span className="text-[9px] text-slate-500 mb-0.5">死线价</span>
-                    <span className={`text-lg font-mono font-bold ${triggerConfig.color}`}>
-                        {liquidationPrice > 0 ? liquidationPrice.toFixed(2) : '---'}
-                    </span>
-                    <span className="text-[8px] text-slate-600 font-mono">
-                        {currentPrice && liquidationPrice > 0
-                            ? `${dominantDirection === 'BUY' ? '▼' : '▲'} ${Math.abs(liquidationPrice - currentPrice).toFixed(1)}`
-                            : '---'}
-                    </span>
-                </div>
-
-                <div className="flex flex-col bg-slate-900/50 rounded-lg p-2 border border-slate-800/50">
-                    <span className="text-[9px] text-slate-500 mb-0.5">剩余距离</span>
-                    <span className={`text-lg font-mono font-bold ${survivalDistance < atr ? 'text-rose-500' : 'text-emerald-400'}`}>
-                        {survivalDistance !== Infinity ? `$${survivalDistance.toFixed(1)}` : '∞'}
-                    </span>
-                    <span className="text-[8px] text-slate-600 font-mono">
-                        {atr ? `${(survivalDistance / atr).toFixed(1)}x ATR` : '---'}
-                    </span>
-                </div>
-
-                <div className="flex flex-col items-center justify-center bg-slate-900/50 rounded-lg p-2 border border-slate-800/50">
-                    <span className="text-[9px] text-slate-500 mb-0.5">综合评分</span>
-                    <div className="flex items-center gap-1">
-                        <span className={`text-2xl font-mono font-bold ${triggerConfig.color}`}>
-                            {smartMetrics.riskScore.toFixed(0)}
-                        </span>
-                        {smartMetrics.isMartingalePattern && (
-                            <span
-                                className="cursor-help text-sm animate-pulse"
-                                title="🧪 检测到马丁特征：高胜率+低盈亏比，风险集中于单次亏损"
-                            >
-                                🧪
-                            </span>
-                        )}
-                    </div>
-                    <span className="text-[8px] text-slate-500">/100</span>
-                </div>
-            </div>
-
-            {/* Velocity Monitor */}
-            <div className="bg-slate-900/30 rounded-lg p-2.5 border border-slate-800/30 mb-3">
-                <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-1.5">
-                        <Activity size={12} className="text-cyan-500" />
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Velocity Monitor</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-[10px] font-mono">
-                        <span className={`${smartMetrics.velocityM1 < 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                            {smartMetrics.velocityM1 < 0 ? <TrendingDown size={10} className="inline mr-0.5" /> : <TrendingUp size={10} className="inline mr-0.5" />}
-                            ${smartMetrics.velocityM1.toFixed(2)}
-                        </span>
-                        <span className="text-slate-600">|</span>
-                        <span className={smartMetrics.isRvolWarning ? 'text-amber-400' : 'text-slate-400'}>
-                            RVOL: {smartMetrics.rvol.toFixed(1)}x
-                        </span>
-                    </div>
-                </div>
-
-                <div className="space-y-1.5">
-                    <div className="flex items-center gap-2">
-                        <span className="text-[8px] text-slate-500 w-10">动量</span>
-                        <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                            <div
-                                className={`h-full rounded-full transition-all duration-300 ${velocityPercent > 80 ? 'bg-rose-500' :
-                                    velocityPercent > 50 ? 'bg-amber-500' : 'bg-cyan-500'
-                                    }`}
-                                style={{ width: `${velocityPercent}%` }}
-                            />
+                    {/* Trigger Status */}
+                    {smartMetrics.exitTrigger !== 'NONE' && (
+                        <div className={`px-2 py-1 rounded text-[9px] font-bold text-center border ${triggerConfig.bgColor} ${triggerConfig.color} ${triggerConfig.borderColor}`}>
+                            {smartMetrics.triggerReason}
                         </div>
-                        <span className="text-[8px] text-slate-500 w-8 text-right">{velocityPercent.toFixed(0)}%</span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                        <span className="text-[8px] text-slate-500 w-10">放量</span>
-                        <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                            <div
-                                className={`h-full rounded-full transition-all duration-300 ${rvolPercent > 80 ? 'bg-rose-500' :
-                                    rvolPercent > 50 ? 'bg-amber-500' : 'bg-emerald-500'
-                                    }`}
-                                style={{ width: `${rvolPercent}%` }}
-                            />
-                        </div>
-                        <span className="text-[8px] text-slate-500 w-8 text-right">{rvolPercent.toFixed(0)}%</span>
-                    </div>
-                </div>
-
-                {(smartMetrics.isVelocityWarning || smartMetrics.isRvolWarning) && (
-                    <div className="mt-2 text-[9px] text-amber-400/80 flex items-center gap-1">
-                        <AlertTriangle size={10} />
-                        <span>
-                            {smartMetrics.isVelocityWarning && smartMetrics.isRvolWarning
-                                ? '⚠️ 放量快速移动，高风险'
-                                : smartMetrics.isVelocityWarning
-                                    ? '动量接近阈值'
-                                    : '成交量放大'}
-                        </span>
-                    </div>
-                )}
-            </div>
-
-            {/* Score Breakdown - 四维评分 */}
-            <div className="grid grid-cols-4 gap-2 mb-3">
-                <div className="text-center bg-slate-900/30 rounded px-2 py-1.5 border border-slate-800/30">
-                    <div className="text-[8px] text-slate-500 mb-0.5">距离分</div>
-                    <div className="text-[11px] font-mono font-bold text-slate-300">
-                        {smartMetrics.distanceScore.toFixed(0)}<span className="text-slate-600">/30</span>
-                    </div>
-                </div>
-                <div className="text-center bg-slate-900/30 rounded px-2 py-1.5 border border-slate-800/30">
-                    <div className="text-[8px] text-slate-500 mb-0.5">速度分</div>
-                    <div className="text-[11px] font-mono font-bold text-slate-300">
-                        {smartMetrics.velocityScore.toFixed(0)}<span className="text-slate-600">/20</span>
-                    </div>
-                </div>
-                <div className="text-center bg-slate-900/30 rounded px-2 py-1.5 border border-slate-800/30">
-                    <div className="text-[8px] text-slate-500 mb-0.5">层级分</div>
-                    <div className="text-[11px] font-mono font-bold text-slate-300">
-                        {smartMetrics.layerScore.toFixed(0)}<span className="text-slate-600">/20</span>
-                    </div>
-                </div>
-                <div className={`text-center bg-slate-900/30 rounded px-2 py-1.5 border ${smartMetrics.drawdownScore > 15 ? 'border-rose-500/50' : 'border-slate-800/30'}`}>
-                    <div className="text-[8px] text-slate-500 mb-0.5">回撤分</div>
-                    <div className={`text-[11px] font-mono font-bold ${smartMetrics.drawdownScore > 20 ? 'text-rose-400' : smartMetrics.drawdownScore > 10 ? 'text-amber-400' : 'text-slate-300'}`}>
-                        {smartMetrics.drawdownScore.toFixed(0)}<span className="text-slate-600">/30</span>
-                    </div>
+                    )}
                 </div>
             </div>
 
-            {/* 马丁策略警告 🆕 */}
-            {smartMetrics.isMartingalePattern && (
-                <div className="mb-3 px-3 py-2 rounded-lg text-[10px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center gap-2">
-                    <AlertTriangle size={12} />
-                    <span>{smartMetrics.martingaleWarning}</span>
-                </div>
-            )}
-
-
-            {/* Risk Occupancy Bar */}
-            <div className="space-y-1.5 mb-3">
-                <div className="flex justify-between text-[10px] text-slate-500 font-mono">
-                    <span>RISK OCCUPANCY</span>
-                    <span>{riskOccupancy > 100 ? '>100%' : `${riskOccupancy.toFixed(1)}%`}</span>
-                </div>
-                <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
-                    <div
-                        className={`h-full rounded-full transition-all duration-500 ${smartMetrics.exitTrigger !== 'NONE' ? 'bg-rose-500' :
-                            riskLevel === 'WARNING' ? 'bg-yellow-500' : 'bg-emerald-500'
-                            }`}
-                        style={{ width: `${Math.min(100, riskOccupancy)}%` }}
-                    />
-                </div>
-                {/* 🆕 主要风险源提示 */}
-                {(smartMetrics.drawdownScore > 15 || smartMetrics.layerScore > 10 || smartMetrics.isMartingalePattern) && (
-                    <div className="mt-1 flex justify-between items-center text-[9px] font-mono">
-                        <span className="text-slate-500">主要风险源:</span>
-                        <span className="text-amber-400">
-                            {smartMetrics.drawdownScore > 15 ? '资金回撤 ' : ''}
-                            {smartMetrics.layerScore > 10 ? '持仓过重 ' : ''}
-                            {smartMetrics.isMartingalePattern ? '策略抗单' : ''}
-                        </span>
-                    </div>
-                )}
-            </div>
-
-            {/* Footer */}
-            <div className="flex justify-between items-center pt-2 border-t border-slate-800/50">
-                <div className="flex gap-3 text-[10px] font-mono text-slate-500">
-                    <span>ATR: <span className="text-slate-300">${atr ? atr.toFixed(1) : '--'}</span></span>
-                    <span>NET: <span className={netLots > 0 ? 'text-emerald-400' : netLots < 0 ? 'text-rose-400' : 'text-slate-400'}>
-                        {netLots.toFixed(2)}
-                    </span></span>
-                </div>
-                <span className="text-[10px] text-slate-400 font-mono">
-                    Est: <span className="text-slate-300">{survivalTime}</span>
-                </span>
-            </div>
-
-            {/* Trigger Reason Bar */}
-            {smartMetrics.exitTrigger !== 'NONE' && (
-                <div className={`mt-3 px-3 py-2 rounded-lg text-[10px] font-medium ${triggerConfig.bgColor} ${triggerConfig.color} border ${triggerConfig.borderColor}`}>
-                    {smartMetrics.triggerReason}
-                </div>
-            )}
-
-            {/* Pulse Overlay for Critical States */}
+            {/* Critical Alert Overlay */}
             {(smartMetrics.exitTrigger === 'TACTICAL_EXIT' || smartMetrics.exitTrigger === 'FORCE_EXIT') && (
-                <div className="absolute inset-0 bg-rose-500/5 pointer-events-none animate-pulse" />
+                <div className="absolute inset-0 z-50 pointer-events-none flex items-center justify-center bg-rose-950/20 backdrop-blur-[1px]">
+                    <div className="border border-rose-500/50 bg-black/80 text-rose-500 px-6 py-4 rounded-xl shadow-[0_0_50px_rgba(244,63,94,0.5)] animate-pulse flex flex-col items-center">
+                        <AlertTriangle size={32} className="mb-2" />
+                        <span className="text-xl font-bold font-mono tracking-widest">CRITICAL EXIT</span>
+                        <span className="text-xs text-rose-400 mt-1">{smartMetrics.triggerReason}</span>
+                    </div>
+                </div>
             )}
         </div>
     );
