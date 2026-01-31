@@ -160,6 +160,15 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
             return;
         }
 
+        // 1. Detection of market closure: 
+        // If the gap between current local time and data timestamp is too large, skip update.
+        // This prevents the chart from drawing a line to "now" when the backend stops sending new data.
+        const nowLocal = Math.floor(Date.now() / 1000);
+        const staleness = nowLocal - time;
+        if (staleness > 300) { // 5 minutes threshold
+            return;
+        }
+
         // Additional safety for values
         if (currentAccountStatus.balance === undefined || currentAccountStatus.balance === null ||
             currentAccountStatus.equity === undefined || currentAccountStatus.equity === null) {

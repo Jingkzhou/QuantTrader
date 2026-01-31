@@ -375,6 +375,14 @@ async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(pay
     let positions_json = serde_json::to_string(&payload.positions).unwrap_or_default();
     let timestamp = if payload.timestamp > 0 { payload.timestamp } else { chrono::Utc::now().timestamp() };
 
+    // Filter Weekend Data (Professional Standard)
+    let dt = chrono::DateTime::from_timestamp(timestamp as i64, 0).unwrap_or_default();
+    let weekday = dt.weekday();
+    if weekday == chrono::Weekday::Sat || weekday == chrono::Weekday::Sun {
+        // tracing::warn!("Skipping weekend account status persistence for account: {}", payload.mt4_account);
+        return;
+    }
+
     let res = sqlx::query(
         "INSERT INTO account_status (balance, equity, margin, free_margin, floating_profit, timestamp, positions_snapshot, mt4_account, broker, contract_size, tick_value, stop_level, margin_so_level) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)"
     )
