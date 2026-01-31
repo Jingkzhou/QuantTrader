@@ -466,6 +466,17 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
 
         const tfObj = TIMEFRAMES.find(t => t.value === timeframe);
         const intervalSeconds = tfObj ? tfObj.seconds : 60;
+
+        // 1. 检测停市：如果最后一根K线的时间距离当前超过阈值，认为停市
+        if (lastCandleRef.current) {
+            const nowLocal = Math.floor(Date.now() / 1000);
+            const staleness = nowLocal - (lastCandleRef.current.time as number);
+            // 如果数据延迟超过 3 个周期，认为停市
+            if (staleness > intervalSeconds * 3) {
+                return; // 跳过更新
+            }
+        }
+
         const candleTime = Math.floor(now / intervalSeconds) * intervalSeconds;
 
         let newCandle;
