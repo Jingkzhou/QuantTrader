@@ -183,7 +183,7 @@ pub fn calculate_integrated_risk_score(
     else if max_drawdown >= 10.0 { drawdown_score = 10.0; }
     else if max_drawdown >= 5.0 { drawdown_score = 5.0; }
 
-    let total_risk_score = dist_score + velocity_score + layer_score + drawdown_score;
+    let total_risk_score: f64 = dist_score + velocity_score + layer_score + drawdown_score;
 
     // Trigger Logic
     let mut exit_trigger = "NONE".to_string();
@@ -218,7 +218,7 @@ pub fn calculate_integrated_risk_score(
                                 // Caller should set it if needed, or we compute simple version.
         velocity_m1,
         rvol,
-        risk_score: total_risk_score.min(100.0),
+        risk_score: total_risk_score.min(100.0f64),
         distance_score: dist_score,
         velocity_score,
         layer_score,

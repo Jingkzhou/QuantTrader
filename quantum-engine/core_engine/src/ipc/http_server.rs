@@ -4,7 +4,7 @@ use axum::{
     Json, Router,
 };
 use axum::response::IntoResponse;
-use crate::data_models::{MarketData, AccountStatus, LogEntry, Command, Candle, TradeHistory, AccountHistory, RiskControlState, VelocityData};
+use crate::data_models::{MarketData, AccountStatus, LogEntry, Command, Candle, TradeHistory, AccountHistory, RiskControlState, VelocityData, SmartExitMetrics};
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
 use serde::{Serialize, Deserialize};
@@ -378,11 +378,11 @@ async fn get_symbol_metrics(state: &Arc<CombinedState>, symbol: &str) -> (f64, f
         let candles_query = sqlx::query_as!(
             Candle,
             "SELECT 
-                (timestamp / 86400) * 86400 as time,
-                (array_agg(bid ORDER BY timestamp ASC))[1] as open,
-                MAX(bid) as high,
-                MIN(bid) as low,
-                (array_agg(bid ORDER BY timestamp DESC))[1] as close
+             COALESCE((timestamp / 86400) * 86400, 0) as \"time!\",
+             (array_agg(bid ORDER BY timestamp ASC))[1] as \"open!\",
+             MAX(bid) as \"high!\",
+             MIN(bid) as \"low!\",
+             (array_agg(bid ORDER BY timestamp DESC))[1] as \"close!\"
              FROM market_data 
              WHERE symbol = $1 AND timestamp > $2
              GROUP BY 1 
@@ -565,9 +565,29 @@ async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(pay
     );
 
     // 6. Integrated Risk Score
-    let metrics = crate::risk::calculator::calculate_integrated_risk_score(
+    let mut metrics = crate::risk::calculator::calculate_integrated_risk_score(
         survival_distance, atr, velocity, rvol, &payload.positions, drawdown
     );
+    
+    // 6.5 Calculate Liquidation Price V2
+    let (current_bid, current_ask) = {
+        let mem = state.memory.read().unwrap();
+        mem.market_data.get(main_symbol)
+            .map(|m| (m.bid, m.ask))
+            .unwrap_or((0.0, 0.0))
+    };
+
+    let liq_v2 = crate::risk::calculator::calculate_liquidation_price_v2(
+        payload.equity,
+        payload.margin,
+        payload.margin_so_level,
+        buy_lots,
+        sell_lots,
+        payload.contract_size,
+        current_bid,
+        current_ask
+    );
+    metrics.liquidation_price = liq_v2.effective_liquidation_price;
     
     // 7. Extract Values for Control
     let risk_score = metrics.risk_score;
@@ -611,7 +631,7 @@ async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(pay
     .bind(block_sell)
     .bind(block_all)
     .bind(risk_score)
-    .bind(exit_trigger)
+    .bind(&exit_trigger)
     .bind(risk_level_str)
     .bind(now_ts)
     .execute(&state.db)
@@ -640,6 +660,14 @@ async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(pay
         };
         s.risk_controls.insert(payload.mt4_account, risk_state);
     }
+    
+
+
+    let margin_level = if payload.margin > 0.0 {
+        payload.margin_level
+    } else {
+        0.0
+    };
     
     if risk_score >= 60.0 {
         tracing::warn!("⚠️ Auto Risk Alert: Account {} Score={:.1} DD={:.1}% ML={:.0}% Trigger={}", 
