@@ -441,7 +441,16 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                     <div className="bg-slate-900/40 rounded-xl p-3 border border-slate-800 relative overflow-hidden">
                         <div className="flex justify-between items-center mb-2">
                             <span className="text-[10px] text-slate-500 font-bold uppercase">市场脉搏</span>
-                            <Activity size={12} className={smartMetrics.isVelocityWarning ? 'text-rose-500 animate-pulse' : 'text-slate-600'} />
+                            <div className="flex items-center gap-2">
+                                {/* Data Freshness Indicator */}
+                                {velocityData?.timestamp && (
+                                    <span className={`text-[9px] font-mono ${(Date.now() / 1000 - velocityData.timestamp) > 60 ? 'text-rose-500 animate-pulse' : 'text-emerald-500'
+                                        }`}>
+                                        {(Date.now() / 1000 - velocityData.timestamp) > 60 ? '数据延迟' : '● 实时'}
+                                    </span>
+                                )}
+                                <Activity size={12} className={smartMetrics.isVelocityWarning ? 'text-rose-500 animate-pulse' : 'text-slate-600'} />
+                            </div>
                         </div>
 
                         {/* Fake Waveform Visual (CSS) */}

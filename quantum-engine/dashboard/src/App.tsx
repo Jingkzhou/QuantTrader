@@ -433,7 +433,7 @@ const App = () => {
                   atr={atr}
                   authToken={auth.token || undefined}
                   selectedSymbol={selectedSymbol}
-                  maxDrawdown={drawdown.max}
+                  maxDrawdown={drawdown.current}
                   tradeStats={tradeStats}
                 />
 

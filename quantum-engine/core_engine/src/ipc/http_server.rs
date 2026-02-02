@@ -1128,16 +1128,39 @@ async fn get_velocity(
     let symbol = params.get("symbol").cloned().unwrap_or_else(|| "XAUUSD".to_string());
     let now = chrono::Utc::now().timestamp();
     
+    // 0. Find the LATEST timestamp for this symbol
+    // This handles timezone discrepancies between MT4 client and Server.
+    // If we rely on chrono::Utc::now(), we might miss data if MT4 sends past/future time.
+    let max_ts_row = sqlx::query!(
+        "SELECT MAX(timestamp) as max_ts FROM market_data WHERE symbol = $1",
+        symbol
+    )
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let latest_ts = match max_ts_row.and_then(|r| r.max_ts) {
+        Some(ts) => ts,
+        None => return Ok(Json(VelocityData { symbol, velocity_m1: 0.0, rvol: 1.0, timestamp: now })), // No data
+    };
+
+    // Staleness Check: If latest data is older than 5 minutes relative to server time, return 0
+    // BUT be careful about timezone diffs. If latest_ts is largely different, we might flag false positives.
+    // Let's rely on continuity. If latest_ts is extremely far from now (e.g. > 1 hour), assume stale.
+    // For now, let's relax this check to allow timezone drift, or users can fix their EA clock.
+    // We strictly calculate velocity based on the WINDOW [latest_ts - 60, latest_ts].
+    
     // 1. Calculate 1-min velocity: (current price - price 1 min ago)
     let velocity_result = sqlx::query(
         "SELECT 
             (array_agg(bid ORDER BY timestamp DESC))[1] as current_price,
             (array_agg(bid ORDER BY timestamp ASC))[1] as old_price
          FROM market_data 
-         WHERE symbol = $1 AND timestamp > $2"
+         WHERE symbol = $1 AND timestamp >= $2 AND timestamp <= $3"
     )
     .bind(&symbol)
-    .bind(now - 61) // 1 min + 1 sec buffer
+    .bind(latest_ts - 61) // Start of window
+    .bind(latest_ts)      // End of window
     .fetch_optional(&state.db)
     .await
     .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -1151,17 +1174,16 @@ async fn get_velocity(
         0.0
     };
 
-    // 2. Calculate RVOL: current volume / 24h average volume
-    // Since we're using tick data, we count the number of ticks as a proxy for volume
+    // 2. Calculate RVOL based on the SAME timestamp reference
     let rvol_result = sqlx::query(
         "WITH 
          current_period AS (
              SELECT COUNT(*) as tick_count FROM market_data 
-             WHERE symbol = $1 AND timestamp > $2
+             WHERE symbol = $1 AND timestamp >= $2 AND timestamp <= $3
          ),
          avg_period AS (
              SELECT COUNT(*) / 24.0 as avg_hourly_ticks FROM market_data 
-             WHERE symbol = $1 AND timestamp > $3
+             WHERE symbol = $1 AND timestamp >= $4 AND timestamp <= $3
          )
          SELECT 
             cp.tick_count,
@@ -1169,12 +1191,13 @@ async fn get_velocity(
          FROM current_period cp, avg_period ap"
     )
     .bind(&symbol)
-    .bind(now - 3600) // Current hour
-    .bind(now - 86400) // Last 24 hours
+    .bind(latest_ts - 3600) // Current hour relative to data
+    .bind(latest_ts)        // Latest data point
+    .bind(latest_ts - 86400) // Last 24 hours relative to data
     .fetch_optional(&state.db)
     .await
     .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
+    
     let rvol = if let Some(row) = rvol_result {
         use sqlx::Row;
         let current_ticks: i64 = row.try_get("tick_count").unwrap_or(0);
@@ -1196,7 +1219,7 @@ async fn get_velocity(
         symbol,
         velocity_m1,
         rvol,
-        timestamp: now,
+        timestamp: latest_ts,
     }))
 }
 
