@@ -876,7 +876,13 @@ void ProcessSellLogic(const OrderStats &stats)
 // 1:1 复刻 TrackPendingOrders (包含流控制检查)
 void TrackPendingOrders(const OrderStats &stats, int direction)
   {
+   // 频率限制：每 5 秒最多执行一次追踪修改，避免 Error 136 (Off Quotes)
+   static datetime lastTrackTime = 0;
+   if(TimeCurrent() - lastTrackTime < 5) return;
+
    if(PendingOrderTrailPoints <= 0) return;
+   
+   lastTrackTime = TimeCurrent();
    double trailGap = PendingOrderTrailPoints * Point;
    double totalProfit = stats.buyProfit + stats.sellProfit;
    bool useFirstParam = (SecondParamTriggerLoss == 0 || totalProfit > -MathAbs(SecondParamTriggerLoss));
@@ -1722,6 +1728,13 @@ void CheckRemoteRiskControl() {
              string msg = "Risk Control Updated: BlockBuy=" + (string)g_RemoteBlockBuy + " BlockSell=" + (string)g_RemoteBlockSell;
              Print(msg);
              RemoteLog("INFO", msg);
+        }
+        
+        // --- Added: Regular Heartbeat to Confirm Risk Status ---
+        static datetime lastRiskLog = 0;
+        if(TimeCurrent() - lastRiskLog > 60) {
+            Print("[Risk Heartbeat] Remote Control Active. BlockBuy:", g_RemoteBlockBuy, " BlockSell:", g_RemoteBlockSell);
+            lastRiskLog = TimeCurrent();
         }
     }
 }
