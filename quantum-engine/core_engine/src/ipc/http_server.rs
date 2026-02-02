@@ -405,7 +405,6 @@ async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(pay
     if let Err(e) = res {
         tracing::error!("DB Error (account): {}", e);
     }
-}
 
     // ======== 🆕 Auto Risk Calculation (Backend Enforced) ========
     // 1. Calculate Real-time Drawdown
