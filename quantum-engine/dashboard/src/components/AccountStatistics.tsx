@@ -61,7 +61,7 @@ export const AccountStatistics: React.FC<AccountStatisticsProps> = ({
         /* Unified Command Center Panel */
         <div className="bg-slate-900/40 border border-slate-800 rounded-2xl overflow-hidden backdrop-blur-sm shadow-2xl relative group">
 
-            {/* Ambient Background Glow */}
+            {/*  Ambient Background Glow */}
             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500/50 via-cyan-500/50 to-rose-500/50 opacity-50 group-hover:opacity-100 transition-opacity" />
 
             {/* Header: Global Account Metrics */}
