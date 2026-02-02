@@ -197,7 +197,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
 
     // Smart Exit Metrics Memo (Legacy / Fallback)
     const smartMetrics = useMemo(() => {
-        const velocityM1 = velocityData?.velocityM1 ?? 0;
+        const velocityM1 = velocityData?.velocity_m1 ?? 0;
         const rvol = velocityData?.rvol ?? 1.0;
 
         const metrics = calculateIntegratedRiskScore(

@@ -43,10 +43,7 @@ export interface SmartExitMetrics {
 export interface VelocityData {
     symbol: string;
     timestamp: number;
-    velocityM1: number;
-    price1mAgo: number;
-    avgTickVolume24h: number;
-    currentTickVolume: number;
+    velocity_m1: number;
     rvol: number;
 }
 
