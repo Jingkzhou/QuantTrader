@@ -726,12 +726,25 @@ async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(pay
         // Logic: Log if trigger changed (Only if enabled)
         let mut event = None;
         if was_enabled {
+            let old_block_buy = existing.as_ref().map(|e| e.block_buy).unwrap_or(false);
+            let old_block_sell = existing.as_ref().map(|e| e.block_sell).unwrap_or(false);
+
             if new_trigger != old_trigger {
                 if new_trigger != "NONE" {
-                   event = Some(format!("AUTO: Triggered {}", new_trigger));
+                   let t_cn = match new_trigger.as_str() {
+                       "FORCE_EXIT" => "紧急逃生",
+                       "TACTICAL_EXIT" => "战术减仓",
+                       "LAYER_LOCK" => "层级锁",
+                       _ => new_trigger.as_str(),
+                   };
+                   event = Some(format!("自动: 触发 {}", t_cn));
                 } else {
-                   event = Some("AUTO: Risk Cleared".to_string());
+                   event = Some("自动: 风险解除".to_string());
                 }
+            } else if new_block_buy != old_block_buy {
+                event = Some(format!("风控: {}买入", if new_block_buy { "禁止" } else { "恢复" }));
+            } else if new_block_sell != old_block_sell {
+                event = Some(format!("风控: {}卖出", if new_block_sell { "禁止" } else { "恢复" }));
             }
         }
 

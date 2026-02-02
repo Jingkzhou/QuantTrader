@@ -12,6 +12,20 @@ import {
     type ExitTrigger
 } from '../utils/smartExitCalculations';
 
+const translateLogAction = (action: string) => {
+    if (!action) return '';
+    // Legacy mapping for old logs
+    if (action.includes('Risk Cleared')) return '自动: 风险解除';
+    if (action.includes('Triggered FORCE_EXIT')) return '自动: 触发 紧急逃生';
+    if (action.includes('Triggered TACTICAL_EXIT')) return '自动: 触发 战术减仓';
+    if (action.includes('Triggered LAYER_LOCK')) return '自动: 触发 层级锁';
+    if (action.includes('BLOCK_BUY: ENABLED')) return '风控: 禁止买入';
+    if (action.includes('BLOCK_SELL: ENABLED')) return '风控: 禁止卖出';
+    if (action.includes('BLOCK_BUY: DISABLED')) return '风控: 恢复买入';
+    if (action.includes('BLOCK_SELL: DISABLED')) return '风控: 恢复卖出';
+    return action;
+};
+
 interface SmartExitDashboardProps {
     accountStatus: AccountStatus;
     currentPrice: number | null;
@@ -593,10 +607,11 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                                     <div className="text-[9px] text-slate-400 font-bold mb-1.5 uppercase tracking-wider">操作历史</div>
                                     {operationLogs.map((log, i) => (
                                         <div key={log.id || i} className="flex items-center justify-between gap-2 py-1 border-b border-slate-800 last:border-0">
+
                                             <span className={`text-[9px] font-mono font-bold ${log.action === 'DISABLED' ? 'text-slate-500' :
-                                                log.action?.includes('BLOCK') ? 'text-rose-400' : 'text-cyan-400'
+                                                log.action?.includes('BLOCK') || log.action?.includes('禁止') ? 'text-rose-400' : 'text-cyan-400'
                                                 }`}>
-                                                {log.action}
+                                                {translateLogAction(log.action)}
                                             </span>
                                             <span className="text-[8px] text-slate-600">
                                                 {new Date(log.created_at * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
