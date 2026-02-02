@@ -441,19 +441,22 @@ async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(pay
         (false, false, false, "NONE", "SAFE")
     };
     
-    // 4. Auto-Update Risk Controls (ONLY if enabled)
-    // We only override directives if the system is enabled. This prevents overriding manual intervention if disabled.
-    // Notice: We update score and levels regardless, but directives only if enabled=true
+    // 4. Auto-Update Risk Controls (UPSERT to ensure record exists)
+    // We always update score and levels, but only override directives if enabled=true
+    let now_ts = chrono::Utc::now().timestamp();
+    
+    // Use UPSERT to handle both new and existing records
     let update_res = sqlx::query(
-        "UPDATE risk_controls SET 
-            block_buy = CASE WHEN enabled = true THEN $2 ELSE block_buy END, 
-            block_sell = CASE WHEN enabled = true THEN $3 ELSE block_sell END,
-            block_all = CASE WHEN enabled = true THEN $4 ELSE block_all END,
-            exit_trigger = CASE WHEN enabled = true THEN $6 ELSE exit_trigger END,
+        "INSERT INTO risk_controls (mt4_account, block_buy, block_sell, block_all, risk_score, exit_trigger, risk_level, updated_at, velocity_block, enabled)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false, false)
+         ON CONFLICT (mt4_account) DO UPDATE SET 
+            block_buy = CASE WHEN risk_controls.enabled = true THEN $2 ELSE risk_controls.block_buy END, 
+            block_sell = CASE WHEN risk_controls.enabled = true THEN $3 ELSE risk_controls.block_sell END,
+            block_all = CASE WHEN risk_controls.enabled = true THEN $4 ELSE risk_controls.block_all END,
+            exit_trigger = CASE WHEN risk_controls.enabled = true THEN $6 ELSE risk_controls.exit_trigger END,
             risk_score = $5, 
             risk_level = $7, 
-            updated_at = $8
-         WHERE mt4_account = $1"
+            updated_at = $8"
     )
     .bind(payload.mt4_account)
     .bind(block_buy)
@@ -462,12 +465,32 @@ async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(pay
     .bind(risk_score)
     .bind(exit_trigger)
     .bind(risk_level_str)
-    .bind(chrono::Utc::now().timestamp())
+    .bind(now_ts)
     .execute(&state.db)
     .await;
 
     if let Err(e) = update_res {
         tracing::error!("Failed to auto-update risk controls: {}", e);
+    }
+    
+    // 🔴 CRITICAL: Also update memory state so get_risk_control returns fresh data
+    {
+        let mut s = state.memory.write().unwrap();
+        let existing = s.risk_controls.get(&payload.mt4_account).cloned();
+        let risk_state = RiskControlState {
+            mt4_account: payload.mt4_account,
+            // Only update block directives if enabled
+            block_buy: if existing.as_ref().map(|e| e.enabled).unwrap_or(false) { block_buy } else { existing.as_ref().map(|e| e.block_buy).unwrap_or(false) },
+            block_sell: if existing.as_ref().map(|e| e.enabled).unwrap_or(false) { block_sell } else { existing.as_ref().map(|e| e.block_sell).unwrap_or(false) },
+            block_all: if existing.as_ref().map(|e| e.enabled).unwrap_or(false) { block_all } else { existing.as_ref().map(|e| e.block_all).unwrap_or(false) },
+            risk_level: risk_level_str.to_string(),
+            updated_at: now_ts,
+            risk_score,
+            exit_trigger: if existing.as_ref().map(|e| e.enabled).unwrap_or(false) { exit_trigger.to_string() } else { existing.as_ref().map(|e| e.exit_trigger.clone()).unwrap_or_else(|| "NONE".to_string()) },
+            velocity_block: existing.as_ref().map(|e| e.velocity_block).unwrap_or(false),
+            enabled: existing.as_ref().map(|e| e.enabled).unwrap_or(false),
+        };
+        s.risk_controls.insert(payload.mt4_account, risk_state);
     }
     
     if risk_score >= 60.0 {
