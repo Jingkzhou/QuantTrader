@@ -569,6 +569,14 @@ async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(pay
         payload.equity, payload.margin, payload.margin_so_level, net_lots, payload.contract_size
     );
 
+    // Debug: Log ATR and ratio for distance score investigation
+    if atr > 0.0 {
+        let ratio = survival_distance / atr;
+        tracing::info!("ATR Debug: symbol={} atr={:.2} survival={:.2} ratio={:.2}", main_symbol, atr, survival_distance, ratio);
+    } else {
+        tracing::warn!("ATR is 0 for symbol {}", main_symbol);
+    }
+
     // 6. Integrated Risk Score
     let mut metrics = crate::risk::calculator::calculate_integrated_risk_score(
         survival_distance, atr, velocity, rvol, &payload.positions, drawdown
