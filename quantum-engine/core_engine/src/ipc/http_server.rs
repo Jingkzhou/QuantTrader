@@ -669,24 +669,59 @@ async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(pay
         tracing::error!("Failed to auto-update risk controls: {}", e);
     }
     
-    // 🔴 CRITICAL: Also update memory state so get_risk_control returns fresh data
-    {
+    // 🔴 CRITICAL: Also update memory state and detect changes for logging
+    let log_event = {
         let mut s = state.memory.write().unwrap();
         let existing = s.risk_controls.get(&payload.mt4_account).cloned();
+        
+        let was_enabled = existing.as_ref().map(|e| e.enabled).unwrap_or(false);
+        let old_trigger = existing.as_ref().map(|e| e.exit_trigger.clone()).unwrap_or_else(|| "NONE".to_string());
+        
+        // Calculate effective values considering 'enabled' flag
+        let new_trigger = if was_enabled { exit_trigger.clone() } else { old_trigger.clone() };
+        let new_block_buy = if was_enabled { block_buy } else { existing.as_ref().map(|e| e.block_buy).unwrap_or(false) };
+        let new_block_sell = if was_enabled { block_sell } else { existing.as_ref().map(|e| e.block_sell).unwrap_or(false) };
+        let new_block_all = if was_enabled { block_all } else { existing.as_ref().map(|e| e.block_all).unwrap_or(false) };
+
+        // Logic: Log if trigger changed (Only if enabled)
+        let mut event = None;
+        if was_enabled {
+            if new_trigger != old_trigger {
+                if new_trigger != "NONE" {
+                   event = Some(format!("AUTO: Triggered {}", new_trigger));
+                } else {
+                   event = Some("AUTO: Risk Cleared".to_string());
+                }
+            }
+        }
+
         let risk_state = RiskControlState {
             mt4_account: payload.mt4_account,
-            // Only update block directives if enabled
-            block_buy: if existing.as_ref().map(|e| e.enabled).unwrap_or(false) { block_buy } else { existing.as_ref().map(|e| e.block_buy).unwrap_or(false) },
-            block_sell: if existing.as_ref().map(|e| e.enabled).unwrap_or(false) { block_sell } else { existing.as_ref().map(|e| e.block_sell).unwrap_or(false) },
-            block_all: if existing.as_ref().map(|e| e.enabled).unwrap_or(false) { block_all } else { existing.as_ref().map(|e| e.block_all).unwrap_or(false) },
+            block_buy: new_block_buy,
+            block_sell: new_block_sell,
+            block_all: new_block_all,
             risk_level: risk_level_str.to_string(),
             updated_at: now_ts,
             risk_score,
-            exit_trigger: if existing.as_ref().map(|e| e.enabled).unwrap_or(false) { exit_trigger.to_string() } else { existing.as_ref().map(|e| e.exit_trigger.clone()).unwrap_or_else(|| "NONE".to_string()) },
+            exit_trigger: new_trigger,
             velocity_block: existing.as_ref().map(|e| e.velocity_block).unwrap_or(false),
-            enabled: existing.as_ref().map(|e| e.enabled).unwrap_or(false),
+            enabled: was_enabled,
         };
         s.risk_controls.insert(payload.mt4_account, risk_state);
+        event
+    };
+
+    // Write log if event occurred (Outside of lock)
+    if let Some(action_msg) = log_event {
+         let _ = sqlx::query("INSERT INTO risk_control_logs (mt4_account, action, risk_level, risk_score, exit_trigger, created_at) VALUES ($1, $2, $3, $4, $5, $6)")
+            .bind(payload.mt4_account)
+            .bind(action_msg)
+            .bind(risk_level_str)
+            .bind(risk_score)
+            .bind(&exit_trigger) 
+            .bind(now_ts)
+            .execute(&state.db)
+            .await;
     }
     
 
