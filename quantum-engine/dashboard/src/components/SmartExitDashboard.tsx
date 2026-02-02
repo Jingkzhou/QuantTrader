@@ -420,7 +420,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                         </div>
                     </div>
 
-                    {/* Risk Factors (Compact Bars) */}
+                    {/* Risk Factors (Compact Bars)  */}
                     <div className="col-span-2 bg-slate-900/50 rounded-xl p-3 border border-slate-800 flex flex-col gap-2.5">
                         <div className="flex items-center gap-2">
                             <Radar size={12} className="text-cyan-500" />
