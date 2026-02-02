@@ -16,7 +16,7 @@ import { DashboardTables } from './components/DashboardTables';
 import { RealtimeLogs } from './components/RealtimeLogs';
 import { API_BASE } from './config';
 import type { AuthState, MarketData, AccountStatus, LogEntry, TradeHistory, AccountRecord } from './types';
-import { calculateATR } from './utils/riskCalculations';
+import { calculateATR } from './utils/smartExitCalculations';
 
 interface AppState {
   market_data: Record<string, MarketData>;

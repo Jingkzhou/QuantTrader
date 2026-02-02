@@ -429,6 +429,44 @@ export const getRiskScoreColor = (score: number): string => {
     return 'text-emerald-500';
 };
 
+
+/**
+ * Helper to calculate ATR from candles
+ * Uses Wilder's Smoothing (RMA) for standard compatibility.
+ */
+export const calculateATR = (candles: any[], period: number = 14): number => {
+    if (!candles || candles.length < 2) return 0;
+
+    // Adjust period if not enough data
+    const effectivePeriod = Math.min(period, candles.length - 1);
+
+    const trs: number[] = [];
+    for (let i = 1; i < candles.length; i++) {
+        const high = candles[i].high;
+        const low = candles[i].low;
+        const prevClose = candles[i - 1].close;
+
+        const tr = Math.max(
+            high - low,
+            Math.abs(high - prevClose),
+            Math.abs(low - prevClose)
+        );
+        trs.push(tr);
+    }
+
+    if (trs.length === 0) return 0;
+
+    // First ATR is simple average of first 'period' TRs
+    let atr = trs.slice(0, effectivePeriod).reduce((a, b) => a + b, 0) / effectivePeriod;
+
+    // Remaining ATRs using Wilder's Smoothing
+    for (let i = effectivePeriod; i < trs.length; i++) {
+        atr = (atr * (effectivePeriod - 1) + trs[i]) / effectivePeriod;
+    }
+
+    return atr;
+};
+
 export const getExitTriggerConfig = (trigger: ExitTrigger) => {
     switch (trigger) {
         case 'FORCE_EXIT':
