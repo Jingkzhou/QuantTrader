@@ -467,6 +467,104 @@ export const calculateATR = (candles: any[], period: number = 14): number => {
     return atr;
 };
 
+
+export interface DirectionalLiquidationPrice {
+    buyLiquidationPrice: number;
+    sellLiquidationPrice: number;
+    dominantDirection: 'BUY' | 'SELL' | 'HEDGED';
+    effectiveLiquidationPrice: number;
+}
+
+export const calculateLiquidationPriceV2 = (
+    equity: number,
+    margin: number,
+    stopOutLevel: number,
+    buyLots: number,
+    sellLots: number,
+    contractSize: number,
+    currentBid: number,
+    currentAsk: number
+): DirectionalLiquidationPrice => {
+    const netLots = buyLots - sellLots;
+
+    let stopOutRatio = stopOutLevel;
+    if (stopOutRatio > 1) stopOutRatio = stopOutRatio / 100.0;
+
+    const numerator = equity - (margin * stopOutRatio);
+
+    let survivalDistance = Infinity;
+    if (Math.abs(netLots) >= 0.001 && contractSize > 0 && numerator > 0) {
+        survivalDistance = numerator / (Math.abs(netLots) * contractSize);
+    }
+
+    let dominantDirection: 'BUY' | 'SELL' | 'HEDGED' = 'HEDGED';
+    if (netLots > 0.001) dominantDirection = 'BUY';
+    else if (netLots < -0.001) dominantDirection = 'SELL';
+
+    const buyLiquidationPrice = isFinite(survivalDistance) && buyLots > 0
+        ? currentBid - survivalDistance
+        : 0;
+    const sellLiquidationPrice = isFinite(survivalDistance) && sellLots > 0
+        ? currentAsk + survivalDistance
+        : 0;
+
+    let effectiveLiquidationPrice = 0;
+    if (dominantDirection === 'BUY') {
+        effectiveLiquidationPrice = currentBid - survivalDistance;
+    } else if (dominantDirection === 'SELL') {
+        effectiveLiquidationPrice = currentAsk + survivalDistance;
+    }
+
+    return {
+        buyLiquidationPrice,
+        sellLiquidationPrice,
+        dominantDirection,
+        effectiveLiquidationPrice: isFinite(effectiveLiquidationPrice) ? effectiveLiquidationPrice : 0
+    };
+};
+
+
+/**
+ * Legacy Helper: Survival Distance
+ * Needed for ChartWidget
+ */
+export const calculateSurvivalDistance = (
+    equity: number,
+    margin: number,
+    stopOutLevel: number,
+    netLots: number,
+    contractSize: number
+): number => {
+    if (Math.abs(netLots) < 0.001 || contractSize <= 0) return Infinity;
+
+    // Convert StopOutLevel (e.g. 50 or 0.5) to ratio
+    let stopOutRatio = stopOutLevel;
+    if (stopOutRatio > 1) stopOutRatio = stopOutRatio / 100.0;
+
+    const numerator = equity - (margin * stopOutRatio);
+    if (numerator <= 0) return 0;
+
+    return numerator / (Math.abs(netLots) * contractSize);
+};
+
+export type RiskLevel = 'SAFE' | 'WARNING' | 'CRITICAL';
+
+/**
+ * Legacy Helper: Risk Level
+ * Needed for ChartWidget
+ */
+export const calculateRiskLevel = (
+    survivalDistance: number,
+    atrD1: number
+): RiskLevel => {
+    if (survivalDistance === Infinity) return 'SAFE';
+    if (atrD1 <= 0) return 'SAFE';
+
+    if (survivalDistance > 2 * atrD1) return 'SAFE';
+    if (survivalDistance > 1 * atrD1) return 'WARNING';
+    return 'CRITICAL';
+};
+
 export const getExitTriggerConfig = (trigger: ExitTrigger) => {
     switch (trigger) {
         case 'FORCE_EXIT':

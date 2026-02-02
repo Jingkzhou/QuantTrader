@@ -8,7 +8,7 @@ import { Activity, ChevronUp, Eye, EyeOff, History, Settings, Maximize2, Minimiz
 import { QuickTradePanel } from './QuickTradePanel';
 import { API_BASE } from '../config';
 import type { AccountStatus } from '../types';
-import { calculateLiquidationPrice, calculateSurvivalDistance, calculateRiskLevel, calculateATR } from '../utils/riskCalculations';
+import { calculateLiquidationPriceV2 as calculateLiquidationPrice, calculateSurvivalDistance, calculateRiskLevel, calculateATR } from '../utils/smartExitCalculations';
 
 interface ChartWidgetProps {
     symbol: string;
@@ -347,7 +347,20 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
             tickValue: accountStatus.tick_value || 1
         };
 
-        const liqPrice = calculateLiquidationPrice(accountStatus, currentData.close, symbolInfo);
+        const buyLots = accountStatus.positions.filter(p => p.side === 'BUY').reduce((acc, p) => acc + p.lots, 0);
+        const sellLots = accountStatus.positions.filter(p => p.side === 'SELL').reduce((acc, p) => acc + p.lots, 0);
+
+        const liqResult = calculateLiquidationPrice(
+            accountStatus.equity,
+            accountStatus.margin,
+            symbolInfo.stopOutLevel,
+            buyLots,
+            sellLots,
+            symbolInfo.contractSize,
+            currentData.bid || currentData.close,
+            currentData.ask || currentData.close
+        );
+        const liqPrice = liqResult.effectiveLiquidationPrice;
 
         // Calculate ATR for Risk Coloring
         let riskColor = '#ef4444'; // Default Red
