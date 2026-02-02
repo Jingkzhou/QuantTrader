@@ -407,6 +407,76 @@ async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(pay
     }
 }
 
+    // ======== 🆕 Auto Risk Calculation (Backend Enforced) ========
+    // 1. Calculate Real-time Drawdown
+    let drawdown = if payload.balance > 0.0 {
+        ((payload.balance - payload.equity) / payload.balance) * 100.0
+    } else { 0.0 };
+    
+    // 2. Calculate Risk Score (Simplified for Backend Reliability)
+    //    Drawdown Weight 50% + Margin Level Weight 50%
+    let margin_level = if payload.margin > 0.0 {
+        payload.equity / payload.margin * 100.0
+    } else { f64::INFINITY }; // If margin is 0, level is infinite (safe)
+    
+    // Drawdown Score: 0% -> 0, 50% -> 50 points (Non-linear)
+    let drawdown_score = if drawdown <= 5.0 { 0.0 }
+        else if drawdown >= 50.0 { 50.0 }
+        else { (drawdown / 50.0).powf(1.5) * 50.0 };
+    
+    // Margin Score: >500% -> 0, <100% -> 50 points
+    let margin_score = if margin_level > 500.0 { 0.0 }
+        else if margin_level <= 100.0 { 50.0 }
+        else { 50.0 * (1.0 - (margin_level - 100.0) / 400.0) };
+    
+    let risk_score = (drawdown_score + margin_score).min(100.0);
+    
+    // 3. Determine Block Directives
+    let (block_buy, block_sell, block_all, exit_trigger, risk_level_str) = if risk_score >= 95.0 {
+        (true, true, true, "FORCE_EXIT", "CRITICAL")
+    } else if risk_score >= 80.0 {
+        (true, true, true, "TACTICAL_EXIT", "CRITICAL")
+    } else if risk_score >= 60.0 {
+        (true, true, false, "LAYER_LOCK", "WARNING")
+    } else {
+        (false, false, false, "NONE", "SAFE")
+    };
+    
+    // 4. Auto-Update Risk Controls (ONLY if enabled)
+    // We only override directives if the system is enabled. This prevents overriding manual intervention if disabled.
+    // Notice: We update score and levels regardless, but directives only if enabled=true
+    let update_res = sqlx::query(
+        "UPDATE risk_controls SET 
+            block_buy = CASE WHEN enabled = true THEN $2 ELSE block_buy END, 
+            block_sell = CASE WHEN enabled = true THEN $3 ELSE block_sell END,
+            block_all = CASE WHEN enabled = true THEN $4 ELSE block_all END,
+            exit_trigger = CASE WHEN enabled = true THEN $6 ELSE exit_trigger END,
+            risk_score = $5, 
+            risk_level = $7, 
+            updated_at = $8
+         WHERE mt4_account = $1"
+    )
+    .bind(payload.mt4_account)
+    .bind(block_buy)
+    .bind(block_sell)
+    .bind(block_all)
+    .bind(risk_score)
+    .bind(exit_trigger)
+    .bind(risk_level_str)
+    .bind(chrono::Utc::now().timestamp())
+    .execute(&state.db)
+    .await;
+
+    if let Err(e) = update_res {
+        tracing::error!("Failed to auto-update risk controls: {}", e);
+    }
+    
+    if risk_score >= 60.0 {
+        tracing::warn!("⚠️ Auto Risk Alert: Account {} Score={:.1} DD={:.1}% ML={:.0}% Trigger={}", 
+            payload.mt4_account, risk_score, drawdown, margin_level, exit_trigger);
+    }
+}
+
 async fn handle_logs(State(state): State<Arc<CombinedState>>, Json(payload): Json<LogEntry>) {
     tracing::info!("Log [{}]: {}", payload.level, payload.message);
     

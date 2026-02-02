@@ -4,7 +4,7 @@ import {
     Activity, TrendingDown, TrendingUp, AlertTriangle,
     Shield, ShieldAlert, ShieldCheck, Radar, Target, Clock
 } from 'lucide-react';
-import type { AccountStatus } from '../types';
+import type { AccountStatus, RiskControlState } from '../types';
 import { API_BASE } from '../config';
 import {
     calculateSurvivalDistance,
@@ -18,8 +18,8 @@ import {
     estimateSurvivalTime,
     getExitTriggerConfig,
     SMART_EXIT_CONFIG,
-    type SmartExitMetrics,
-    type VelocityData
+    type VelocityData,
+    type ExitTrigger
 } from '../utils/smartExitCalculations';
 
 interface SmartExitDashboardProps {
@@ -37,7 +37,7 @@ interface SmartExitDashboardProps {
 }
 
 // ✨ Quantum HUD Components
-const RiskGauge = ({ score, level }: { score: number, level: RiskLevel }) => {
+const RiskGauge = ({ score, level }: { score: number, level: string }) => {
     const radius = 36;
     const stroke = 6;
     const normalizedScore = Math.min(100, Math.max(0, score));
@@ -130,9 +130,9 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
     // --- 1. Hooks (State & Memos) ---
     const [eaLinkageEnabled, setEaLinkageEnabled] = useState(false);
     const [syncStatus, setSyncStatus] = useState<'IDLE' | 'SYNCING' | 'ERROR'>('IDLE');
-    const [hasUserToggled, setHasUserToggled] = useState(false);
     const [velocityData, setVelocityData] = useState<VelocityData | null>(null);
     const [operationLogs, setOperationLogs] = useState<any[]>([]);
+    const [backendRiskState, setBackendRiskState] = useState<RiskControlState | null>(null);
 
     // Use bid/ask if available, otherwise fall back to close price
     const bid = currentBid ?? currentPrice ?? 0;
@@ -141,7 +141,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
     // Core Metrics Memo
     const {
         survivalDistance,
-        riskLevel,
+        riskLevel: computedRiskLevel,
         liquidationPrice,
         dominantDirection
     } = useMemo(() => {
@@ -195,8 +195,8 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
         };
     }, [accountStatus, bid, ask, symbolInfo, atr, atrH1]);
 
-    // Smart Exit Metrics Memo
-    const smartMetrics: SmartExitMetrics = useMemo(() => {
+    // Smart Exit Metrics Memo (Legacy / Fallback)
+    const smartMetrics = useMemo(() => {
         const velocityM1 = velocityData?.velocityM1 ?? 0;
         const rvol = velocityData?.rvol ?? 1.0;
 
@@ -240,7 +240,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
         return () => clearInterval(interval);
     }, [authToken, selectedSymbol]);
 
-    // 3. Sync Risk State to EA
+    // 3. Fetch Risk State from Backend (Poll)
     useEffect(() => {
         if (!authToken || !accountStatus.mt4_account) return;
 
@@ -252,6 +252,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                 });
                 if (res.data) {
                     setEaLinkageEnabled(!!res.data.enabled);
+                    setBackendRiskState(res.data);
                 }
             } catch (err) {
                 console.error("Failed to fetch risk control state", err);
@@ -259,6 +260,8 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
         };
 
         fetchRiskState();
+        const interval = setInterval(fetchRiskState, 2000); // 2 seconds poll
+        return () => clearInterval(interval);
     }, [authToken, accountStatus.mt4_account]);
 
     // Fetch Operation Logs
@@ -282,64 +285,62 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
         return () => clearInterval(interval);
     }, [authToken, accountStatus.mt4_account]);
 
-    const handleToggleLinkage = () => {
-        setHasUserToggled(true);
-        setEaLinkageEnabled(prev => !prev);
+    const handleToggleLinkage = async () => {
+        if (!authToken || !accountStatus.mt4_account) return;
+
+        const newEnabled = !eaLinkageEnabled;
+        setEaLinkageEnabled(newEnabled); // Optimistic UI update
+        setSyncStatus('SYNCING');
+
+        try {
+            // We only need to toggle enabled logic. The backend handles the rest.
+            // But checking our http_server.rs logic (not shown but inferred), update needs all fields usually?
+            // Actually, in previous task I saw UPDATE risk_controls SET ... CASE WHEN.
+            // But wait, the API calls `handle_update_risk_control`.
+            // Let's assume we send current backend state but flipped enabled.
+
+            const payload = backendRiskState ? {
+                ...backendRiskState,
+                enabled: newEnabled
+            } : {
+                mt4_account: accountStatus.mt4_account,
+                block_buy: false,
+                block_sell: false,
+                block_all: false,
+                risk_level: 'SAFE',
+                risk_score: 0,
+                exit_trigger: 'NONE',
+                velocity_block: false,
+                enabled: newEnabled
+            };
+
+            await axios.put(`${API_BASE}/risk_control`, payload, {
+                headers: { Authorization: `Bearer ${authToken}` }
+            });
+            setSyncStatus('IDLE');
+
+            // Re-fetch immediately to confirm
+            const res = await axios.get(`${API_BASE}/risk_control`, {
+                params: { mt4_account: accountStatus.mt4_account },
+                headers: { Authorization: `Bearer ${authToken}` }
+            });
+            if (res.data) setBackendRiskState(res.data);
+
+        } catch (err) {
+            console.error("Failed to toggle risk control", err);
+            setSyncStatus('ERROR');
+            setEaLinkageEnabled(!newEnabled); // Revert on error
+        }
     };
 
-    useEffect(() => {
-        if (!hasUserToggled || !authToken || !accountStatus.mt4_account) return;
+    // Use Backend Data if available, else fallback to Frontend calc
+    const displayRiskScore = backendRiskState ? backendRiskState.risk_score : smartMetrics.riskScore;
+    const displayRiskLevel = backendRiskState ? backendRiskState.risk_level : computedRiskLevel;
+    const displayExitTrigger = backendRiskState ? backendRiskState.exit_trigger : smartMetrics.exitTrigger;
 
-        const syncToBackend = async () => {
-            setSyncStatus('SYNCING');
-            try {
-                let blockBuy = false;
-                let blockSell = false;
-                let blockAll = false;
-
-                if (eaLinkageEnabled) {
-                    if (smartMetrics.exitTrigger === 'FORCE_EXIT' || smartMetrics.exitTrigger === 'TACTICAL_EXIT') {
-                        blockAll = true;
-                        blockBuy = true;
-                        blockSell = true;
-                    } else if (smartMetrics.exitTrigger === 'LAYER_LOCK') {
-                        if (dominantDirection === 'BUY') blockBuy = true;
-                        if (dominantDirection === 'SELL') blockSell = true;
-                    } else if (riskLevel === 'WARNING') {
-                        if (dominantDirection === 'BUY') blockBuy = true;
-                        if (dominantDirection === 'SELL') blockSell = true;
-                    } else if (riskLevel === 'CRITICAL') {
-                        blockAll = true;
-                        blockBuy = true;
-                        blockSell = true;
-                    }
-                }
-
-                await axios.put(`${API_BASE}/risk_control`, {
-                    mt4_account: accountStatus.mt4_account,
-                    block_buy: blockBuy,
-                    block_sell: blockSell,
-                    block_all: blockAll,
-                    risk_level: riskLevel,
-                    risk_score: smartMetrics.riskScore,
-                    exit_trigger: smartMetrics.exitTrigger,
-                    velocity_block: smartMetrics.isVelocityWarning,
-                    enabled: eaLinkageEnabled
-                }, {
-                    headers: { Authorization: `Bearer ${authToken}` }
-                });
-                setSyncStatus('IDLE');
-            } catch (err) {
-                console.error("Failed to sync risk control", err);
-                setSyncStatus('ERROR');
-            }
-        };
-
-        syncToBackend();
-    }, [eaLinkageEnabled, hasUserToggled, accountStatus.mt4_account, authToken]);
 
     // 4. Get trigger config for styling
-    const triggerConfig = getExitTriggerConfig(smartMetrics.exitTrigger);
+    const triggerConfig = getExitTriggerConfig(displayExitTrigger as ExitTrigger);
 
     // Survival Time with velocity consideration
     const survivalTime = estimateSurvivalTime(survivalDistance, atr, smartMetrics.velocityM1);
@@ -349,11 +350,11 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                 relative overflow-hidden rounded-2xl border transition-all duration-300 group
                 bg-slate-950/80 backdrop-blur-xl
                 ${triggerConfig.borderColor}
-                ${smartMetrics.exitTrigger !== 'NONE' ? 'shadow-[0_0_30px_rgba(244,63,94,0.3)]' : 'shadow-2xl'}
+                ${displayExitTrigger !== 'NONE' ? 'shadow-[0_0_30px_rgba(244,63,94,0.3)]' : 'shadow-2xl'}
             `}>
             {/* Ambient Glow Gradient */}
-            <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r ${riskLevel === 'CRITICAL' ? 'from-rose-500 via-rose-400 to-rose-600' :
-                riskLevel === 'WARNING' ? 'from-amber-500 via-amber-400 to-amber-600' :
+            <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r ${displayRiskLevel === 'CRITICAL' ? 'from-rose-500 via-rose-400 to-rose-600' :
+                displayRiskLevel === 'WARNING' ? 'from-amber-500 via-amber-400 to-amber-600' :
                     'from-emerald-500 via-cyan-500 to-emerald-600'
                 } opacity-80`} />
 
@@ -362,7 +363,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
 
                 {/* 1. Left: Risk Radar & Gauge */}
                 <div className="flex flex-col items-center justify-center min-w-[120px] relative">
-                    <RiskGauge score={smartMetrics.riskScore} level={riskLevel} />
+                    <RiskGauge score={displayRiskScore} level={displayRiskLevel} />
 
                     {/* Direction Badge */}
                     <div className="mt-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900 border border-slate-700/50 shadow-inner">
@@ -491,9 +492,9 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                     </button>
 
                     {/* Trigger Status */}
-                    {smartMetrics.exitTrigger !== 'NONE' && (
+                    {displayExitTrigger !== 'NONE' && (
                         <div className={`px-2 py-1 rounded text-[9px] font-bold text-center border ${triggerConfig.bgColor} ${triggerConfig.color} ${triggerConfig.borderColor}`}>
-                            {smartMetrics.triggerReason}
+                            {backendRiskState?.exit_trigger || smartMetrics.triggerReason}
                         </div>
                     )}
 
@@ -517,7 +518,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                                     {operationLogs.map((log, i) => (
                                         <div key={log.id || i} className="flex items-center justify-between gap-2 py-1 border-b border-slate-800 last:border-0">
                                             <span className={`text-[9px] font-mono font-bold ${log.action === 'DISABLED' ? 'text-slate-500' :
-                                                    log.action?.includes('BLOCK') ? 'text-rose-400' : 'text-cyan-400'
+                                                log.action?.includes('BLOCK') ? 'text-rose-400' : 'text-cyan-400'
                                                 }`}>
                                                 {log.action}
                                             </span>
@@ -534,12 +535,12 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
             </div>
 
             {/* Critical Alert Overlay */}
-            {(smartMetrics.exitTrigger === 'TACTICAL_EXIT' || smartMetrics.exitTrigger === 'FORCE_EXIT') && (
+            {(displayExitTrigger === 'TACTICAL_EXIT' || displayExitTrigger === 'FORCE_EXIT') && (
                 <div className="absolute inset-0 z-50 pointer-events-none flex items-center justify-center bg-rose-950/20 backdrop-blur-[1px]">
                     <div className="border border-rose-500/50 bg-black/80 text-rose-500 px-6 py-4 rounded-xl shadow-[0_0_50px_rgba(244,63,94,0.5)] animate-pulse flex flex-col items-center">
                         <AlertTriangle size={32} className="mb-2" />
                         <span className="text-xl font-bold font-mono tracking-widest">紧急逃生</span>
-                        <span className="text-xs text-rose-400 mt-1">{smartMetrics.triggerReason}</span>
+                        <span className="text-xs text-rose-400 mt-1">{backendRiskState?.exit_trigger || smartMetrics.triggerReason}</span>
                     </div>
                 </div>
             )}

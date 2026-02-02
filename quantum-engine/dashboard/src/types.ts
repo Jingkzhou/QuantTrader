@@ -68,3 +68,16 @@ export interface AuthState {
     username: string | null;
     role: string | null;
 }
+
+export interface RiskControlState {
+    mt4_account: number;
+    block_buy: boolean;
+    block_sell: boolean;
+    block_all: boolean;
+    risk_level: string; // 'SAFE' | 'WARNING' | 'CRITICAL'
+    updated_at: number;
+    risk_score: number;
+    exit_trigger: string;
+    velocity_block: boolean;
+    enabled: boolean;
+}
