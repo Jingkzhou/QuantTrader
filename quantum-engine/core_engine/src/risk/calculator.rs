@@ -143,6 +143,7 @@ pub fn calculate_integrated_risk_score(
     let mut dist_score = 0.0;
     if survival_distance.is_finite() && atr_d1 > 0.0 {
         let ratio = survival_distance / atr_d1;
+        tracing::debug!("Distance Score Calc: survival={:.2} atr={:.2} ratio={:.2}", survival_distance, atr_d1, ratio);
         if ratio < 1.0 { dist_score = 30.0; }
         else if ratio < 2.0 { dist_score = 20.0; }
         else if ratio < 3.0 { dist_score = 10.0; }
