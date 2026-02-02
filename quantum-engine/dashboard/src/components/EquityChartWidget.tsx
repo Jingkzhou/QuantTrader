@@ -83,7 +83,17 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
                 // Map to Series Data and filter nulls, ensure numeric types
                 const processData = (data: any[], key: string) => {
                     const mapped = data
-                        .filter((h: any) => h.timestamp && h[key] !== undefined && h[key] !== null)
+                        .filter((h: any) => {
+                            if (!h.timestamp || h[key] === undefined || h[key] === null) return false;
+
+                            // 🚀 UTC-based Weekend Filtering
+                            // This ensures consistent behavior regardless of the user's local PC timezone.
+                            const date = new Date(Number(h.timestamp) * 1000);
+                            const day = date.getUTCDay(); // 0 is Sunday, 6 is Saturday
+                            if (day === 0 || day === 6) return false;
+
+                            return true;
+                        })
                         .map((h: any) => ({
                             time: Number(h.timestamp) as Time,
                             value: Number(h[key])
@@ -177,6 +187,12 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
 
         lastTimeRef.current = time;
         const chartTime = time as Time;
+
+        // 2. UTC Weekend Protection for Real-time ticks
+        const date = new Date(time * 1000);
+        if (date.getUTCDay() === 0 || date.getUTCDay() === 6) {
+            return;
+        }
 
         try {
             // Update Series
