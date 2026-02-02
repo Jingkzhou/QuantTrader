@@ -193,9 +193,10 @@ pub fn calculate_integrated_risk_score(
     if total_risk_score >= 90.0 {
         exit_trigger = "FORCE_EXIT".to_string();
         trigger_reason = "综合风险分极高 (>90)".to_string();
-    } else if survival_distance.is_finite() && atr_d1 > 0.0 && survival_distance < (0.5 * atr_d1) {
+    } else if survival_distance.is_finite() && atr_d1 > 0.0 && survival_distance < (0.3 * atr_d1) && survival_distance < 50.0 {
+        // 双重保护：必须同时小于 0.3 ATR 且绝对距离小于 50 美元
         exit_trigger = "FORCE_EXIT".to_string();
-        trigger_reason = "生存空间不足 0.5 ATR".to_string();
+        trigger_reason = "生存空间极度不足 (<0.3 ATR)".to_string();
     } 
     // Tactical Exit Conditions
     else if total_risk_score >= 70.0 {

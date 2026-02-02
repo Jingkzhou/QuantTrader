@@ -348,10 +348,18 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                             <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">风险因子</span>
                         </div>
                         <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-                            <DataBar label="层级负荷" value={smartMetrics.layerScore} max={20} color="bg-cyan-500" warningThreshold={15} />
-                            <DataBar label="回撤深度" value={smartMetrics.drawdownScore} max={30} color="bg-orange-500" warningThreshold={20} />
-                            <DataBar label="价格速度" value={smartMetrics.velocityScore} max={20} color="bg-indigo-500" warningThreshold={15} />
-                            <DataBar label="生存空间" value={smartMetrics.distanceScore} max={30} color="bg-emerald-500" warningThreshold={25} />
+                            <div title="层级负荷 (20%)&#10;━━━━━━━━━━━━&#10;持仓层数 ≥ 15层 → 20分&#10;持仓层数 ≥ 10层 → 15分&#10;持仓层数 ≥ 5层 → 5分&#10;层数越多风险越高">
+                                <DataBar label="层级负荷" value={smartMetrics.layerScore} max={20} color="bg-cyan-500" warningThreshold={15} />
+                            </div>
+                            <div title="回撤深度 (30%)&#10;━━━━━━━━━━━━&#10;回撤 ≥ 30% → 30分&#10;回撤 ≥ 20% → 20分&#10;回撤 ≥ 10% → 10分&#10;回撤 ≥ 5% → 5分&#10;回撤越大风险越高">
+                                <DataBar label="回撤深度" value={smartMetrics.drawdownScore} max={30} color="bg-orange-500" warningThreshold={20} />
+                            </div>
+                            <div title="价格速度 (20%)&#10;━━━━━━━━━━━━&#10;逆势速度 ≥ $3 → 20分&#10;逆势速度 ≥ $2 → 10分&#10;逆势速度 ≥ $1 → 5分&#10;仅计算对持仓不利方向的价格变动">
+                                <DataBar label="价格速度" value={smartMetrics.velocityScore} max={20} color="bg-indigo-500" warningThreshold={15} />
+                            </div>
+                            <div title="生存空间 (30%)&#10;━━━━━━━━━━━━&#10;距离 < 1 ATR → 30分&#10;距离 < 2 ATR → 20分&#10;距离 < 3 ATR → 10分&#10;距离 < 5 ATR → 5分&#10;距离指当前价格到强平价的距离">
+                                <DataBar label="生存空间" value={smartMetrics.distanceScore} max={30} color="bg-emerald-500" warningThreshold={25} />
+                            </div>
                         </div>
                     </div>
                 </div>

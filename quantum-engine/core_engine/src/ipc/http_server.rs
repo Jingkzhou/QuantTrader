@@ -480,6 +480,11 @@ async fn get_symbol_metrics(state: &Arc<CombinedState>, symbol: &str) -> (f64, f
         1.0
     };
 
+    if atr == 0.0 || velocity_m1 == 0.0 {
+        tracing::warn!("[Metrics] {} ATR={:.2} Vel={:.2} RVOL={:.2} (Time diff: {}s)", 
+            symbol, atr, velocity_m1, rvol, now - latest_ts);
+    }
+
     (atr, velocity_m1, rvol)
 }
 
@@ -595,6 +600,9 @@ async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(pay
     let risk_level_str = if risk_score >= 80.0 { "CRITICAL" } 
         else if risk_score >= 60.0 { "WARNING" } 
         else { "SAFE" };
+    
+    tracing::info!("Account {} Metrics: Score={:.1} Dist={:.1} VelM1={:.2} RVOL={:.2} Liq={:.2}", 
+        payload.mt4_account, risk_score, metrics.survival_distance, metrics.velocity_m1, metrics.rvol, metrics.liquidation_price);
 
     // 8. Determine Block Directives
     let (block_buy, block_sell, block_all) = match exit_trigger.as_str() {
@@ -603,6 +611,9 @@ async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(pay
         _ => (false, false, false),
     };
     
+    tracing::info!("Account {} Metrics: Score={:.1} Dist={:.1} VelM1={:.2} RVOL={:.2} Liq={:.2}", 
+        payload.mt4_account, risk_score, metrics.survival_distance, metrics.velocity_m1, metrics.rvol, metrics.liquidation_price);
+
     // 9. Update Risk Details Cache
     {
         let mut mem = state.memory.write().unwrap();
@@ -636,6 +647,8 @@ async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(pay
     .bind(now_ts)
     .execute(&state.db)
     .await;
+
+
 
     if let Err(e) = update_res {
         tracing::error!("Failed to auto-update risk controls: {}", e);
