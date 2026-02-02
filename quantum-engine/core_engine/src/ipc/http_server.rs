@@ -314,7 +314,7 @@ async fn process_market_data(state: &Arc<CombinedState>, payload: MarketData) {
         return;
     }
 
-    tracing::info!("Market Data: {} Bid:{} Ask:{}", payload.symbol, payload.bid, payload.ask);
+    // tracing::info!("Market Data: {} Bid:{} Ask:{}", payload.symbol, payload.bid, payload.ask);
     
     // Update Memory
     {
@@ -1129,8 +1129,6 @@ async fn get_velocity(
     let now = chrono::Utc::now().timestamp();
     
     // 0. Find the LATEST timestamp for this symbol
-    // This handles timezone discrepancies between MT4 client and Server.
-    // If we rely on chrono::Utc::now(), we might miss data if MT4 sends past/future time.
     let max_ts_row = sqlx::query!(
         "SELECT MAX(timestamp) as max_ts FROM market_data WHERE symbol = $1",
         symbol
@@ -1139,17 +1137,21 @@ async fn get_velocity(
     .await
     .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
+    // DEBUG LOGS
+    tracing::info!("Velocity Debug [{}] Now: {}, MaxTS: {:?}", symbol, now, max_ts_row.as_ref().and_then(|r| r.max_ts));
+
     let latest_ts = match max_ts_row.and_then(|r| r.max_ts) {
         Some(ts) => ts,
-        None => return Ok(Json(VelocityData { symbol, velocity_m1: 0.0, rvol: 1.0, timestamp: now })), // No data
+        None => {
+            tracing::warn!("Velocity Debug [{}] No market data found!", symbol);
+            return Ok(Json(VelocityData { symbol, velocity_m1: 0.0, rvol: 1.0, timestamp: now }));
+        },
     };
 
-    // Staleness Check: If latest data is older than 5 minutes relative to server time, return 0
-    // BUT be careful about timezone diffs. If latest_ts is largely different, we might flag false positives.
-    // Let's rely on continuity. If latest_ts is extremely far from now (e.g. > 1 hour), assume stale.
-    // For now, let's relax this check to allow timezone drift, or users can fix their EA clock.
-    // We strictly calculate velocity based on the WINDOW [latest_ts - 60, latest_ts].
-    
+    if now - latest_ts > 300 {
+        tracing::warn!("Velocity Debug [{}] Data Stale! Latest: {}, Now: {}, Diff: {}", symbol, latest_ts, now, now - latest_ts);
+    }
+
     // 1. Calculate 1-min velocity: (current price - price 1 min ago)
     let velocity_result = sqlx::query(
         "SELECT 
@@ -1167,10 +1169,17 @@ async fn get_velocity(
 
     let velocity_m1 = if let Some(row) = velocity_result {
         use sqlx::Row;
-        let current: f64 = row.try_get("current_price").unwrap_or(0.0);
-        let old: f64 = row.try_get("old_price").unwrap_or(0.0);
-        if old > 0.0 { current - old } else { 0.0 }
+        let current: Option<f64> = row.try_get("current_price").ok();
+        let old: Option<f64> = row.try_get("old_price").ok();
+        
+        tracing::info!("Velocity Debug [{}] Window: [{}, {}], Current: {:?}, Old: {:?}", symbol, latest_ts - 61, latest_ts, current, old);
+
+        let current_val = current.unwrap_or(0.0);
+        let old_val = old.unwrap_or(0.0);
+        
+        if old_val > 0.0 { current_val - old_val } else { 0.0 }
     } else {
+        tracing::warn!("Velocity Debug [{}] Query returned no rows for price window", symbol);
         0.0
     };
 
@@ -1202,6 +1211,9 @@ async fn get_velocity(
         use sqlx::Row;
         let current_ticks: i64 = row.try_get("tick_count").unwrap_or(0);
         let avg_ticks: Option<f64> = row.try_get("avg_ticks").ok();
+        
+        tracing::info!("Velocity Debug [{}] RVOL: Ticks: {}, Avg: {:?}", symbol, current_ticks, avg_ticks);
+        
         if let Some(avg) = avg_ticks {
             if avg > 0.0 {
                 (current_ticks as f64) / avg
@@ -1227,7 +1239,7 @@ async fn get_velocity(
 #[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 struct RiskControlLog {
     id: i64,
-    mt4_account: i64,
+    mt4_account: i64, 
     action: String,
     risk_level: Option<String>,
     risk_score: Option<f64>,
