@@ -348,18 +348,64 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                             <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">风险因子</span>
                         </div>
                         <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-                            <div title="层级负荷 (20%)&#10;━━━━━━━━━━━━&#10;持仓层数 ≥ 15层 → 20分&#10;持仓层数 ≥ 10层 → 15分&#10;持仓层数 ≥ 5层 → 5分&#10;层数越多风险越高">
+
+                            {/* Layer Score */}
+                            <div className="group relative cursor-help">
                                 <DataBar label="层级负荷" value={smartMetrics.layerScore} max={20} color="bg-cyan-500" warningThreshold={15} />
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-2 bg-slate-900/95 backdrop-blur text-[10px] text-slate-300 rounded-lg shadow-xl border border-slate-700 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                                    <div className="font-bold text-cyan-400 mb-1 border-b border-slate-700 pb-1">层级负荷 (20%)</div>
+                                    <div className="space-y-0.5">
+                                        <div className="flex justify-between"><span>≥ 15 层</span><span className="text-rose-400">20分</span></div>
+                                        <div className="flex justify-between"><span>≥ 10 层</span><span className="text-amber-400">15分</span></div>
+                                        <div className="flex justify-between"><span>≥ 5 层</span><span className="text-emerald-400">5分</span></div>
+                                        <div className="mt-1 text-slate-500 italic">层数越多，持仓风险越高</div>
+                                    </div>
+                                </div>
                             </div>
-                            <div title="回撤深度 (30%)&#10;━━━━━━━━━━━━&#10;回撤 ≥ 30% → 30分&#10;回撤 ≥ 20% → 20分&#10;回撤 ≥ 10% → 10分&#10;回撤 ≥ 5% → 5分&#10;回撤越大风险越高">
+
+                            {/* Drawdown Score */}
+                            <div className="group relative cursor-help">
                                 <DataBar label="回撤深度" value={smartMetrics.drawdownScore} max={30} color="bg-orange-500" warningThreshold={20} />
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-2 bg-slate-900/95 backdrop-blur text-[10px] text-slate-300 rounded-lg shadow-xl border border-slate-700 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                                    <div className="font-bold text-orange-400 mb-1 border-b border-slate-700 pb-1">回撤深度 (30%)</div>
+                                    <div className="space-y-0.5">
+                                        <div className="flex justify-between"><span>≥ 30%</span><span className="text-rose-400">30分</span></div>
+                                        <div className="flex justify-between"><span>≥ 20%</span><span className="text-amber-400">20分</span></div>
+                                        <div className="flex justify-between"><span>≥ 10%</span><span className="text-orange-300">10分</span></div>
+                                        <div className="flex justify-between"><span>≥ 5%</span><span className="text-emerald-400">5分</span></div>
+                                    </div>
+                                </div>
                             </div>
-                            <div title="价格速度 (20%)&#10;━━━━━━━━━━━━&#10;逆势速度 ≥ $3 → 20分&#10;逆势速度 ≥ $2 → 10分&#10;逆势速度 ≥ $1 → 5分&#10;仅计算对持仓不利方向的价格变动">
+
+                            {/* Velocity Score */}
+                            <div className="group relative cursor-help">
                                 <DataBar label="价格速度" value={smartMetrics.velocityScore} max={20} color="bg-indigo-500" warningThreshold={15} />
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-2 bg-slate-900/95 backdrop-blur text-[10px] text-slate-300 rounded-lg shadow-xl border border-slate-700 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                                    <div className="font-bold text-indigo-400 mb-1 border-b border-slate-700 pb-1">价格速度 (20%)</div>
+                                    <div className="space-y-0.5">
+                                        <div className="flex justify-between"><span>逆势 ≥ $3/min</span><span className="text-rose-400">20分</span></div>
+                                        <div className="flex justify-between"><span>逆势 ≥ $2/min</span><span className="text-amber-400">10分</span></div>
+                                        <div className="flex justify-between"><span>逆势 ≥ $1/min</span><span className="text-emerald-400">5分</span></div>
+                                        <div className="mt-1 text-slate-500 italic">仅计算对持仓不利方向</div>
+                                    </div>
+                                </div>
                             </div>
-                            <div title="生存空间 (30%)&#10;━━━━━━━━━━━━&#10;距离 < 1 ATR → 30分&#10;距离 < 2 ATR → 20分&#10;距离 < 3 ATR → 10分&#10;距离 < 5 ATR → 5分&#10;距离指当前价格到强平价的距离">
+
+                            {/* Distance Score */}
+                            <div className="group relative cursor-help">
                                 <DataBar label="生存空间" value={smartMetrics.distanceScore} max={30} color="bg-emerald-500" warningThreshold={25} />
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-2 bg-slate-900/95 backdrop-blur text-[10px] text-slate-300 rounded-lg shadow-xl border border-slate-700 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                                    <div className="font-bold text-emerald-400 mb-1 border-b border-slate-700 pb-1">生存空间 (30%)</div>
+                                    <div className="space-y-0.5">
+                                        <div className="flex justify-between"><span>&lt; 1 ATR</span><span className="text-rose-400">30分</span></div>
+                                        <div className="flex justify-between"><span>&lt; 2 ATR</span><span className="text-amber-400">20分</span></div>
+                                        <div className="flex justify-between"><span>&lt; 3 ATR</span><span className="text-orange-300">10分</span></div>
+                                        <div className="flex justify-between"><span>&lt; 5 ATR</span><span className="text-emerald-400">5分</span></div>
+                                        <div className="mt-1 text-slate-500 italic">基于强平距离与ATR比率</div>
+                                    </div>
+                                </div>
                             </div>
+
                         </div>
                     </div>
                 </div>
