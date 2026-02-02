@@ -33,7 +33,17 @@ pub struct InternalState {
     pub recent_logs: HashMap<String, Vec<LogEntry>>,     // Key: "mt4_account:broker"
     pub pending_commands: HashMap<String, Vec<Command>>, // Key: "mt4_account:broker"
     pub risk_controls: HashMap<i64, RiskControlState>,   // Key: mt4_account
+    pub risk_details: HashMap<i64, SmartExitMetrics>,    // Key: mt4_account
+    pub symbol_metrics: HashMap<String, CachedSymbolMetric>, // Key: symbol (e.g. "XAUUSD")
     pub active_symbols: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct CachedSymbolMetric {
+    pub atr_d1: f64,
+    pub velocity_m1: f64,
+    pub rvol: f64,
+    pub last_update: i64,
 }
 
 
@@ -347,6 +357,132 @@ async fn process_market_data(state: &Arc<CombinedState>, payload: MarketData) {
     }
 }
 
+
+async fn get_symbol_metrics(state: &Arc<CombinedState>, symbol: &str) -> (f64, f64, f64) {
+    let now = chrono::Utc::now().timestamp();
+    
+    // 1. Get/Calc ATR (Cached)
+    let mut atr = 0.0;
+    {
+        let mem = state.memory.read().unwrap();
+        if let Some(m) = mem.symbol_metrics.get(symbol) {
+             // ATR D1 is slow moving, cache for 5 minutes (300s)
+            if now - m.last_update < 300 {
+                atr = m.atr_d1;
+            }
+        }
+    }
+
+    if atr == 0.0 {
+        let start_ts = now - (30 * 86400); 
+        let candles_query = sqlx::query_as!(
+            Candle,
+            "SELECT 
+                (timestamp / 86400) * 86400 as time,
+                (array_agg(bid ORDER BY timestamp ASC))[1] as open,
+                MAX(bid) as high,
+                MIN(bid) as low,
+                (array_agg(bid ORDER BY timestamp DESC))[1] as close
+             FROM market_data 
+             WHERE symbol = $1 AND timestamp > $2
+             GROUP BY 1 
+             ORDER BY 1 DESC 
+             LIMIT 30",
+             symbol,
+             start_ts
+        )
+        .fetch_all(&state.db)
+        .await;
+
+        if let Ok(mut candles) = candles_query {
+            candles.reverse();
+            atr = crate::risk::calculator::calculate_atr(&candles, 14);
+            
+            // Update Cache
+            {
+                let mut mem = state.memory.write().unwrap();
+                let cached = mem.symbol_metrics.entry(symbol.to_string()).or_default();
+                cached.atr_d1 = atr;
+                cached.last_update = now;
+                // velocity/rvol in cache are ignored/overwritten but structure exists
+            }
+        }
+    }
+
+    // 2. Calculate Velocity & RVOL (Real-time, No Cache)
+    // Find Latest TS
+    let max_ts_row = sqlx::query!(
+        "SELECT MAX(timestamp) as max_ts FROM market_data WHERE symbol = $1",
+        symbol
+    )
+    .fetch_optional(&state.db)
+    .await
+    .unwrap_or(None);
+
+    let latest_ts = max_ts_row.and_then(|r| r.max_ts).unwrap_or(now);
+
+    // Velocity M1
+    let velocity_result = sqlx::query(
+        "SELECT 
+            (array_agg(bid ORDER BY timestamp DESC))[1] as current_price,
+            (array_agg(bid ORDER BY timestamp ASC))[1] as old_price
+         FROM market_data 
+         WHERE symbol = $1 AND timestamp >= $2 AND timestamp <= $3"
+    )
+    .bind(symbol)
+    .bind(latest_ts - 61)
+    .bind(latest_ts)
+    .fetch_optional(&state.db)
+    .await;
+
+    let velocity_m1 = if let Ok(Some(row)) = velocity_result {
+        use sqlx::Row;
+        let current: f64 = row.try_get("current_price").unwrap_or(0.0);
+        let old: f64 = row.try_get("old_price").unwrap_or(0.0);
+        if old > 0.0 { current - old } else { 0.0 }
+    } else {
+        0.0
+    };
+
+    // RVOL
+    let rvol_result = sqlx::query(
+        "WITH 
+         current_period AS (
+             SELECT COUNT(*) as tick_count FROM market_data 
+             WHERE symbol = $1 AND timestamp >= $2 AND timestamp <= $3
+         ),
+         avg_period AS (
+             SELECT COUNT(*) / 24.0 as avg_hourly_ticks FROM market_data 
+             WHERE symbol = $1 AND timestamp >= $4 AND timestamp <= $3
+         )
+         SELECT 
+            cp.tick_count,
+            NULLIF(ap.avg_hourly_ticks, 0) as avg_ticks
+         FROM current_period cp, avg_period ap"
+    )
+    .bind(symbol)
+    .bind(latest_ts - 3600)
+    .bind(latest_ts)
+    .bind(latest_ts - 86400)
+    .fetch_optional(&state.db)
+    .await;
+
+    let rvol = if let Ok(Some(row)) = rvol_result {
+        use sqlx::Row;
+        let current_ticks: i64 = row.try_get("tick_count").unwrap_or(0);
+        let avg_ticks: Option<f64> = row.try_get("avg_ticks").ok();
+        
+        let c_ticks = current_ticks as f64;
+        let a_ticks = avg_ticks.unwrap_or(0.0);
+        
+        if a_ticks > 0.0 { c_ticks / a_ticks } else { 1.0 }
+    } else {
+        1.0
+    };
+
+    (atr, velocity_m1, rvol)
+}
+
 async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(payload): Json<AccountStatus>) {
     let symbols: Vec<String> = payload.positions.iter().map(|p| p.symbol.clone()).collect();
     tracing::info!("Account Status Update: Equity:{} Acc:{} Broker:{} Symbols:{:?}", payload.equity, payload.mt4_account, payload.broker, symbols);
@@ -406,40 +542,52 @@ async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(pay
         tracing::error!("DB Error (account): {}", e);
     }
 
-    // ======== 🆕 Auto Risk Calculation (Backend Enforced) ========
+    // ======== 🆕 Auto Risk Calculation (Backend Enforced V2) ========
     // 1. Calculate Real-time Drawdown
     let drawdown = if payload.balance > 0.0 {
         ((payload.balance - payload.equity) / payload.balance) * 100.0
     } else { 0.0 };
+
+    // 2. Identify Main Symbol
+    let main_symbol = payload.positions.first().map(|p| p.symbol.as_str()).unwrap_or("XAUUSD");
+
+    // 3. Get Market Metrics (Async)
+    let (atr, velocity, rvol) = get_symbol_metrics(&state, main_symbol).await;
+
+    // 4. Calculate Net Lots
+    let buy_lots: f64 = payload.positions.iter().filter(|p| p.side == "BUY").map(|p| p.lots).sum();
+    let sell_lots: f64 = payload.positions.iter().filter(|p| p.side == "SELL").map(|p| p.lots).sum();
+    let net_lots = buy_lots - sell_lots;
+
+    // 5. Calculate Survival Distance
+    let survival_distance = crate::risk::calculator::calculate_survival_distance(
+        payload.equity, payload.margin, payload.margin_so_level, net_lots, payload.contract_size
+    );
+
+    // 6. Integrated Risk Score
+    let metrics = crate::risk::calculator::calculate_integrated_risk_score(
+        survival_distance, atr, velocity, rvol, &payload.positions, drawdown
+    );
     
-    // 2. Calculate Risk Score (Simplified for Backend Reliability)
-    //    Drawdown Weight 50% + Margin Level Weight 50%
-    let margin_level = if payload.margin > 0.0 {
-        payload.equity / payload.margin * 100.0
-    } else { f64::INFINITY }; // If margin is 0, level is infinite (safe)
-    
-    // Drawdown Score: 0% -> 0, 50% -> 50 points (Non-linear)
-    let drawdown_score = if drawdown <= 5.0 { 0.0 }
-        else if drawdown >= 50.0 { 50.0 }
-        else { (drawdown / 50.0).powf(1.5) * 50.0 };
-    
-    // Margin Score: >500% -> 0, <100% -> 50 points
-    let margin_score = if margin_level > 500.0 { 0.0 }
-        else if margin_level <= 100.0 { 50.0 }
-        else { 50.0 * (1.0 - (margin_level - 100.0) / 400.0) };
-    
-    let risk_score = (drawdown_score + margin_score).min(100.0);
-    
-    // 3. Determine Block Directives
-    let (block_buy, block_sell, block_all, exit_trigger, risk_level_str) = if risk_score >= 95.0 {
-        (true, true, true, "FORCE_EXIT", "CRITICAL")
-    } else if risk_score >= 80.0 {
-        (true, true, true, "TACTICAL_EXIT", "CRITICAL")
-    } else if risk_score >= 60.0 {
-        (true, true, false, "LAYER_LOCK", "WARNING")
-    } else {
-        (false, false, false, "NONE", "SAFE")
+    // 7. Extract Values for Control
+    let risk_score = metrics.risk_score;
+    let exit_trigger = metrics.exit_trigger.clone();
+    let risk_level_str = if risk_score >= 80.0 { "CRITICAL" } 
+        else if risk_score >= 60.0 { "WARNING" } 
+        else { "SAFE" };
+
+    // 8. Determine Block Directives
+    let (block_buy, block_sell, block_all) = match exit_trigger.as_str() {
+        "FORCE_EXIT" | "TACTICAL_EXIT" => (true, true, true),
+        "LAYER_LOCK" => (true, true, false), 
+        _ => (false, false, false),
     };
+    
+    // 9. Update Risk Details Cache
+    {
+        let mut mem = state.memory.write().unwrap();
+        mem.risk_details.insert(payload.mt4_account, metrics);
+    }
     
     // 4. Auto-Update Risk Controls (UPSERT to ensure record exists)
     // We always update score and levels, but only override directives if enabled=true
@@ -961,6 +1109,14 @@ async fn bind_account(
     }))
 }
 
+#[derive(Debug, Serialize)]
+struct RiskControlResponse {
+    #[serde(flatten)]
+    state: RiskControlState,
+    #[serde(default)]
+    metrics: Option<SmartExitMetrics>,
+}
+
 async fn get_risk_control(
     State(state): State<Arc<CombinedState>>,
     axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
@@ -986,7 +1142,12 @@ async fn get_risk_control(
         enabled: false,
     });
 
-    Json(control).into_response()
+    let metrics = s.risk_details.get(&mt4_account).cloned();
+
+    Json(RiskControlResponse {
+        state: control,
+        metrics,
+    }).into_response()
 }
 
 async fn update_risk_control(

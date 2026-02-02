@@ -190,3 +190,40 @@ pub struct VelocityData {
     pub rvol: f64,            // Relative volume vs 24h average
     pub timestamp: i64,
 }
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct DirectionalLiquidationPrice {
+    pub buy_liquidation_price: f64,
+    pub sell_liquidation_price: f64,
+    pub dominant_direction: String, // "BUY", "SELL", "HEDGED"
+    pub effective_liquidation_price: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct SmartExitMetrics {
+    // Basic Metrics
+    pub survival_distance: f64,
+    pub liquidation_price: f64,
+    
+    // Dynamic Metrics
+    pub velocity_m1: f64,
+    pub rvol: f64,
+    
+    // Risk Scores
+    pub risk_score: f64,       // 0-100 Integrated Score
+    pub distance_score: f64,
+    pub velocity_score: f64,
+    pub layer_score: f64,
+    pub drawdown_score: f64,   // New
+    
+    // Trigger Status
+    pub exit_trigger: String,  // "NONE" | "LAYER_LOCK" | "TACTICAL_EXIT" | "FORCE_EXIT"
+    pub trigger_reason: String,
+    
+    // Auxiliary
+    pub is_velocity_warning: bool,
+    pub is_rvol_warning: bool,
+    
+    // Martingale Detection
+    pub is_martingale_pattern: bool,
+    pub martingale_warning: String,
+}

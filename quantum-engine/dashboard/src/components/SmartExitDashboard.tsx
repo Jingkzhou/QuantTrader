@@ -7,18 +7,8 @@ import {
 import type { AccountStatus, RiskControlState } from '../types';
 import { API_BASE } from '../config';
 import {
-    calculateSurvivalDistance,
-    calculateRiskOccupancy,
-    calculateLiquidationPriceV2,
-    calculateDynamicRiskLevel,
-    type RiskLevel
-} from '../utils/riskCalculations';
-import {
-    calculateIntegratedRiskScore,
     estimateSurvivalTime,
     getExitTriggerConfig,
-    SMART_EXIT_CONFIG,
-    type VelocityData,
     type ExitTrigger
 } from '../utils/smartExitCalculations';
 
@@ -47,7 +37,7 @@ const RiskGauge = ({ score, level }: { score: number, level: string }) => {
     // Color logic
     const colorClass = level === 'CRITICAL' ? 'text-rose-500 shadow-[0_0_15px_rgba(244,63,94,0.6)]' :
         level === 'WARNING' ? 'text-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.5)]' :
-            'text-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.4)]';
+            'text-emerald-500 shadow-[0_0_15px_rgba(10,185,129,0.4)]';
 
     return (
         <div className="relative w-24 h-24 flex items-center justify-center">
@@ -121,16 +111,15 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
     currentAsk,
     symbolInfo,
     atr,
-    atrH1 = 0,
+    atrH1 = 0, // Unused but kept for interface compat
     authToken,
     selectedSymbol = 'XAUUSD',
-    maxDrawdown = 0,
-    tradeStats
+    maxDrawdown = 0, // Unused locally
+    tradeStats // Unused locally
 }) => {
     // --- 1. Hooks (State & Memos) ---
     const [eaLinkageEnabled, setEaLinkageEnabled] = useState(false);
     const [syncStatus, setSyncStatus] = useState<'IDLE' | 'SYNCING' | 'ERROR'>('IDLE');
-    const [velocityData, setVelocityData] = useState<VelocityData | null>(null);
     const [operationLogs, setOperationLogs] = useState<any[]>([]);
     const [backendRiskState, setBackendRiskState] = useState<RiskControlState | null>(null);
 
@@ -138,109 +127,41 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
     const bid = currentBid ?? currentPrice ?? 0;
     const ask = currentAsk ?? currentPrice ?? 0;
 
-    // Core Metrics Memo
-    const {
-        survivalDistance,
-        riskLevel: computedRiskLevel,
-        liquidationPrice,
-        dominantDirection
-    } = useMemo(() => {
-        if (!accountStatus || accountStatus.positions.length === 0) {
-            return {
-                netLots: 0,
-                survivalDistance: Infinity,
-                riskOccupancy: 0,
-                riskLevel: 'SAFE' as RiskLevel,
-                liquidationPrice: 0,
-                dominantDirection: 'HEDGED' as const
-            };
-        }
+    // Derived Metrics from Backend
+    const metrics = backendRiskState?.metrics;
 
+    const survivalDistance = metrics?.survival_distance ?? Infinity;
+    const liquidationPrice = metrics?.liquidation_price ?? 0;
+
+    // Local Direction Logic for UI Badge
+    const dominantDirection = useMemo(() => {
+        if (!accountStatus?.positions) return 'HEDGED';
         const buyLots = accountStatus.positions.filter(p => p.side === 'BUY').reduce((acc, p) => acc + p.lots, 0);
         const sellLots = accountStatus.positions.filter(p => p.side === 'SELL').reduce((acc, p) => acc + p.lots, 0);
         const net = buyLots - sellLots;
+        if (net > 0.001) return 'BUY';
+        if (net < -0.001) return 'SELL';
+        return 'HEDGED';
+    }, [accountStatus]);
 
-        const liqV2 = calculateLiquidationPriceV2(
-            accountStatus.equity,
-            accountStatus.margin,
-            symbolInfo.stopOutLevel,
-            buyLots,
-            sellLots,
-            symbolInfo.contractSize,
-            bid,
-            ask
-        );
 
-        const dist = calculateSurvivalDistance(
-            accountStatus.equity,
-            accountStatus.margin,
-            symbolInfo.stopOutLevel,
-            net,
-            symbolInfo.contractSize
-        );
-
-        const occ = calculateRiskOccupancy(dist, atr);
-
-        const level = atrH1 > 0
-            ? calculateDynamicRiskLevel(dist, atr, atrH1)
-            : calculateDynamicRiskLevel(dist, atr, 0);
-
-        return {
-            netLots: net,
-            survivalDistance: dist,
-            riskOccupancy: occ,
-            riskLevel: level,
-            liquidationPrice: liqV2.effectiveLiquidationPrice,
-            dominantDirection: liqV2.dominantDirection
-        };
-    }, [accountStatus, bid, ask, symbolInfo, atr, atrH1]);
-
-    // Smart Exit Metrics Memo (Legacy / Fallback)
-    const smartMetrics = useMemo(() => {
-        const velocityM1 = velocityData?.velocity_m1 ?? 0;
-        const rvol = velocityData?.rvol ?? 1.0;
-
-        const metrics = calculateIntegratedRiskScore(
-            survivalDistance,
-            atr,
-            velocityM1,
-            rvol,
-            accountStatus.positions,
-            SMART_EXIT_CONFIG.DEFAULT_MAX_LAYER,
-            maxDrawdown,
-            tradeStats
-        );
-
-        return {
-            ...metrics,
-            liquidationPrice
-        };
-    }, [survivalDistance, atr, velocityData, accountStatus.positions, liquidationPrice, maxDrawdown, tradeStats]);
+    const smartMetrics = {
+        riskScore: metrics?.risk_score ?? 0,
+        exitTrigger: metrics?.exit_trigger ?? 'NONE',
+        velocityM1: metrics?.velocity_m1 ?? 0,
+        rvol: metrics?.rvol ?? 1.0,
+        layerScore: metrics?.layer_score ?? 0,
+        drawdownScore: metrics?.drawdown_score ?? 0,
+        velocityScore: metrics?.velocity_score ?? 0,
+        distanceScore: metrics?.distance_score ?? 0,
+        triggerReason: metrics?.trigger_reason ?? '',
+        isVelocityWarning: metrics?.is_velocity_warning ?? false,
+        isMartingalePattern: metrics?.is_martingale_pattern ?? false,
+    };
 
     // --- 2. Side Effects ---
-    // Fetch Velocity Data
-    useEffect(() => {
-        if (!authToken || !selectedSymbol) return;
+    // Fetch Risk State from Backend (Poll)
 
-        const fetchVelocity = async () => {
-            try {
-                const res = await axios.get(`${API_BASE}/velocity`, {
-                    params: { symbol: selectedSymbol },
-                    headers: { Authorization: `Bearer ${authToken}` }
-                });
-                setVelocityData(res.data);
-            } catch {
-                // Velocity endpoint may not exist yet, use fallback
-                console.debug("Velocity data not available, using fallback");
-            }
-        };
-
-        fetchVelocity();
-        const interval = setInterval(fetchVelocity, 5000);
-        return () => clearInterval(interval);
-    }, [authToken, selectedSymbol]);
-
-    // 3. Fetch Risk State from Backend (Poll)
     useEffect(() => {
         if (!authToken || !accountStatus.mt4_account) return;
 
@@ -264,7 +185,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
         return () => clearInterval(interval);
     }, [authToken, accountStatus.mt4_account]);
 
-    // Fetch Operation Logs
+    // Fetch Operation Logs (Keep as is)
     useEffect(() => {
         if (!authToken || !accountStatus.mt4_account) return;
 
@@ -334,9 +255,9 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
     };
 
     // Use Backend Data if available, else fallback to Frontend calc
-    const displayRiskScore = backendRiskState ? backendRiskState.risk_score : smartMetrics.riskScore;
-    const displayRiskLevel = backendRiskState ? backendRiskState.risk_level : computedRiskLevel;
-    const displayExitTrigger = backendRiskState ? backendRiskState.exit_trigger : smartMetrics.exitTrigger;
+    const displayRiskScore = backendRiskState ? backendRiskState.risk_score : 0;
+    const displayRiskLevel = backendRiskState ? backendRiskState.risk_level : 'SAFE';
+    const displayExitTrigger = backendRiskState ? backendRiskState.exit_trigger : 'NONE';
 
 
     // 4. Get trigger config for styling
@@ -443,10 +364,10 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                             <span className="text-[10px] text-slate-500 font-bold uppercase">市场脉搏</span>
                             <div className="flex items-center gap-2">
                                 {/* Data Freshness Indicator */}
-                                {velocityData?.timestamp && (
-                                    <span className={`text-[9px] font-mono ${(Date.now() / 1000 - velocityData.timestamp) > 60 ? 'text-rose-500 animate-pulse' : 'text-emerald-500'
+                                {backendRiskState?.updated_at && (
+                                    <span className={`text-[9px] font-mono ${(Date.now() / 1000 - backendRiskState.updated_at) > 60 ? 'text-rose-500 animate-pulse' : 'text-emerald-500'
                                         }`}>
-                                        {(Date.now() / 1000 - velocityData.timestamp) > 60 ? '数据延迟' : '● 实时'}
+                                        {(Date.now() / 1000 - backendRiskState.updated_at) > 60 ? '数据延迟' : '● 实时'}
                                     </span>
                                 )}
                                 <Activity size={12} className={smartMetrics.isVelocityWarning ? 'text-rose-500 animate-pulse' : 'text-slate-600'} />

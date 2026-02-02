@@ -96,7 +96,7 @@ const App = () => {
           headers: { Authorization: `Bearer ${auth.token}` }
         });
         const candles = response.data;
-        if (candles && candles.length > 14) {
+        if (candles && candles.length > 1) {
           const val = calculateATR(candles, 14);
           setAtr(val);
         } else {
