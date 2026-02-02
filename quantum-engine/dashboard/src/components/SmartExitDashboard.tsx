@@ -157,6 +157,8 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
         triggerReason: metrics?.trigger_reason ?? '',
         isVelocityWarning: metrics?.is_velocity_warning ?? false,
         isMartingalePattern: metrics?.is_martingale_pattern ?? false,
+        rsi: metrics?.rsi_14 ?? 50.0,
+        rsiSignal: metrics?.rsi_signal ?? 'NEUTRAL',
     };
 
     // --- 2. Side Effects ---
@@ -266,6 +268,14 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
     // Survival Time with velocity consideration
     const survivalTime = estimateSurvivalTime(survivalDistance, atr, smartMetrics.velocityM1);
 
+    // RSI Logic for Fingerprint
+    const rsi = smartMetrics.rsi ?? 50;
+    const isLongEntrySafe = rsi < 70;
+    const isShortEntrySafe = rsi > 30;
+
+    // Divergence Sim (Risk Rising + Extreme RSI)
+    const isTrendExhausted = smartMetrics.riskScore >= 60 && (rsi > 70 || rsi < 30);
+
     return (
         <div className={`
                 relative rounded-2xl border transition-all duration-300 group z-20
@@ -283,26 +293,28 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
             <div className="p-5 flex flex-col md:flex-row gap-6 items-center md:items-stretch">
 
                 {/* 1. Left: Risk Radar & Gauge */}
-                <div className="flex flex-col items-center justify-center min-w-[120px] relative group/gauge cursor-help" tabIndex={0}>
-                    <RiskGauge score={displayRiskScore} level={displayRiskLevel} />
+                <div className="flex flex-col items-center justify-center min-w-[140px] relative">
+                    <div className="group/gauge relative cursor-help flex flex-col items-center" tabIndex={0}>
+                        <RiskGauge score={displayRiskScore} level={displayRiskLevel} />
 
-                    {/* Risk Score Tooltip */}
-                    <div className="absolute top-full mt-2 w-48 p-2.5 bg-slate-900/95 backdrop-blur text-[10px] text-slate-300 rounded-lg shadow-xl border border-slate-700 opacity-0 group-hover/gauge:opacity-100 group-focus-within/gauge:opacity-100 transition-opacity pointer-events-none z-50 text-center">
-                        <div className="font-bold text-slate-200 mb-1.5 border-b border-slate-700 pb-1">EA 干预规则</div>
-                        <div className="space-y-2 text-left">
-                            <div>
-                                <div className="flex justify-between font-bold text-rose-500">
-                                    <span>≥ 90分</span>
-                                    <span>紧急逃生</span>
+                        {/* Risk Score Tooltip */}
+                        <div className="absolute top-full mt-2 w-48 p-2.5 bg-slate-900/95 backdrop-blur text-[10px] text-slate-300 rounded-lg shadow-xl border border-slate-700 opacity-0 group-hover/gauge:opacity-100 group-focus-within/gauge:opacity-100 transition-opacity pointer-events-none z-50 text-center">
+                            <div className="font-bold text-slate-200 mb-1.5 border-b border-slate-700 pb-1">EA 干预规则</div>
+                            <div className="space-y-2 text-left">
+                                <div>
+                                    <div className="flex justify-between font-bold text-rose-500">
+                                        <span>≥ 90分</span>
+                                        <span>紧急逃生</span>
+                                    </div>
+                                    <div className="text-slate-500 mt-0.5">触发 FORCE_EXIT，阻断一切交易，建议立即清仓</div>
                                 </div>
-                                <div className="text-slate-500 mt-0.5">触发 FORCE_EXIT，阻断一切交易，建议立即清仓</div>
-                            </div>
-                            <div>
-                                <div className="flex justify-between font-bold text-amber-500">
-                                    <span>≥ 70分</span>
-                                    <span>战术减仓</span>
+                                <div>
+                                    <div className="flex justify-between font-bold text-amber-500">
+                                        <span>≥ 70分</span>
+                                        <span>战术减仓</span>
+                                    </div>
+                                    <div className="text-slate-500 mt-0.5">触发 TACTICAL_EXIT，禁止开新仓，建议减仓防守</div>
                                 </div>
-                                <div className="text-slate-500 mt-0.5">触发 TACTICAL_EXIT，禁止开新仓，建议减仓防守</div>
                             </div>
                         </div>
                     </div>
@@ -317,11 +329,49 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                         </span>
                     </div>
 
+                    {/* NEW: Entry Fingerprint (RSI) */}
+                    <div className="mt-4 w-full bg-slate-900/40 rounded-lg p-2 border border-slate-800/50 backdrop-blur-sm">
+                        <div className="flex items-center justify-between mb-1.5 px-1">
+                            <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider scale-90 origin-left">进场指纹</span>
+                            <span className={`text-[10px] font-mono font-bold ${rsi > 70 || rsi < 30 ? 'text-amber-400' : 'text-slate-400'}`}>
+                                RSI {rsi.toFixed(0)}
+                            </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                            {/* Long Entry Light */}
+                            <div className={`
+                                flex items-center justify-center gap-1 px-1.5 py-1 rounded bg-slate-950 border
+                                ${isLongEntrySafe ? 'border-emerald-500/30 text-emerald-500' : 'border-rose-900/30 text-rose-900 opacity-50'}
+                            `} title="多头准入: RSI < 70">
+                                <div className={`w-1.5 h-1.5 rounded-full ${isLongEntrySafe ? 'bg-emerald-500 shadow-[0_0_5px_#10b981]' : 'bg-rose-900'}`} />
+                                <span className="text-[8px] font-bold">多</span>
+                            </div>
+
+                            {/* Short Entry Light */}
+                            <div className={`
+                                flex items-center justify-center gap-1 px-1.5 py-1 rounded bg-slate-950 border
+                                ${isShortEntrySafe ? 'border-emerald-500/30 text-emerald-500' : 'border-rose-900/30 text-rose-900 opacity-50'}
+                            `} title="空头准入: RSI > 30">
+                                <div className={`w-1.5 h-1.5 rounded-full ${isShortEntrySafe ? 'bg-emerald-500 shadow-[0_0_5px_#10b981]' : 'bg-rose-900'}`} />
+                                <span className="text-[8px] font-bold">空</span>
+                            </div>
+                        </div>
+
+                        {/* Exhaustion Warning */}
+                        {isTrendExhausted && (
+                            <div className="mt-1.5 pt-1.5 border-t border-slate-800 text-center animate-pulse">
+                                <span className="text-[9px] font-bold text-rose-400 flex items-center justify-center gap-1">
+                                    <AlertTriangle size={8} />
+                                    趋势力竭
+                                </span>
+                            </div>
+                        )}
+                    </div>
+
                     {/* Martingale Warning Badge */}
                     {smartMetrics.isMartingalePattern && (
                         <div className="absolute -top-2 -right-2 animate-pulse">
                             <div className="bg-amber-950/90 text-amber-500 border border-amber-500/50 p-1 rounded-md shadow-[0_0_10px_rgba(245,158,11,0.3)]">
-                                <AlertTriangle size={14} />
                             </div>
                         </div>
                     )}

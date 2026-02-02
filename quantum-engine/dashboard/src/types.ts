@@ -85,6 +85,8 @@ export interface SmartExitMetrics {
     is_rvol_warning: boolean;
     is_martingale_pattern: boolean;
     martingale_warning: string;
+    rsi_14?: number;
+    rsi_signal?: string;
 }
 
 export interface RiskControlState {

@@ -358,7 +358,7 @@ async fn process_market_data(state: &Arc<CombinedState>, payload: MarketData) {
 }
 
 
-async fn get_symbol_metrics(state: &Arc<CombinedState>, symbol: &str) -> (f64, f64, f64) {
+async fn get_symbol_metrics(state: &Arc<CombinedState>, symbol: &str) -> (f64, f64, f64, f64) {
     let now = chrono::Utc::now().timestamp();
     
     // 1. Get/Calc ATR (Cached)
@@ -487,12 +487,39 @@ async fn get_symbol_metrics(state: &Arc<CombinedState>, symbol: &str) -> (f64, f
         1.0
     };
 
+    // RSI Calculation (M1)
+    let rsi_candles_query = sqlx::query_as!(
+        Candle,
+        "SELECT 
+            (timestamp / 60) * 60 as \"time!\",
+            (array_agg(bid ORDER BY timestamp ASC))[1] as \"open!\",
+            MAX(bid) as \"high!\",
+            MIN(bid) as \"low!\",
+            (array_agg(bid ORDER BY timestamp DESC))[1] as \"close!\"
+        FROM market_data
+        WHERE symbol = $1 AND timestamp >= $2
+        GROUP BY 1
+        ORDER BY 1 DESC
+        LIMIT 20",
+        symbol,
+        latest_ts - (25 * 60) // Fetch slightly more to ensure 15 candles
+    )
+    .fetch_all(&state.db)
+    .await;
+
+    let rsi = if let Ok(mut candles) = rsi_candles_query {
+        candles.reverse();
+        crate::risk::calculator::calculate_rsi(&candles, 14)
+    } else {
+        50.0
+    };
+
     if atr == 0.0 || velocity_m1 == 0.0 {
-        tracing::warn!("[Metrics] {} ATR={:.2} Vel={:.2} RVOL={:.2} (Time diff: {}s)", 
-            symbol, atr, velocity_m1, rvol, now - latest_ts);
+        tracing::warn!("[Metrics] {} ATR={:.2} Vel={:.2} RVOL={:.2} RSI={:.2} (Time diff: {}s)", 
+            symbol, atr, velocity_m1, rvol, rsi, now - latest_ts);
     }
 
-    (atr, velocity_m1, rvol)
+    (atr, velocity_m1, rvol, rsi)
 }
 
 async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(payload): Json<AccountStatus>) {
@@ -564,7 +591,7 @@ async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(pay
     let main_symbol = payload.positions.first().map(|p| p.symbol.as_str()).unwrap_or("XAUUSD");
 
     // 3. Get Market Metrics (Async)
-    let (atr, velocity, rvol) = get_symbol_metrics(&state, main_symbol).await;
+    let (atr, velocity, rvol, rsi) = get_symbol_metrics(&state, main_symbol).await;
 
     // 4. Calculate Net Lots
     let buy_lots: f64 = payload.positions.iter().filter(|p| p.side == "BUY").map(|p| p.lots).sum();
@@ -588,6 +615,12 @@ async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(pay
     let mut metrics = crate::risk::calculator::calculate_integrated_risk_score(
         survival_distance, atr, velocity, rvol, &payload.positions, drawdown
     );
+    
+    // 6.b Populate RSI (Entry Fingerprint)
+    metrics.rsi_14 = rsi;
+    metrics.rsi_signal = if rsi >= 70.0 { "SELL".to_string() }
+                         else if rsi <= 30.0 { "BUY".to_string() }
+                         else { "NEUTRAL".to_string() };
     
     // 6.5 Calculate Liquidation Price V2
     let (current_bid, current_ask) = {

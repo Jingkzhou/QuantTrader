@@ -231,5 +231,47 @@ pub fn calculate_integrated_risk_score(
         is_rvol_warning: rvol > RVOL_WARNING_THRESHOLD,
         is_martingale_pattern: false, // Not implemented yet
         martingale_warning: String::new(),
+        rsi_14: 0.0,
+        rsi_signal: "NEUTRAL".to_string(),
     }
+}
+
+/// Calculate RSI (Relative Strength Index) using Wilder's Smoothing
+pub fn calculate_rsi(candles: &[Candle], period: usize) -> f64 {
+    if candles.len() < period + 1 {
+        return 50.0;
+    }
+
+    let mut gains = 0.0;
+    let mut losses = 0.0;
+    
+    // First period: Simple Average
+    for i in 1..=period {
+        let change = candles[i].close - candles[i-1].close;
+        if change > 0.0 {
+            gains += change;
+        } else {
+            losses -= change;
+        }
+    }
+    
+    let mut avg_gain = gains / period as f64;
+    let mut avg_loss = losses / period as f64;
+    
+    // Smoothing
+    for i in (period + 1)..candles.len() {
+        let change = candles[i].close - candles[i-1].close;
+        let gain = if change > 0.0 { change } else { 0.0 };
+        let loss = if change < 0.0 { -change } else { 0.0 };
+        
+        avg_gain = (avg_gain * (period as f64 - 1.0) + gain) / period as f64;
+        avg_loss = (avg_loss * (period as f64 - 1.0) + loss) / period as f64;
+    }
+    
+    if avg_loss == 0.0 {
+        return 100.0;
+    }
+    
+    let rs = avg_gain / avg_loss;
+    100.0 - (100.0 / (1.0 + rs))
 }

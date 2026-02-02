@@ -226,4 +226,8 @@ pub struct SmartExitMetrics {
     // Martingale Detection
     pub is_martingale_pattern: bool,
     pub martingale_warning: String,
+
+    // Entry Fingerprint (RSI)
+    pub rsi_14: f64,
+    pub rsi_signal: String, // "BUY" (<30) | "SELL" (>70) | "NEUTRAL"
 }
