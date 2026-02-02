@@ -653,11 +653,18 @@ async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(pay
         payload.mt4_account, risk_score, metrics.survival_distance, metrics.velocity_m1, metrics.rvol, metrics.liquidation_price);
 
     // 8. Determine Block Directives
-    let (block_buy, block_sell, block_all) = match exit_trigger.as_str() {
+    let (mut block_buy, mut block_sell, mut block_all) = match exit_trigger.as_str() {
         "FORCE_EXIT" | "TACTICAL_EXIT" => (true, true, true),
         "LAYER_LOCK" => (true, true, false), 
         _ => (false, false, false),
     };
+    
+    // RSI Entry Fingerprint Control
+    if rsi >= 70.0 {
+        block_buy = true; // Forbid Buy (Overbought)
+    } else if rsi <= 30.0 {
+        block_sell = true; // Forbid Sell (Oversold)
+    }
     
     tracing::info!("Account {} Metrics: Score={:.1} Dist={:.1} VelM1={:.2} RVOL={:.2} Liq={:.2}", 
         payload.mt4_account, risk_score, metrics.survival_distance, metrics.velocity_m1, metrics.rvol, metrics.liquidation_price);

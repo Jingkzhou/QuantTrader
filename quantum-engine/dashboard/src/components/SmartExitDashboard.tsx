@@ -330,7 +330,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                     </div>
 
                     {/* NEW: Entry Fingerprint (RSI) */}
-                    <div className="mt-4 w-full bg-slate-900/40 rounded-lg p-2 border border-slate-800/50 backdrop-blur-sm">
+                    <div className="mt-4 w-full bg-slate-900/40 rounded-lg p-2 border border-slate-800/50 backdrop-blur-sm relative group/rsi cursor-help" tabIndex={0}>
                         <div className="flex items-center justify-between mb-1.5 px-1">
                             <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider scale-90 origin-left">进场指纹</span>
                             <span className={`text-[10px] font-mono font-bold ${rsi > 70 || rsi < 30 ? 'text-amber-400' : 'text-slate-400'}`}>
@@ -354,6 +354,27 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                             `} title="空头准入: RSI > 30">
                                 <div className={`w-1.5 h-1.5 rounded-full ${isShortEntrySafe ? 'bg-emerald-500 shadow-[0_0_5px_#10b981]' : 'bg-rose-900'}`} />
                                 <span className="text-[8px] font-bold">空</span>
+                            </div>
+                        </div>
+
+                        {/* RSI Rules Tooltip */}
+                        <div className="absolute left-full top-0 ml-3 w-52 p-2.5 bg-slate-900/95 backdrop-blur text-[10px] text-slate-300 rounded-lg shadow-xl border border-slate-700 opacity-0 group-hover/rsi:opacity-100 group-focus-within/rsi:opacity-100 transition-opacity pointer-events-none z-50">
+                            <div className="font-bold text-slate-200 mb-1.5 border-b border-slate-700 pb-1">进场风控规则 (需联动)</div>
+                            <div className="space-y-2">
+                                <div>
+                                    <div className="flex justify-between font-bold text-rose-500">
+                                        <span>RSI ≥ 70</span>
+                                        <span>⛔️ Block Buy</span>
+                                    </div>
+                                    <div className="text-slate-500 mt-0.5">多头超买，禁止开多单/补多单</div>
+                                </div>
+                                <div>
+                                    <div className="flex justify-between font-bold text-rose-500">
+                                        <span>RSI ≤ 30</span>
+                                        <span>⛔️ Block Sell</span>
+                                    </div>
+                                    <div className="text-slate-500 mt-0.5">空头超卖，禁止开空单/补空单</div>
+                                </div>
                             </div>
                         </div>
 
