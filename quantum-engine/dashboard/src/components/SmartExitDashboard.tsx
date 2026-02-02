@@ -283,8 +283,29 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
             <div className="p-5 flex flex-col md:flex-row gap-6 items-center md:items-stretch">
 
                 {/* 1. Left: Risk Radar & Gauge */}
-                <div className="flex flex-col items-center justify-center min-w-[120px] relative">
+                <div className="flex flex-col items-center justify-center min-w-[120px] relative group/gauge cursor-help" tabIndex={0}>
                     <RiskGauge score={displayRiskScore} level={displayRiskLevel} />
+
+                    {/* Risk Score Tooltip */}
+                    <div className="absolute top-full mt-2 w-48 p-2.5 bg-slate-900/95 backdrop-blur text-[10px] text-slate-300 rounded-lg shadow-xl border border-slate-700 opacity-0 group-hover/gauge:opacity-100 group-focus-within/gauge:opacity-100 transition-opacity pointer-events-none z-50 text-center">
+                        <div className="font-bold text-slate-200 mb-1.5 border-b border-slate-700 pb-1">EA 干预规则</div>
+                        <div className="space-y-2 text-left">
+                            <div>
+                                <div className="flex justify-between font-bold text-rose-500">
+                                    <span>≥ 90分</span>
+                                    <span>紧急逃生</span>
+                                </div>
+                                <div className="text-slate-500 mt-0.5">触发 FORCE_EXIT，阻断一切交易，建议立即清仓</div>
+                            </div>
+                            <div>
+                                <div className="flex justify-between font-bold text-amber-500">
+                                    <span>≥ 70分</span>
+                                    <span>战术减仓</span>
+                                </div>
+                                <div className="text-slate-500 mt-0.5">触发 TACTICAL_EXIT，禁止开新仓，建议减仓防守</div>
+                            </div>
+                        </div>
+                    </div>
 
                     {/* Direction Badge */}
                     <div className="mt-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900 border border-slate-700/50 shadow-inner">
