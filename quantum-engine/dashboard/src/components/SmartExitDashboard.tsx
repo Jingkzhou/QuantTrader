@@ -268,7 +268,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
 
     return (
         <div className={`
-                relative overflow-hidden rounded-2xl border transition-all duration-300 group
+                relative rounded-2xl border transition-all duration-300 group z-20
                 bg-slate-950/80 backdrop-blur-xl
                 ${triggerConfig.borderColor}
                 ${displayExitTrigger !== 'NONE' ? 'shadow-[0_0_30px_rgba(244,63,94,0.3)]' : 'shadow-2xl'}
@@ -541,7 +541,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
 
             {/* Critical Alert Overlay */}
             {(displayExitTrigger === 'TACTICAL_EXIT' || displayExitTrigger === 'FORCE_EXIT') && (
-                <div className="absolute inset-0 z-50 pointer-events-none flex items-center justify-center bg-rose-950/20 backdrop-blur-[1px]">
+                <div className="absolute inset-0 z-50 pointer-events-none flex items-center justify-center bg-rose-950/20 backdrop-blur-[1px] rounded-2xl">
                     <div className="border border-rose-500/50 bg-black/80 text-rose-500 px-6 py-4 rounded-xl shadow-[0_0_50px_rgba(244,63,94,0.5)] animate-pulse flex flex-col items-center">
                         <AlertTriangle size={32} className="mb-2" />
                         <span className="text-xl font-bold font-mono tracking-widest">紧急逃生</span>
