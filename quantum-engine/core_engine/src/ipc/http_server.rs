@@ -1149,7 +1149,7 @@ async fn get_velocity(
     };
 
     if now - latest_ts > 300 {
-        tracing::warn!("Velocity Debug [{}] Data Stale! Latest: {}, Now: {}, Diff: {}", symbol, latest_ts, now, now - latest_ts);
+        tracing::warn!(" Velocity Debug [{}] Data Stale! Latest: {}, Now: {}, Diff: {}", symbol, latest_ts, now, now - latest_ts);
     }
 
     // 1. Calculate 1-min velocity: (current price - price 1 min ago)
