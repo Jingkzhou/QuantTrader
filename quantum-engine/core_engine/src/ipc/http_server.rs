@@ -398,6 +398,13 @@ async fn get_symbol_metrics(state: &Arc<CombinedState>, symbol: &str) -> (f64, f
             candles.reverse();
             atr = crate::risk::calculator::calculate_atr(&candles, 14);
             
+            // 🛡️ ATR Sanity Check: XAUUSD daily ATR typically 30-50, max ~80
+            // Tick-aggregated candles often produce inflated ATR due to intraday extremes
+            if symbol.contains("XAU") && atr > 80.0 {
+                tracing::warn!("ATR capped: {} raw={:.2} -> 50.0 (tick aggregation bias)", symbol, atr);
+                atr = 50.0; // Use conservative estimate
+            }
+            
             // Update Cache
             {
                 let mut mem = state.memory.write().unwrap();
