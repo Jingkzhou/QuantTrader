@@ -216,7 +216,7 @@ pub async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json
     
     let update_res = sqlx::query(
         "INSERT INTO risk_controls (mt4_account, block_buy, block_sell, block_all, risk_level, updated_at, velocity_block, enabled, risk_score, exit_trigger, fingerprint_enabled)
-         VALUES ($1, $2, $3, $4, $5, $6, false, false, $7, $8, true)
+         VALUES ($1, $2, $3, $4, $5, $6, false, false, $7, $8, $9)
          ON CONFLICT (mt4_account) DO UPDATE SET 
             block_buy = CASE WHEN risk_controls.enabled = true THEN $2 ELSE risk_controls.block_buy END, 
             block_sell = CASE WHEN risk_controls.enabled = true THEN $3 ELSE risk_controls.block_sell END,
@@ -224,7 +224,8 @@ pub async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json
             exit_trigger = CASE WHEN risk_controls.enabled = true THEN $8 ELSE risk_controls.exit_trigger END,
             risk_score = $7, 
             risk_level = $5, 
-            updated_at = $6"
+            updated_at = $6,
+            fingerprint_enabled = $9"
     )
     .bind(payload.mt4_account)
     .bind(block_buy)
@@ -234,6 +235,7 @@ pub async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json
     .bind(now_ts)
     .bind(risk_score)
     .bind(&exit_trigger)
+    .bind(fingerprint_enabled)
     .execute(&state.db)
     .await;
 
