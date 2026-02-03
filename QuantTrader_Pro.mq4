@@ -375,7 +375,7 @@ void OnTimer()
       static datetime lastReportTime = 0;
 
       // Frequency Limiter: Max 1 request per 3 seconds to prevent thread blocking
-         if(TimeCurrent() - lastReportTime > 3 && IsConnected())
+         if(TimeCurrent() - lastReportTime >= 1 && IsConnected())
         {
          SyncWithServer(); // Unified Sync (Commands + Risk Control)
          
@@ -1378,7 +1378,11 @@ void UpdatePanel() {
    color marginColor = clrUp;
    if(marginLevel < 1000) marginColor = clrWarn;
    if(marginLevel < 500) marginColor = clrDanger;
-   CreateLabel(PANEL_PREFIX+"Risk_M", rx, ry, "预付款比例:  " + DoubleToString(marginLevel, 0) + "%", 11, "Arial Bold", marginColor, 0);
+   string marginText = "---";
+   if(AccountMargin() > 0) marginText = DoubleToString(AccountEquity() / AccountMargin() * 100.0, 0) + "%";
+   else if(AccountEquity() > 0) marginText = "∞"; // 无占用保证金
+   
+   CreateLabel(PANEL_PREFIX+"Risk_M", rx, ry, "预付款比例:  " + marginText, 11, "Arial Bold", marginColor, 0);
    
    CreateLabel(PANEL_PREFIX+"Risk_D", rx+rGap, ry, "当前回撤: " + DoubleToString(drawDown, 2) + "% (Max: " + DoubleToString(g_SessionMaxDD, 2) + "%)", 11, FONT_NAME, clrTextMain, 0);
 
