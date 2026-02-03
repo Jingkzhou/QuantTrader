@@ -23,7 +23,7 @@ export const formatServerTime = (timestamp: number): string => {
     const minutes = String(date.getUTCMinutes()).padStart(2, '0');
     const seconds = String(date.getUTCSeconds()).padStart(2, '0');
 
-    return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 };
 
 /**
