@@ -919,7 +919,7 @@ void TrackPendingOrders(const OrderStats &stats, int direction)
             if(stats.buyCount==0) isAllow=true;
             else if(stats.lowestBuyPrice!=0 && targetPrice <= NormalizeDouble(stats.lowestBuyPrice - step*Point, Digits)) isAllow=true;
             else if(stats.highestBuyPrice!=0 && targetPrice >= NormalizeDouble(stats.highestBuyPrice + step*Point, Digits)) {
-               if(g_SellOverweight || (EnableLockTrend && stats.buyLots==stats.sellLots)) isAllow=true;
+               isAllow=true; // Match Heiqilin: Allow trailing regardless of current overweight status
             }
             
             // 动态 StopLevel 检查
@@ -975,7 +975,7 @@ void TrackPendingOrders(const OrderStats &stats, int direction)
             if(stats.sellCount==0) isAllow=true;
             else if(stats.highestSellPrice!=0 && targetPrice >= NormalizeDouble(stats.highestSellPrice + step*Point, Digits)) isAllow=true;
             else if(stats.lowestSellPrice!=0 && targetPrice <= NormalizeDouble(stats.lowestSellPrice - step*Point, Digits)) {
-               if(g_BuyOverweight || (EnableLockTrend && stats.buyLots==stats.sellLots)) isAllow=true;
+               isAllow=true; // Match Heiqilin: Allow trailing regardless of current overweight status
             }
             
             // 动态 StopLevel 检查
