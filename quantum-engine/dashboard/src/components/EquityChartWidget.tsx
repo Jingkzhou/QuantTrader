@@ -31,8 +31,8 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
                 background: { type: ColorType.Solid, color: 'transparent' },
                 textColor: '#94a3b8',
             },
-            handleScroll: false,
-            handleScale: false,
+            handleScroll: true,
+            handleScale: true,
             grid: {
                 vertLines: { color: '#1e293b' },
                 horzLines: { color: '#1e293b' },
@@ -94,7 +94,7 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
                 return;
             }
             try {
-                const res = await axios.get(`${API_BASE}/account/history?mt4_account=${mt4Account}&broker=${encodeURIComponent(broker)}&limit=500`, {
+                const res = await axios.get(`${API_BASE}/account/history?mt4_account=${mt4Account}&broker=${encodeURIComponent(broker)}&limit=2000`, {
                     headers: { Authorization: `Bearer ${authToken}` }
                 });
                 const history = res.data;
