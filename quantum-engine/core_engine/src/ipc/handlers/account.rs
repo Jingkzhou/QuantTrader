@@ -310,6 +310,7 @@ pub async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json
             exit_trigger: new_trigger,
             velocity_block: existing.as_ref().map(|e| e.velocity_block).unwrap_or(false),
             enabled: was_enabled,
+            fingerprint_enabled,
         };
         s.risk_controls.insert(payload.mt4_account, risk_state);
         event

@@ -1,7 +1,7 @@
 use axum::{extract::State, Json, response::IntoResponse};
 use std::sync::Arc;
 use std::collections::HashMap;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use crate::ipc::state::{CombinedState, Claims};
 use crate::data_models::{RiskControlState, SmartExitMetrics};
 
