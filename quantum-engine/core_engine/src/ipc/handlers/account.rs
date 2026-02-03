@@ -245,10 +245,15 @@ pub async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json
                    
                    // [NEW] Hard Cut: Inject CLOSE_ALL Command if FORCE_EXIT is triggered
                    if new_trigger == "FORCE_EXIT" {
-                       let cmd = crate::data_models::EACommand {
-                           command: "CLOSE_ALL".to_string(),
-                           params: Some("Auto-Liquidation initiated by Risk System".to_string()),
-                           ticket: None,
+                       let cmd = crate::data_models::Command {
+                           id: format!("auto_{}", now_ts),
+                           action: "CLOSE_ALL".to_string(),
+                           symbol: "XAUUSD".to_string(), // Default or detect from payload?
+                           lots: 0.0, // Not applicable for CLOSE_ALL
+                           status: "PENDING".to_string(),
+                           timestamp: now_ts,
+                           mt4_account: payload.mt4_account,
+                           broker: payload.broker.clone(),
                        };
                        
                        let cmd_key = format!("{}:{}", payload.mt4_account, payload.broker);
