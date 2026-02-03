@@ -594,7 +594,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                         </div>
                     </div>
 
-                    {/* Action Button (Tactical Switch) */}
+                    {/*  Action Button (Tactical Switch) */}
                     <button
                         onClick={handleToggleLinkage}
                         className={`
