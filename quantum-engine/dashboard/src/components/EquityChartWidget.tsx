@@ -31,18 +31,49 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
                 background: { type: ColorType.Solid, color: 'transparent' },
                 textColor: '#94a3b8',
             },
-            handleScroll: true,
-            handleScale: true,
+            handleScroll: {
+                mouseWheel: true,
+                pressedMouseMove: true,
+                horzTouchDrag: true,
+                vertTouchDrag: true,
+            },
+            handleScale: {
+                axisPressedMouseMove: true,
+                mouseWheel: true,
+                pinch: true,
+            },
             grid: {
                 vertLines: { color: '#1e293b' },
                 horzLines: { color: '#1e293b' },
             },
             crosshair: {
-                mode: 0, // CrosshairMode.Hidden
+                mode: 1, // CrosshairMode.Normal
+                vertLine: {
+                    width: 1,
+                    color: '#334155',
+                    style: 0,
+                    labelVisible: true,
+                },
+                horzLine: {
+                    width: 1,
+                    color: '#334155',
+                    style: 0,
+                    labelVisible: true,
+                },
             },
             width: chartContainerRef.current.clientWidth,
             height: 200,
             timeScale: {
+                rightOffset: 12,
+                barSpacing: 3,
+                minBarSpacing: 0.1,
+                fixLeftEdge: false,
+                fixRightEdge: false,
+                lockVisibleTimeRangeOnResize: true,
+                rightBarStaysOnScroll: true,
+                borderVisible: false,
+                borderColor: '#1e293b',
+                visible: true,
                 timeVisible: true,
                 secondsVisible: true,
                 tickMarkFormatter: (time: number | object) => {
