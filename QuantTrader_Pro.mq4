@@ -828,6 +828,16 @@ void ProcessSellLogic(const OrderStats &stats)
 
       if(stats.highestSellPrice != 0 && pendingPrice < limitPrice)
          pendingPrice = NormalizeDouble(Bid - step * Point, Digits);
+
+      // DEBUG LOGGING
+      if(stats.sellCount > 0) {
+         Print("DEBUG SELL: Bid=", DoubleToString(Bid, Digits), " Highest=", DoubleToString(stats.highestSellPrice, Digits), " Step=", DoubleToString(step, 0), " Pending=", DoubleToString(pendingPrice, Digits), " Limit=", DoubleToString(limitPrice, Digits));
+         if(stats.highestSellPrice != 0 && pendingPrice >= limitPrice) {
+            Print("DEBUG SELL: Price Condition MET. canOpen check...");
+         } else {
+            Print("DEBUG SELL: Price Condition FAILED. Need ", DoubleToString(limitPrice, Digits));
+         }
+      }
      }
 
    bool canOpen = false;
