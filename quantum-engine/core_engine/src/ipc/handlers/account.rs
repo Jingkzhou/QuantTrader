@@ -242,6 +242,20 @@ pub async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json
                        _ => new_trigger.as_str(),
                    };
                    event = Some(format!("自动: 触发 {}", t_cn));
+                   
+                   // [NEW] Hard Cut: Inject CLOSE_ALL Command if FORCE_EXIT is triggered
+                   if new_trigger == "FORCE_EXIT" {
+                       let cmd = crate::data_models::EACommand {
+                           command: "CLOSE_ALL".to_string(),
+                           params: Some("Auto-Liquidation initiated by Risk System".to_string()),
+                           ticket: None,
+                       };
+                       
+                       let cmd_key = format!("{}:{}", payload.mt4_account, payload.broker);
+                       s.pending_commands.entry(cmd_key).or_default().push(cmd);
+                       tracing::warn!("🚨 HARD CUT TRIGGERED: Injecting CLOSE_ALL command for Account {}", payload.mt4_account);
+                   }
+
                 } else {
                    event = Some("自动: 风险解除".to_string());
                 }

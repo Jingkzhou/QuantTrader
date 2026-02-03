@@ -190,19 +190,37 @@ pub fn calculate_integrated_risk_score(
     let mut exit_trigger = "NONE".to_string();
     let mut trigger_reason = String::new();
 
-    // Force Exit Conditions
-    if total_risk_score >= 90.0 {
-        exit_trigger = "FORCE_EXIT".to_string();
-        trigger_reason = "综合风险分极高 (>90)".to_string();
-    } else if survival_distance.is_finite() && atr_d1 > 0.0 && survival_distance < (0.3 * atr_d1) && survival_distance < 50.0 {
-        // 双重保护：必须同时小于 0.3 ATR 且绝对距离小于 50 美元
-        exit_trigger = "FORCE_EXIT".to_string();
-        trigger_reason = "生存空间极度不足 (<0.3 ATR)".to_string();
-    } 
+    // Force Exit Conditions (HARD CUT - AUTO LIQUIDATION)
+    // Rule: CRITICAL_01 (Score >= 90) AND (CRITICAL_02 OR CRITICAL_03 OR CRITICAL_04)
+    let is_critical_score = total_risk_score >= 90.0;
+    
+    let is_critical_survival = survival_distance.is_finite() && atr_d1 > 0.0 && survival_distance < (0.5 * atr_d1);
+    let is_critical_drawdown = max_drawdown >= 45.0;
+    let is_critical_velocity = velocity_m1.abs() > 4.0;
+
+    if is_critical_score {
+        if is_critical_survival {
+            exit_trigger = "FORCE_EXIT".to_string();
+            trigger_reason = "CRITICAL_02: 物理爆仓边缘 (<0.5 ATR)".to_string();
+        } else if is_critical_drawdown {
+            exit_trigger = "FORCE_EXIT".to_string();
+            trigger_reason = "CRITICAL_04: 触及财务死线 (>45% DD)".to_string();
+        } else if is_critical_velocity {
+            exit_trigger = "FORCE_EXIT".to_string();
+            trigger_reason = "CRITICAL_03: 极速单边狂暴 (>4.0 pips/sec)".to_string();
+        } else {
+             // Score >= 90 but no specific death flag? 
+             // Fallback to TACTICAL_EXIT (High Risk but not dying yet) OR keep FORCE_EXIT if we trust the score alone?
+             // User said "Must satisfy CRITICAL_01 AND ...". So if only Score >= 90, it is NOT FORCE_EXIT.
+             // We degrade it to TACTICAL_EXIT.
+             exit_trigger = "TACTICAL_EXIT".to_string();
+             trigger_reason = "综合评分极高 (等待具体触发)".to_string();
+        }
+    }
     // Tactical Exit Conditions
     else if total_risk_score >= 70.0 {
         exit_trigger = "TACTICAL_EXIT".to_string();
-        trigger_reason = "风险分较高 (>70)".to_string();
+        trigger_reason = "综合风险分较高 (>70)".to_string();
     } else if is_velocity_warning && is_adverse && survival_distance < (2.0 * atr_d1) {
         exit_trigger = "TACTICAL_EXIT".to_string();
         trigger_reason = "逆势加速且空间不足".to_string();
