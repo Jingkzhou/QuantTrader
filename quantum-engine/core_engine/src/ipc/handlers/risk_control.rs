@@ -47,6 +47,7 @@ pub async fn get_risk_control(
         exit_trigger: "NONE".to_string(),
         velocity_block: false,
         enabled: false,
+        fingerprint_enabled: true,
     });
 
     let metrics = s.risk_details.get(&mt4_account).cloned();
@@ -85,8 +86,8 @@ pub async fn update_risk_control(
 
     // Persist to DB first (outside of lock)
     let db_res = sqlx::query(
-        "INSERT INTO risk_controls (mt4_account, block_buy, block_sell, block_all, risk_level, updated_at, risk_score, exit_trigger, velocity_block, enabled)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        "INSERT INTO risk_controls (mt4_account, block_buy, block_sell, block_all, risk_level, updated_at, risk_score, exit_trigger, velocity_block, enabled, fingerprint_enabled)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          ON CONFLICT (mt4_account) DO UPDATE SET
             block_buy = $2,
             block_sell = $3,
@@ -96,7 +97,8 @@ pub async fn update_risk_control(
             risk_score = $7,
             exit_trigger = $8,
             velocity_block = $9,
-            enabled = $10"
+            enabled = $10,
+            fingerprint_enabled = $11"
     )
     .bind(updated_payload.mt4_account)
     .bind(updated_payload.block_buy)
@@ -108,6 +110,7 @@ pub async fn update_risk_control(
     .bind(&updated_payload.exit_trigger)
     .bind(updated_payload.velocity_block)
     .bind(updated_payload.enabled)
+    .bind(updated_payload.fingerprint_enabled)
     .execute(&state.db)
     .await;
 

@@ -44,7 +44,7 @@ pub async fn start_server(db_pool: PgPool) {
     tokio::spawn(async move {
         // Use unchecked query because table might be created in this same run
         let rows = sqlx::query_as::<_, crate::data_models::RiskControlState>(
-            "SELECT mt4_account, block_buy, block_sell, block_all, risk_level, updated_at, risk_score, exit_trigger, velocity_block, enabled FROM risk_controls"
+            "SELECT mt4_account, block_buy, block_sell, block_all, risk_level, updated_at, risk_score, exit_trigger, velocity_block, enabled, fingerprint_enabled FROM risk_controls"
         )
         .fetch_all(&startup_db_risk)
         .await;

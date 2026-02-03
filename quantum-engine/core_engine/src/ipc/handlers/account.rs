@@ -153,8 +153,16 @@ pub async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json
     let metrics = calculate_ea_alert_metrics(&state, input).await;
 
     // 7. Extract Values for Control
-    let risk_score = metrics.risk_score;
-    let exit_trigger = metrics.exit_trigger.clone();
+    let (risk_score, exit_trigger, fingerprint_enabled) = {
+        let mem = state.memory.read().unwrap();
+        let control = mem.risk_controls.get(&payload.mt4_account);
+        (
+            metrics.risk_score,
+            metrics.exit_trigger.clone(),
+            control.map(|c| c.fingerprint_enabled).unwrap_or(true)
+        )
+    };
+
     let risk_level_str = if risk_score >= 80.0 { "CRITICAL" } 
         else if risk_score >= 60.0 { "WARNING" } 
         else { "SAFE" };
@@ -170,10 +178,12 @@ pub async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json
     };
     
     // RSI Entry Fingerprint Control
-    if metrics.rsi_14 >= 70.0 {
-        block_buy = true; // Forbid Buy (Overbought)
-    } else if metrics.rsi_14 <= 30.0 {
-        block_sell = true; // Forbid Sell (Oversold)
+    if fingerprint_enabled {
+        if metrics.rsi_14 >= 70.0 {
+            block_buy = true; // Forbid Buy (Overbought)
+        } else if metrics.rsi_14 <= 30.0 {
+            block_sell = true; // Forbid Sell (Oversold)
+        }
     }
     
     let smart_exit_metrics = crate::data_models::SmartExitMetrics {
@@ -205,8 +215,8 @@ pub async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json
     let now_ts = chrono::Utc::now().timestamp();
     
     let update_res = sqlx::query(
-        "INSERT INTO risk_controls (mt4_account, block_buy, block_sell, block_all, risk_level, updated_at, velocity_block, enabled, risk_score, exit_trigger)
-         VALUES ($1, $2, $3, $4, $5, $6, false, false, $7, $8)
+        "INSERT INTO risk_controls (mt4_account, block_buy, block_sell, block_all, risk_level, updated_at, velocity_block, enabled, risk_score, exit_trigger, fingerprint_enabled)
+         VALUES ($1, $2, $3, $4, $5, $6, false, false, $7, $8, true)
          ON CONFLICT (mt4_account) DO UPDATE SET 
             block_buy = CASE WHEN risk_controls.enabled = true THEN $2 ELSE risk_controls.block_buy END, 
             block_sell = CASE WHEN risk_controls.enabled = true THEN $3 ELSE risk_controls.block_sell END,

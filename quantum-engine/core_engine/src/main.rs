@@ -174,15 +174,17 @@ async fn main() {
             risk_score DOUBLE PRECISION DEFAULT 0.0,
             exit_trigger TEXT DEFAULT 'NONE',
             velocity_block BOOLEAN DEFAULT FALSE,
-            enabled BOOLEAN DEFAULT FALSE
+            enabled BOOLEAN DEFAULT FALSE,
+            fingerprint_enabled BOOLEAN DEFAULT TRUE
         )"
     )
     .execute(&pool)
     .await
     .expect("Failed to create risk_controls table");
 
-    // Migration: Add enabled column if not exists
+    // Migration: Add enabled column and fingerprint_enabled column if not exists
     let _ = sqlx::query("ALTER TABLE risk_controls ADD COLUMN IF NOT EXISTS enabled BOOLEAN DEFAULT FALSE").execute(&pool).await;
+    let _ = sqlx::query("ALTER TABLE risk_controls ADD COLUMN IF NOT EXISTS fingerprint_enabled BOOLEAN DEFAULT TRUE").execute(&pool).await;
 
     // 5. Risk Control Logs for EA Operation History
     sqlx::query(

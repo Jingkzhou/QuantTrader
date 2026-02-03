@@ -100,5 +100,6 @@ export interface RiskControlState {
     exit_trigger: string; // "NONE" | "LAYER_LOCK" | "TACTICAL_EXIT" | "FORCE_EXIT"
     velocity_block: boolean; // True if velocity triggered a block
     enabled: boolean;
+    fingerprint_enabled: boolean;
     metrics?: SmartExitMetrics;
 }

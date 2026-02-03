@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import axios from 'axios';
 import {
     Activity, TrendingDown, TrendingUp, AlertTriangle,
-    Shield, ShieldAlert, ShieldCheck, Radar, Target, Clock
+    Shield, ShieldAlert, ShieldCheck, Radar, Target, Clock, Fingerprint
 } from 'lucide-react';
 import type { AccountStatus, RiskControlState } from '../types';
 import { API_BASE } from '../config';
@@ -131,6 +131,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
 }) => {
     // --- 1. Hooks (State & Memos) ---
     const [eaLinkageEnabled, setEaLinkageEnabled] = useState(false);
+    const [fingerprintEnabled, setFingerprintEnabled] = useState(true);
     const [syncStatus, setSyncStatus] = useState<'IDLE' | 'SYNCING' | 'ERROR'>('IDLE');
     const [operationLogs, setOperationLogs] = useState<any[]>([]);
     const [backendRiskState, setBackendRiskState] = useState<RiskControlState | null>(null);
@@ -183,6 +184,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                 });
                 if (res.data) {
                     setEaLinkageEnabled(!!res.data.enabled);
+                    setFingerprintEnabled(!!res.data.fingerprint_enabled);
                     setBackendRiskState(res.data);
                 }
             } catch (err) {
@@ -224,12 +226,6 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
         setSyncStatus('SYNCING');
 
         try {
-            // We only need to toggle enabled logic. The backend handles the rest.
-            // But checking our http_server.rs logic (not shown but inferred), update needs all fields usually?
-            // Actually, in previous task I saw UPDATE risk_controls SET ... CASE WHEN.
-            // But wait, the API calls `handle_update_risk_control`.
-            // Let's assume we send current backend state but flipped enabled.
-
             const payload = backendRiskState ? {
                 ...backendRiskState,
                 enabled: newEnabled
@@ -242,7 +238,8 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                 risk_score: 0,
                 exit_trigger: 'NONE',
                 velocity_block: false,
-                enabled: newEnabled
+                enabled: newEnabled,
+                fingerprint_enabled: fingerprintEnabled
             };
 
             await axios.put(`${API_BASE}/risk_control`, payload, {
@@ -261,6 +258,49 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
             console.error("Failed to toggle risk control", err);
             setSyncStatus('ERROR');
             setEaLinkageEnabled(!newEnabled); // Revert on error
+        }
+    };
+
+    const handleToggleFingerprint = async () => {
+        if (!authToken || !accountStatus.mt4_account) return;
+
+        const newEnabled = !fingerprintEnabled;
+        setFingerprintEnabled(newEnabled);
+        setSyncStatus('SYNCING');
+
+        try {
+            const payload = backendRiskState ? {
+                ...backendRiskState,
+                fingerprint_enabled: newEnabled
+            } : {
+                mt4_account: accountStatus.mt4_account,
+                block_buy: false,
+                block_sell: false,
+                block_all: false,
+                risk_level: 'SAFE',
+                risk_score: 0,
+                exit_trigger: 'NONE',
+                velocity_block: false,
+                enabled: eaLinkageEnabled,
+                fingerprint_enabled: newEnabled
+            };
+
+            await axios.put(`${API_BASE}/risk_control`, payload, {
+                headers: { Authorization: `Bearer ${authToken}` }
+            });
+            setSyncStatus('IDLE');
+
+            // Re-fetch to confirm
+            const res = await axios.get(`${API_BASE}/risk_control`, {
+                params: { mt4_account: accountStatus.mt4_account },
+                headers: { Authorization: `Bearer ${authToken}` }
+            });
+            if (res.data) setBackendRiskState(res.data);
+
+        } catch (err) {
+            console.error("Failed to toggle fingerprint", err);
+            setSyncStatus('ERROR');
+            setFingerprintEnabled(!newEnabled);
         }
     };
 
@@ -581,6 +621,32 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                             {backendRiskState?.exit_trigger || smartMetrics.triggerReason}
                         </div>
                     )}
+
+                    {/* Entry Fingerprint Toggle */}
+                    <button
+                        onClick={handleToggleFingerprint}
+                        className={`
+                            group relative overflow-hidden w-full py-1.5 rounded-lg border flex items-center justify-between px-3
+                            transition-all duration-300 text-[10px] font-bold
+                            ${fingerprintEnabled
+                                ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-400'
+                                : 'bg-slate-800/50 border-slate-700 text-slate-500 opacity-60'}
+                        `}
+                    >
+                        <div className="flex items-center gap-2">
+                            <Fingerprint size={12} className={fingerprintEnabled ? 'text-indigo-400' : 'text-slate-600'} />
+                            <span>进场指纹控制</span>
+                        </div>
+                        <div className={`
+                            w-6 h-3.5 rounded-full relative transition-colors duration-300
+                            ${fingerprintEnabled ? 'bg-indigo-500/30' : 'bg-slate-700'}
+                        `}>
+                            <div className={`
+                                absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white transition-all duration-300
+                                ${fingerprintEnabled ? 'right-0.5 shadow-[0_0_5px_rgba(255,255,255,0.8)]' : 'left-0.5'}
+                            `} />
+                        </div>
+                    </button>
 
                     {/* Operation History Bar */}
                     {operationLogs.length > 0 && (
