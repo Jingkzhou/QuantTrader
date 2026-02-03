@@ -1649,8 +1649,16 @@ void CheckCommands() {
          // 注意：此简易解析假设一次只处理一个同类指令，或者依靠高频轮询处理
          
          if(StringFind(json, "CLOSE_ALL") >= 0) {
-            CloseAllOrders(0);
-            Print("Remote Command: CLOSE ALL Executed");
+            bool result = CloseAllOrders(0);
+            if(result) {
+               string msg = "Remote Command: CLOSE ALL Completed Successfully";
+               Print(msg);
+               RemoteLog("INFO", msg);
+            } else {
+               string msg = "Remote Command: CLOSE ALL Failed (Partial or Error)";
+               Print(msg);
+               RemoteLog("ERROR", msg);
+            }
          }
          
          // 简单的解析 Lots (假设格式固定 "lots":0.01)
