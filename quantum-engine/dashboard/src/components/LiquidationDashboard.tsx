@@ -7,9 +7,9 @@ import {
     calculateSurvivalDistance,
     calculateRiskOccupancy,
     calculateLiquidationPriceV2,
-    calculateDynamicRiskLevel,
+    calculateRiskLevel,
     type RiskLevel
-} from '../utils/riskCalculations';
+} from '../utils/smartExitCalculations';
 
 interface LiquidationDashboardProps {
     accountStatus: AccountStatus;
@@ -88,10 +88,10 @@ export const LiquidationDashboard: React.FC<LiquidationDashboardProps> = ({
         const occ = calculateRiskOccupancy(dist, atr);
 
         const level = atrH1 > 0
-            ? calculateDynamicRiskLevel(dist, atr, atrH1)
-            : calculateDynamicRiskLevel(dist, atr, 0);
+            ? calculateRiskLevel(dist, atr) // Simplified to legacy helper for now
+            : calculateRiskLevel(dist, atr);
 
-        const baseLevel = calculateDynamicRiskLevel(dist, atr, 0);
+        const baseLevel = calculateRiskLevel(dist, atr);
         const accelerated = level !== baseLevel;
 
         return {
@@ -180,7 +180,7 @@ export const LiquidationDashboard: React.FC<LiquidationDashboardProps> = ({
         }
     };
 
-    const config = riskConfig[riskLevel];
+    const config = riskConfig[riskLevel as keyof typeof riskConfig] || riskConfig.SAFE;
     const Icon = config.icon;
 
     // 4. Status Text Logic

@@ -49,6 +49,24 @@ pub async fn bind_account(
     }))
 }
 
+pub async fn unbind_account(
+    State(state): State<Arc<CombinedState>>,
+    claims: Claims,
+    Json(payload): Json<BindAccountRequest>, // Reusing the same struct for simplicity
+) -> Result<axum::http::StatusCode, (axum::http::StatusCode, String)> {
+    sqlx::query!(
+        "DELETE FROM user_accounts WHERE user_id = $1 AND mt4_account = $2 AND broker = $3",
+        claims.user_id,
+        payload.mt4_account,
+        payload.broker
+    )
+    .execute(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(axum::http::StatusCode::OK)
+}
+
 pub async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json(payload): Json<AccountStatus>) {
     let symbols: Vec<String> = payload.positions.iter().map(|p| p.symbol.clone()).collect();
     tracing::info!("Account Status Update: Equity:{} Acc:{} Broker:{} Symbols:{:?}", payload.equity, payload.mt4_account, payload.broker, symbols);

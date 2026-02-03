@@ -121,25 +121,19 @@ const DataBar = ({ label, value, max = 100, color = 'bg-cyan-500', warningThresh
 export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
     accountStatus,
     currentPrice,
-    currentBid,
-    currentAsk,
-    symbolInfo,
+    symbolInfo: _symbolInfo,
     atr,
-    atrH1 = 0, // Unused but kept for interface compat
+    atrH1: _atrH1 = 0, // Unused but kept for interface compat
     authToken,
-    selectedSymbol = 'XAUUSD',
-    maxDrawdown = 0, // Unused locally
-    tradeStats // Unused locally
+    selectedSymbol: _selectedSymbol = 'XAUUSD',
+    maxDrawdown: _maxDrawdown = 0, // Unused locally
+    tradeStats: _tradeStats // Unused locally
 }) => {
     // --- 1. Hooks (State & Memos) ---
     const [eaLinkageEnabled, setEaLinkageEnabled] = useState(false);
     const [syncStatus, setSyncStatus] = useState<'IDLE' | 'SYNCING' | 'ERROR'>('IDLE');
     const [operationLogs, setOperationLogs] = useState<any[]>([]);
     const [backendRiskState, setBackendRiskState] = useState<RiskControlState | null>(null);
-
-    // Use bid/ask if available, otherwise fall back to close price
-    const bid = currentBid ?? currentPrice ?? 0;
-    const ask = currentAsk ?? currentPrice ?? 0;
 
     // Derived Metrics from Backend
     const metrics = backendRiskState?.metrics;

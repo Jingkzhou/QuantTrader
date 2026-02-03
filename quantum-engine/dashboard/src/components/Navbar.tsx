@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { LayoutDashboard, Settings, History, BarChart2, User, LogOut, Menu, X, ChevronDown, Check, Plus } from 'lucide-react';
+import { LayoutDashboard, Settings, History, BarChart2, User, LogOut, Menu, X, ChevronDown, Check, Plus, Trash2 } from 'lucide-react';
 
 interface NavbarProps {
     currentUser: {
@@ -16,6 +16,7 @@ interface NavbarProps {
     selectedAccount: any;
     setSelectedAccount: (account: any) => void;
     onBindAccount: () => void;
+    onUnbindAccount: (mt4_account: number, broker: string) => void;
 
     // Symbol Props
     activeSymbols: string[];
@@ -25,7 +26,7 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({
     currentUser, onLogout, activePage, onNavigate,
-    accounts, selectedAccount, setSelectedAccount, onBindAccount,
+    accounts, selectedAccount, setSelectedAccount, onBindAccount, onUnbindAccount,
     activeSymbols, selectedSymbol, setSelectedSymbol
 }) => {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -98,14 +99,28 @@ export const Navbar: React.FC<NavbarProps> = ({
                                     return (
                                         <div
                                             key={`${acc.mt4_account}:${acc.broker}`}
+                                            className={`flex items-center justify-between px-4 py-3 cursor-pointer group/item hover:bg-slate-800 transition-colors ${isActive ? 'bg-cyan-600/10' : ''}`}
                                             onClick={() => { setSelectedAccount({ mt4_account: acc.mt4_account, broker: acc.broker }); setIsAccountMenuOpen(false); }}
-                                            className={`flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-slate-800 transition-colors ${isActive ? 'bg-cyan-600/10' : ''}`}
                                         >
                                             <div className="flex flex-col">
                                                 <span className="text-sm font-bold text-slate-200">{acc.account_name || `MT4: ${acc.mt4_account}`}</span>
                                                 <span className="text-[10px] text-slate-500 lowercase">{acc.broker}</span>
                                             </div>
-                                            {isActive && <Check size={14} className="text-cyan-500" />}
+                                            <div className="flex items-center gap-2">
+                                                {isActive && <Check size={14} className="text-cyan-500" />}
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        if (window.confirm(`确定要解除绑定账号 ${acc.mt4_account} (${acc.broker}) 吗？`)) {
+                                                            onUnbindAccount(acc.mt4_account, acc.broker);
+                                                        }
+                                                    }}
+                                                    className="p-1 px-2 rounded-md transition-all h-6 opacity-0 group-hover/item:opacity-100 hover:bg-rose-500/20 text-slate-600 hover:text-rose-500"
+                                                    title="解除绑定"
+                                                >
+                                                    <Trash2 size={12} />
+                                                </button>
+                                            </div>
                                         </div>
                                     );
                                 })}
@@ -235,14 +250,29 @@ export const Navbar: React.FC<NavbarProps> = ({
                             <span className="text-xs text-slate-500 uppercase font-bold tracking-widest">当前账户</span>
                             <div className="grid grid-cols-1 gap-2">
                                 {accounts.map(acc => (
-                                    <button
+                                    <div
                                         key={`${acc.mt4_account}:${acc.broker}`}
-                                        onClick={() => { setSelectedAccount({ mt4_account: acc.mt4_account, broker: acc.broker }); setIsMobileMenuOpen(false); }}
-                                        className={`px-4 py-3 rounded-xl text-left border ${selectedAccount?.mt4_account === acc.mt4_account && selectedAccount?.broker === acc.broker ? 'bg-cyan-600/10 border-cyan-500/50 text-cyan-400' : 'bg-slate-900 border-slate-800 text-slate-400'}`}
+                                        className={`group px-4 py-3 rounded-xl flex items-center justify-between border ${selectedAccount?.mt4_account === acc.mt4_account && selectedAccount?.broker === acc.broker ? 'bg-cyan-600/10 border-cyan-500/50 text-cyan-400' : 'bg-slate-900 border-slate-800 text-slate-400'}`}
                                     >
-                                        <div className="font-bold">{acc.account_name || `MT4: ${acc.mt4_account}`}</div>
-                                        <div className="text-[10px] opacity-70">{acc.broker}</div>
-                                    </button>
+                                        <div
+                                            onClick={() => { setSelectedAccount({ mt4_account: acc.mt4_account, broker: acc.broker }); setIsMobileMenuOpen(false); }}
+                                            className="flex-1 text-left"
+                                        >
+                                            <div className="font-bold">{acc.account_name || `MT4: ${acc.mt4_account}`}</div>
+                                            <div className="text-[10px] opacity-70">{acc.broker}</div>
+                                        </div>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (window.confirm(`确定要解除绑定账号 ${acc.mt4_account} (${acc.broker}) 吗？`)) {
+                                                    onUnbindAccount(acc.mt4_account, acc.broker);
+                                                }
+                                            }}
+                                            className="p-2 ml-2 rounded-lg bg-rose-500/10 text-rose-500"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
                                 ))}
                                 <button onClick={() => { onBindAccount(); setIsMobileMenuOpen(false); }} className="px-4 py-3 rounded-xl border border-dashed border-slate-700 text-slate-500 flex items-center justify-center gap-2">
                                     <Plus size={14} /> 绑定新账号

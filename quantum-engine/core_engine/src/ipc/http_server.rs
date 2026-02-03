@@ -89,7 +89,7 @@ pub async fn start_server(db_pool: PgPool) {
         .route("/api/v1/commands", get(handlers::commands::get_commands))
         .route("/api/v1/auth/login", post(handlers::auth::handle_login))
         .route("/api/v1/auth/register", post(handlers::auth::handle_register))
-        .route("/api/v1/accounts", get(handlers::account::list_accounts))
+        .route("/api/v1/accounts", get(handlers::account::list_accounts).delete(handlers::account::unbind_account))
         .route("/api/v1/accounts/bind", post(handlers::account::bind_account))
         .route("/api/v1/risk_control", get(handlers::risk_control::get_risk_control).put(handlers::risk_control::update_risk_control))
         .route("/api/v1/risk_control_logs", get(handlers::risk_control::get_risk_control_logs))

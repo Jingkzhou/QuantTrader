@@ -125,6 +125,16 @@ export const calculateDistanceScore = (survivalDistance: number, atr: number): n
 };
 
 /**
+ * 3.5 风险占用率计算 (0-100%)
+ * 基于生存距离相对于 3倍 ATR 的比例
+ */
+export const calculateRiskOccupancy = (survivalDistance: number, atr: number): number => {
+    if (survivalDistance <= 0) return 100;
+    if (!atr || atr <= 0 || survivalDistance >= 3 * atr) return 0;
+    return (1 - survivalDistance / (3 * atr)) * 100;
+};
+
+/**
  * 4. 速度评分计算 (30%)
  * 公式: Score = 30 * min(1, |velocityM1| / VELOCITY_CRITICAL_THRESHOLD)
  * 

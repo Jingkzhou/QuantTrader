@@ -296,6 +296,29 @@ const App = () => {
     }
   };
 
+  const handleUnbindAccount = async (mt4_account: number, broker: string) => {
+    try {
+      await axios.delete(`${API_BASE}/accounts`, {
+        data: { mt4_account, broker },
+        headers: { Authorization: `Bearer ${auth.token}` }
+      });
+      const updatedAccounts = accounts.filter(a => !(a.mt4_account === mt4_account && a.broker === broker));
+      setAccounts(updatedAccounts);
+
+      // If deleted account was selected, switch to another one
+      if (selectedAccount?.mt4_account === mt4_account && selectedAccount?.broker === broker) {
+        if (updatedAccounts.length > 0) {
+          setSelectedAccount({ mt4_account: updatedAccounts[0].mt4_account, broker: updatedAccounts[0].broker });
+        } else {
+          setSelectedAccount(null);
+        }
+      }
+    } catch (err) {
+      console.error("Unbind failed:", err);
+      alert("解除绑定失败，请稍后重试");
+    }
+  };
+
   const handleExportHistory = async () => {
     if (!auth.token || !selectedAccount) return;
 
@@ -397,6 +420,7 @@ const App = () => {
         selectedAccount={selectedAccount}
         setSelectedAccount={setSelectedAccount}
         onBindAccount={() => setIsBindModalOpen(true)}
+        onUnbindAccount={handleUnbindAccount}
         activeSymbols={sortedActiveSymbols}
         selectedSymbol={selectedSymbol}
         setSelectedSymbol={setSelectedSymbol}
