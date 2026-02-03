@@ -258,7 +258,7 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
                     )}
                 </div>
             </div>
-            <div ref={chartContainerRef} className="w-full flex-1 pointer-events-none" />
+            <div ref={chartContainerRef} className="w-full flex-1" />
         </div>
     );
 };
