@@ -197,6 +197,7 @@ pub async fn start_server(db_pool: PgPool) {
         .route("/api/v1/accounts/bind", post(bind_account))
         .route("/api/v1/risk_control", get(get_risk_control).put(update_risk_control))
         .route("/api/v1/risk_control_logs", get(get_risk_control_logs))
+        .route("/api/v1/ea_sync", get(handle_ea_sync))
         .route("/api/v1/velocity", get(get_velocity))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
@@ -1421,6 +1422,58 @@ async fn update_risk_control(
     }
 
     Json(updated_payload).into_response()
+}
+
+// Unified EA Sync Handler
+async fn handle_ea_sync(
+    State(state): State<Arc<CombinedState>>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> Result<Json<crate::data_models::EASyncResponse>, (axum::http::StatusCode, String)> {
+    let mt4_account = params.get("mt4_account").and_then(|id| id.parse::<i64>().ok())
+        .ok_or((axum::http::StatusCode::BAD_REQUEST, "Missing mt4_account".to_string()))?;
+
+    // 1. Get Risk Control State (Default to safe if missing)
+    let risk_control = {
+        let s = state.memory.read().unwrap();
+        s.risk_controls.get(&mt4_account).cloned().unwrap_or_else(|| RiskControlState {
+            mt4_account,
+            block_buy: false,
+            block_sell: false,
+            block_all: false,
+            risk_level: "SAFE".to_string(),
+            updated_at: chrono::Utc::now().timestamp(),
+            risk_score: 0.0,
+            exit_trigger: "NONE".to_string(),
+            velocity_block: false, // Default
+            enabled: false,
+        })
+    };
+
+    // 2. Get Pending Commands (and clear queue)
+    let commands = {
+        let mut s = state.memory.write().unwrap();
+        let mut found_commands = Vec::new();
+        let mut key_to_remove = None;
+        
+        // Find queue for this account (ignoring broker part of key)
+        for (key, cmds) in s.pending_commands.iter() {
+            if key.starts_with(&format!("{}:", mt4_account)) {
+                found_commands = cmds.clone();
+                key_to_remove = Some(key.clone());
+                break;
+            }
+        }
+        
+        if let Some(k) = key_to_remove {
+            s.pending_commands.remove(&k);
+        }
+        found_commands
+    };
+
+    Ok(Json(crate::data_models::EASyncResponse {
+        commands,
+        risk_control,
+    }))
 }
 
 /// Get velocity data for smart exit calculations

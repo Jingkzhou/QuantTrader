@@ -377,7 +377,7 @@ void OnTimer()
       // Frequency Limiter: Max 1 request per 3 seconds to prevent thread blocking
          if(TimeCurrent() - lastReportTime > 3 && IsConnected())
         {
-         CheckCommands(); // Poll for commands (every 3s aligned with report, or faster?)
+         SyncWithServer(); // Unified Sync (Commands + Risk Control)
          
          static datetime lastAccountReport = 0;
          if(TimeCurrent() - lastAccountReport >= AccountReportInterval)
@@ -390,10 +390,9 @@ void OnTimer()
         }
      }
 
-   // [NEW] Remote Risk Control Polling (Every 5s)
+   // [REMOVED] Separate Risk Control Polling (Merged into SyncWithServer)
    if(ConnectionMode == MODE_ONLINE && TimeCurrent() - g_LastRiskCheckTime >= 5) {
-      CheckRemoteRiskControl();
-      g_LastRiskCheckTime = TimeCurrent();
+      g_LastRiskCheckTime = TimeCurrent(); // Keep timer ticking just in case logic is needed later
    }
   }
 
@@ -1633,117 +1632,103 @@ int SendData(string path, string json_body) {
    return res;
 }
 
-// 简易命令轮询 (Simple Command Polling)
-void CheckCommands() {
-   if(ConnectionMode == MODE_OFFLINE) return; // 离线模式不轮询
+//+------------------------------------------------------------------+
+//|                       Unified Server Sync                        |
+//+------------------------------------------------------------------+
+void SyncWithServer() {
+   if(ConnectionMode == MODE_OFFLINE) return;
+   if(RustServerUrl == "") return;
    
-   char data[], result[];
-   string headers = "Content-Type: application/json\r\n";
-   // Use GET to retrieve pending commands
-   int res = WebRequest("GET", RustServerUrl + "/api/v1/commands", headers, 500, data, result, headers);
+   // Construct URL (Single Call)
+   string url = RustServerUrl + "/api/v1/ea_sync?mt4_account=" + IntegerToString(AccountNumber());
+   char postData[];
+   char result[];
+   string headers = "timeout: 3000\r\n";
+   string resultHeaders;
+   
+   ResetLastError();
+   int res = WebRequest("GET", url, headers, 3000, postData, result, resultHeaders);
    
    if(res == 200) {
-      string json = CharArrayToString(result, 0, WHOLE_ARRAY, CP_UTF8);
-      if(StringLen(json) > 10) { // Not empty "[]" and has content
-         // 解析动作 ("action":"OPEN_BUY")
-         // 注意：此简易解析假设一次只处理一个同类指令，或者依靠高频轮询处理
-         
-         if(StringFind(json, "CLOSE_ALL") >= 0) {
-            bool result = CloseAllOrders(0);
-            if(result) {
-               string msg = "Remote Command: CLOSE ALL Completed Successfully";
-               Print(msg);
-               RemoteLog("INFO", msg);
-            } else {
-               string msg = "Remote Command: CLOSE ALL Failed (Partial or Error)";
-               Print(msg);
-               RemoteLog("ERROR", msg);
-            }
-         }
-         
-         // 简单的解析 Lots (假设格式固定 "lots":0.01)
-         // 实际生产环境建议使用专门的 JSON 库
-         double cmdLots = BaseLotSize; 
-         // Find "lots":
-         int lotPos = StringFind(json, "\"lots\":");
-         if(lotPos >= 0) {
-            string lotSub = StringSubstr(json, lotPos + 7, 5); // 取 5 位字符 "0.01,"
-            cmdLots = StringToDouble(lotSub);
-            if(cmdLots <= 0) cmdLots = BaseLotSize;
-         }
+       string json = CharArrayToString(result, 0, WHOLE_ARRAY, CP_UTF8);
+       
+       // 1. Parse Risk Control (Simple Search)
+       bool newBlockBuy = (StringFind(json, "\"block_buy\":true") >= 0);
+       bool newBlockSell = (StringFind(json, "\"block_sell\":true") >= 0);
+       bool newBlockAll = (StringFind(json, "\"block_all\":true") >= 0);
+       
+       // Update Globals
+       bool updated = false;
+       if(newBlockAll) {
+           if(!g_RemoteBlockBuy || !g_RemoteBlockSell) updated = true;
+           g_RemoteBlockBuy = true;
+           g_RemoteBlockSell = true;
+       } else {
+           if(g_RemoteBlockBuy != newBlockBuy || g_RemoteBlockSell != newBlockSell) updated = true;
+           g_RemoteBlockBuy = newBlockBuy;
+           g_RemoteBlockSell = newBlockSell;
+       }
+       
+       if(updated) {
+            string msg = "Risk Control Updated: BlockBuy=" + (string)g_RemoteBlockBuy + " BlockSell=" + (string)g_RemoteBlockSell;
+            Print(msg);
+            RemoteLog("INFO", msg);
+       }
+       
+       // 2. Parse Commands
+       // Look for "commands":[ ... ]
+       int cmdStart = StringFind(json, "\"commands\":[");
+       if(cmdStart >= 0) {
+           // Check contents inside array
+           string cmdSection = StringSubstr(json, cmdStart, 200); // Take a chunk
+           
+           if(StringFind(cmdSection, "CLOSE_ALL") >= 0) {
+               bool result = CloseAllOrders(0);
+               if(result) {
+                  string msg = "Remote Command: CLOSE ALL Completed Successfully";
+                  Print(msg);
+                  RemoteLog("INFO", msg);
+               } else {
+                  string msg = "Remote Command: CLOSE ALL Failed (Partial or Error)";
+                  Print(msg);
+                  RemoteLog("ERROR", msg);
+               }
+           }
+           
+           // Extract Lots if present (global extraction from JSON, simple approach)
+           double cmdLots = BaseLotSize; 
+           int lotPos = StringFind(json, "\"lots\":");
+           if(lotPos >= 0) {
+              string lotSub = StringSubstr(json, lotPos + 7, 5); 
+              cmdLots = StringToDouble(lotSub);
+              if(cmdLots <= 0) cmdLots = BaseLotSize;
+           }
+           
+           if(StringFind(cmdSection, "OPEN_BUY") >= 0) {
+               int ticket = OrderSend(Symbol(), OP_BUY, cmdLots, Ask, Slippage, 0, 0, "WebCmd", MagicNumber, 0, Blue);
+               if(ticket > 0) {
+                  Print("Remote Command: OPEN BUY ", cmdLots, " lots Executed");
+                  CaptureSignalContext(ticket);
+               }
+               else Print("Remote Command: OPEN BUY Failed: ", GetLastError());
+           }
+           
+           if(StringFind(cmdSection, "OPEN_SELL") >= 0) {
+               int ticket = OrderSend(Symbol(), OP_SELL, cmdLots, Bid, Slippage, 0, 0, "WebCmd", MagicNumber, 0, Red);
+               if(ticket > 0) {
+                  Print("Remote Command: OPEN SELL ", cmdLots, " lots Executed");
+                  CaptureSignalContext(ticket);
+               }
+               else Print("Remote Command: OPEN SELL Failed: ", GetLastError());
+           }
+       }
 
-         if(StringFind(json, "OPEN_BUY") >= 0) {
-            int ticket = OrderSend(Symbol(), OP_BUY, cmdLots, Ask, Slippage, 0, 0, "WebCmd", MagicNumber, 0, Blue);
-            if(ticket > 0) {
-               Print("Remote Command: OPEN BUY ", cmdLots, " lots Executed");
-               CaptureSignalContext(ticket);
-            }
-            else Print("Remote Command: OPEN BUY Failed: ", GetLastError());
-         }
-         
-         if(StringFind(json, "OPEN_SELL") >= 0) {
-            int ticket = OrderSend(Symbol(), OP_SELL, cmdLots, Bid, Slippage, 0, 0, "WebCmd", MagicNumber, 0, Red);
-            if(ticket > 0) {
-               Print("Remote Command: OPEN SELL ", cmdLots, " lots Executed");
-               CaptureSignalContext(ticket);
-            }
-            else Print("Remote Command: OPEN SELL Failed: ", GetLastError());
-         }
-      }
+       // Heartbeat
+       static datetime lastSyncLog = 0;
+       if(TimeCurrent() - lastSyncLog > 60) {
+           Print("[Sync Heartbeat] EA Sync OK. Risk: Buy=", !g_RemoteBlockBuy, " Sell=", !g_RemoteBlockSell);
+           lastSyncLog = TimeCurrent();
+       }
    }
-}
-
-//+------------------------------------------------------------------+
-//|                      远程风控检查函数                            |
-//+------------------------------------------------------------------+
-void CheckRemoteRiskControl() {
-    if(RustServerUrl == "") return;
-    
-    // Construct URL
-    string url = RustServerUrl + "/api/v1/risk_control?mt4_account=" + IntegerToString(AccountNumber());
-    char postData[];
-    char result[];
-    string headers = "timeout: 3000\r\n";
-    string resultHeaders;
-    
-    ResetLastError();
-    // 使用 WebRequest GET 请求
-    int res = WebRequest("GET", url, headers, 3000, postData, result, resultHeaders);
-    
-    if(res == 200) {
-        string json = CharArrayToString(result);
-        // JSON Parsing (Simple String Search)
-        
-        bool newBlockBuy = (StringFind(json, "\"block_buy\":true") >= 0);
-        bool newBlockSell = (StringFind(json, "\"block_sell\":true") >= 0);
-        bool newBlockAll = (StringFind(json, "\"block_all\":true") >= 0);
-        
-        // Update Globals
-        bool updated = false;
-        
-        if(newBlockAll) {
-            if(!g_RemoteBlockBuy || !g_RemoteBlockSell) updated = true;
-            g_RemoteBlockBuy = true;
-            g_RemoteBlockSell = true;
-        } else {
-            if(g_RemoteBlockBuy != newBlockBuy || g_RemoteBlockSell != newBlockSell) updated = true;
-            g_RemoteBlockBuy = newBlockBuy;
-            g_RemoteBlockSell = newBlockSell;
-        }
-        
-        // Log on change
-        if(updated) {
-             string msg = "Risk Control Updated: BlockBuy=" + (string)g_RemoteBlockBuy + " BlockSell=" + (string)g_RemoteBlockSell;
-             Print(msg);
-             RemoteLog("INFO", msg);
-        }
-        
-        // --- Added: Regular Heartbeat to Confirm Risk Status ---
-        static datetime lastRiskLog = 0;
-        if(TimeCurrent() - lastRiskLog > 60) {
-            Print("[Risk Heartbeat] Remote Control Active. BlockBuy:", g_RemoteBlockBuy, " BlockSell:", g_RemoteBlockSell);
-            lastRiskLog = TimeCurrent();
-        }
-    }
 }
 // End of QuantTrader_Pro.mq4

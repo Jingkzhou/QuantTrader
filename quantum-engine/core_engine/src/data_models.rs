@@ -163,6 +163,12 @@ pub struct Command {
     pub broker: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct EASyncResponse {
+    pub commands: Vec<Command>,
+    pub risk_control: RiskControlState,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Default, sqlx::FromRow)]
 pub struct RiskControlState {
     pub mt4_account: i64,
