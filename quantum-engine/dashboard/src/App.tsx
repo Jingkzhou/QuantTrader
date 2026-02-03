@@ -473,6 +473,8 @@ const App = () => {
                 <PerformancePanel
                   trades={history}
                   selectedSymbol={selectedSymbol}
+                  maxDrawdown={drawdown.max}
+                  accountStatus={data?.account_status}
                   gridClass="grid-cols-2 lg:grid-cols-2 gap-3"
                 />
 

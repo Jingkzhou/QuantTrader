@@ -204,6 +204,27 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
             timeScale: {
                 timeVisible: true,
                 secondsVisible: false,
+                tickMarkFormatter: (time: number | object) => {
+                    // Force UTC formatting for Axis
+                    const timestamp = typeof time === 'number' ? time : (time as any).value || (time as any).time;
+                    const date = new Date(timestamp * 1000);
+                    const h = String(date.getUTCHours()).padStart(2, '0');
+                    const m = String(date.getUTCMinutes()).padStart(2, '0');
+                    const d = String(date.getUTCDate()).padStart(2, '0');
+                    return `${d} ${h}:${m}`;
+                },
+            },
+            localization: {
+                timeFormatter: (timestamp: number) => {
+                    // Force UTC formatting for Crosshair
+                    const date = new Date(timestamp * 1000);
+                    const year = date.getUTCFullYear();
+                    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+                    const day = String(date.getUTCDate()).padStart(2, '0');
+                    const hours = String(date.getUTCHours()).padStart(2, '0');
+                    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+                    return `${year}-${month}-${day} ${hours}:${minutes}`; // Server Time (UTC)
+                },
             },
         });
 

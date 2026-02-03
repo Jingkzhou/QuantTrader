@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { formatServerTime } from '../utils/dateUtils';
 import type { TradeHistory } from '../types';
 
 interface DashboardTablesProps {
@@ -167,7 +168,7 @@ export const DashboardTables: React.FC<DashboardTablesProps> = ({
                                         {t.profit >= 0 ? '+' : ''}{t.profit.toFixed(2)}
                                     </td>
                                     <td className="px-4 md:px-6 py-3 text-right font-mono text-slate-500 text-left text-[10px]">
-                                        {new Date(t.close_time * 1000).toLocaleString()}
+                                        {formatServerTime(t.close_time)}
                                     </td>
                                 </tr>
                             ))}
