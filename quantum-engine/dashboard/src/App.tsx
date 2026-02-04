@@ -13,6 +13,7 @@ import { SmartExitDashboard } from './components/SmartExitDashboard';
 import { LoginPage } from './components/LoginPage';
 import { BindModal } from './components/BindModal';
 import { DashboardTables } from './components/DashboardTables';
+import { PendingOrdersWidget } from './components/PendingOrdersWidget';
 import { RealtimeLogs } from './components/RealtimeLogs';
 import { API_BASE } from './config';
 import type { AuthState, MarketData, AccountStatus, LogEntry, TradeHistory, AccountRecord } from './types';
@@ -459,6 +460,12 @@ const App = () => {
                   selectedSymbol={selectedSymbol}
                   maxDrawdown={drawdown.current}
                   tradeStats={tradeStats}
+                />
+
+                <PendingOrdersWidget
+                  positions={data?.account_status?.positions || []}
+                  currentPrice={currentMarketData ? currentMarketData.close : null}
+                  selectedSymbol={selectedSymbol}
                 />
 
 
