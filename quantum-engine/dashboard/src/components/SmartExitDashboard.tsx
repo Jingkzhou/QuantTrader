@@ -226,8 +226,21 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
         setSyncStatus('SYNCING');
 
         try {
+            // 当从 开启 -> 关闭 时，强制重置所有风控状态
+            const resetFields = !newEnabled ? {
+                block_buy: false,
+                block_sell: false,
+                block_all: false,
+                risk_level: 'SAFE',
+                risk_score: 0,
+                exit_trigger: 'NONE',
+                velocity_block: false,
+                trigger_reason: ''
+            } : {};
+
             const payload = backendRiskState ? {
                 ...backendRiskState,
+                ...resetFields,
                 enabled: newEnabled
             } : {
                 mt4_account: accountStatus.mt4_account,
