@@ -14,6 +14,20 @@ export const PendingOrdersWidget: React.FC<PendingOrdersWidgetProps> = ({
     currentPrice,
     selectedSymbol
 }) => {
+    // 格式化时间辅助函数
+    const formatTime = (timestamp: number) => {
+        const date = new Date(timestamp * 1000); // 假设是秒级时间戳
+        const now = new Date();
+        const isToday = date.getDate() === now.getDate() && date.getMonth() === now.getMonth();
+
+        const timeStr = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+        // 如果是跨天订单，显示日期
+        if (!isToday) {
+            return `${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')} ${timeStr}`;
+        }
+        return timeStr;
+    };
+
     // 过滤出挂单
     const pendingOrders = positions.filter(p =>
         p.symbol === selectedSymbol &&
@@ -55,6 +69,12 @@ export const PendingOrdersWidget: React.FC<PendingOrdersWidgetProps> = ({
                                     <span className="text-[9px] text-slate-500 font-mono">
                                         #{order.ticket}
                                     </span>
+                                    <div className="flex items-center gap-1 mt-0.5">
+                                        <Clock size={8} className="text-slate-600" />
+                                        <span className="text-[9px] text-slate-500 font-mono">
+                                            {formatTime(order.open_time)}
+                                        </span>
+                                    </div>
                                 </div>
                                 <div className="text-right">
                                     <span className={`text-[10px] font-bold font-mono ${distance > 0 ? 'text-cyan-400' : 'text-slate-500'}`}>
