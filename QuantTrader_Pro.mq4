@@ -1531,18 +1531,17 @@ void ReportAccountStatus() {
          UpdateOrderMFE_MAE(OrderTicket(), OrderProfit());
          
          string side = "UNKNOWN";
-         string typeStr = "UNKNOWN";
          int type = OrderType();
          
-         if(type == OP_BUY) { side = "BUY"; typeStr = "BUY"; }
-         else if(type == OP_SELL) { side = "SELL"; typeStr = "SELL"; }
-         else if(type == OP_BUYLIMIT) { side = "BUY"; typeStr = "BUY_LIMIT"; }
-         else if(type == OP_SELLLIMIT) { side = "SELL"; typeStr = "SELL_LIMIT"; }
-         else if(type == OP_BUYSTOP) { side = "BUY"; typeStr = "BUY_STOP"; }
-         else if(type == OP_SELLSTOP) { side = "SELL"; typeStr = "SELL_STOP"; }
+         if(type == OP_BUY) side = "BUY";
+         else if(type == OP_SELL) side = "SELL";
+         else if(type == OP_BUYLIMIT) side = "BUY_LIMIT";
+         else if(type == OP_SELLLIMIT) side = "SELL_LIMIT";
+         else if(type == OP_BUYSTOP) side = "BUY_STOP";
+         else if(type == OP_SELLSTOP) side = "SELL_STOP";
 
-         string item = StringFormat("{\"ticket\":%d,\"symbol\":\"%s\",\"side\":\"%s\",\"type\":\"%s\",\"lots\":%.2f,\"open_price\":%.5f,\"open_time\":%d,\"profit\":%.2f,\"swap\":%.2f,\"commission\":%.2f,\"mae\":%.2f,\"mfe\":%.2f}",
-                                    OrderTicket(), OrderSymbol(), side, typeStr, OrderLots(), OrderOpenPrice(), (long)OrderOpenTime(), OrderProfit(), OrderSwap(), OrderCommission(),
+         string item = StringFormat("{\"ticket\":%d,\"symbol\":\"%s\",\"side\":\"%s\",\"lots\":%.2f,\"open_price\":%.5f,\"open_time\":%d,\"profit\":%.2f,\"swap\":%.2f,\"commission\":%.2f,\"mae\":%.2f,\"mfe\":%.2f}",
+                                    OrderTicket(), OrderSymbol(), side, OrderLots(), OrderOpenPrice(), (long)OrderOpenTime(), OrderProfit(), OrderSwap(), OrderCommission(),
                                     GlobalVariableGet(StringFormat("%sMAE_%d", GV_PREFIX, OrderTicket())),
                                     GlobalVariableGet(StringFormat("%sMFE_%d", GV_PREFIX, OrderTicket())));
          posJson += (posJson == "" ? "" : ",") + item;

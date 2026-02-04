@@ -22,7 +22,8 @@ export const DashboardTables: React.FC<DashboardTablesProps> = ({
     const [activeTab, setActiveTab] = useState<'positions' | 'history'>('positions');
     const [isExporting, setIsExporting] = useState(false);
 
-    const filteredPositions = positions.filter((p: any) => !selectedSymbol || p.symbol === selectedSymbol);
+    const filteredPositions = positions
+        .filter((p: any) => (!selectedSymbol || p.symbol === selectedSymbol) && ['BUY', 'SELL'].includes(p.side));
     const filteredHistory = history.filter((t: TradeHistory) => !selectedSymbol || t.symbol === selectedSymbol);
 
     const handleExportClick = async () => {

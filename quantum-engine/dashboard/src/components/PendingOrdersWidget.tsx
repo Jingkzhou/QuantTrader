@@ -17,11 +17,11 @@ export const PendingOrdersWidget: React.FC<PendingOrdersWidgetProps> = ({
     // 过滤出挂单
     const pendingOrders = positions.filter(p =>
         p.symbol === selectedSymbol &&
-        ['BUY_LIMIT', 'SELL_LIMIT', 'BUY_STOP', 'SELL_STOP'].includes(p.type)
+        ['BUY_LIMIT', 'SELL_LIMIT', 'BUY_STOP', 'SELL_STOP'].includes(p.side)
     );
 
-    const buyPendings = pendingOrders.filter(p => p.side === 'BUY').sort((a, b) => b.open_price - a.open_price);
-    const sellPendings = pendingOrders.filter(p => p.side === 'SELL').sort((a, b) => a.open_price - b.open_price);
+    const buyPendings = pendingOrders.filter(p => p.side.includes('BUY')).sort((a, b) => b.open_price - a.open_price);
+    const sellPendings = pendingOrders.filter(p => p.side.includes('SELL')).sort((a, b) => a.open_price - b.open_price);
 
     const renderOrderList = (orders: Position[], isBuy: boolean) => (
         <div className="flex-1 space-y-2">
@@ -41,7 +41,7 @@ export const PendingOrdersWidget: React.FC<PendingOrdersWidgetProps> = ({
                         <div key={order.ticket} className="bg-slate-900/40 rounded-lg p-2.5 border border-slate-800/50 hover:border-slate-700 transition-colors">
                             <div className="flex justify-between items-start mb-1">
                                 <span className={`text-[10px] font-bold ${isBuy ? 'text-emerald-500/80' : 'text-rose-500/80'}`}>
-                                    {order.type.replace('_', ' ')}
+                                    {order.side.replace('_', ' ')}
                                 </span>
                                 <span className="text-[11px] font-mono font-bold text-slate-200">
                                     {order.lots.toFixed(2)} Lots

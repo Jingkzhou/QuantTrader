@@ -8,8 +8,7 @@ export interface MarketData {
 export interface Position {
     ticket: number;
     symbol: string;
-    side: 'BUY' | 'SELL';
-    type: 'BUY' | 'SELL' | 'BUY_LIMIT' | 'SELL_LIMIT' | 'BUY_STOP' | 'SELL_STOP';
+    side: 'BUY' | 'SELL' | 'BUY_LIMIT' | 'SELL_LIMIT' | 'BUY_STOP' | 'SELL_STOP';
     lots: number;
     open_price: number;
     open_time: number;
