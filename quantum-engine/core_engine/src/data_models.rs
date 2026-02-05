@@ -186,8 +186,6 @@ pub struct RiskControlState {
     pub velocity_block: bool, // True if velocity triggered a block
     #[serde(default)]
     pub enabled: bool, // EA Linkage Enabled
-    #[serde(default)]
-    pub fingerprint_enabled: bool, // Entry Fingerprint Enabled
 }
 
 /// Velocity response data for Smart Exit calculations

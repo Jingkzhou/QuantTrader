@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import axios from 'axios';
 import {
     Activity, TrendingDown, TrendingUp, AlertTriangle,
-    Shield, ShieldAlert, ShieldCheck, Radar, Target, Clock, Fingerprint
+    Shield, ShieldAlert, ShieldCheck, Radar, Target, Clock
 } from 'lucide-react';
 import type { AccountStatus, RiskControlState } from '../types';
 import { API_BASE } from '../config';
@@ -131,7 +131,6 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
 }) => {
     // --- 1. Hooks (State & Memos) ---
     const [eaLinkageEnabled, setEaLinkageEnabled] = useState(false);
-    const [fingerprintEnabled, setFingerprintEnabled] = useState(false);
     const [syncStatus, setSyncStatus] = useState<'IDLE' | 'SYNCING' | 'ERROR'>('IDLE');
     const [operationLogs, setOperationLogs] = useState<any[]>([]);
     const [backendRiskState, setBackendRiskState] = useState<RiskControlState | null>(null);
@@ -184,7 +183,6 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                 });
                 if (res.data) {
                     setEaLinkageEnabled(!!res.data.enabled);
-                    setFingerprintEnabled(!!res.data.fingerprint_enabled);
                     setBackendRiskState(res.data);
                 }
             } catch (err) {
@@ -252,7 +250,6 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                 exit_trigger: 'NONE',
                 velocity_block: false,
                 enabled: newEnabled,
-                fingerprint_enabled: fingerprintEnabled
             };
 
             await axios.put(`${API_BASE}/risk_control`, payload, {
@@ -274,48 +271,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
         }
     };
 
-    const handleToggleFingerprint = async () => {
-        if (!authToken || !accountStatus.mt4_account) return;
 
-        const newEnabled = !fingerprintEnabled;
-        setFingerprintEnabled(newEnabled);
-        setSyncStatus('SYNCING');
-
-        try {
-            const payload = backendRiskState ? {
-                ...backendRiskState,
-                fingerprint_enabled: newEnabled
-            } : {
-                mt4_account: accountStatus.mt4_account,
-                block_buy: false,
-                block_sell: false,
-                block_all: false,
-                risk_level: 'SAFE',
-                risk_score: 0,
-                exit_trigger: 'NONE',
-                velocity_block: false,
-                enabled: eaLinkageEnabled,
-                fingerprint_enabled: newEnabled
-            };
-
-            await axios.put(`${API_BASE}/risk_control`, payload, {
-                headers: { Authorization: `Bearer ${authToken}` }
-            });
-            setSyncStatus('IDLE');
-
-            // Re-fetch to confirm
-            const res = await axios.get(`${API_BASE}/risk_control`, {
-                params: { mt4_account: accountStatus.mt4_account },
-                headers: { Authorization: `Bearer ${authToken}` }
-            });
-            if (res.data) setBackendRiskState(res.data);
-
-        } catch (err) {
-            console.error("Failed to toggle fingerprint", err);
-            setSyncStatus('ERROR');
-            setFingerprintEnabled(!newEnabled);
-        }
-    };
 
     // Use Backend Data if available, else fallback to Frontend calc
     const displayRiskScore = backendRiskState ? backendRiskState.risk_score : 0;
@@ -329,10 +285,10 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
     // Survival Time with velocity consideration
     const survivalTime = estimateSurvivalTime(survivalDistance, atr, smartMetrics.velocityM1);
 
-    // RSI Logic for Fingerprint
+    // RSI Logic (Keep variable for other calculations even if UI is removed)
     const rsi = smartMetrics.rsi ?? 50;
-    const isLongEntrySafe = rsi < 70;
-    const isShortEntrySafe = rsi > 30;
+
+
 
     // Divergence Sim (Risk Rising + Extreme RSI)
     const isTrendExhausted = smartMetrics.riskScore >= 60 && (rsi > 70 || rsi < 30);
@@ -390,321 +346,255 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                         </span>
                     </div>
 
-                    {/* NEW: Entry Fingerprint (RSI) */}
-                    <div className="mt-4 w-full bg-slate-900/40 rounded-lg p-2 border border-slate-800/50 backdrop-blur-sm relative group/rsi cursor-help" tabIndex={0}>
-                        <div className="flex items-center justify-between mb-1.5 px-1">
-                            <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider scale-90 origin-left">进场指纹</span>
-                            <span className={`text-[10px] font-mono font-bold ${rsi > 70 || rsi < 30 ? 'text-amber-400' : 'text-slate-400'}`}>
-                                RSI {rsi.toFixed(0)}
+
+
+                    {/* Exhaustion Warning */}
+                    {isTrendExhausted && (
+                        <div className="mt-1.5 pt-1.5 border-t border-slate-800 text-center animate-pulse">
+                            <span className="text-[9px] font-bold text-rose-400 flex items-center justify-center gap-1">
+                                <AlertTriangle size={8} />
+                                趋势力竭
                             </span>
                         </div>
-                        <div className="grid grid-cols-2 gap-1.5">
-                            {/* Long Entry Light */}
-                            <div className={`
-                                flex items-center justify-center gap-1 px-1.5 py-1 rounded bg-slate-950 border
-                                ${isLongEntrySafe ? 'border-emerald-500/30 text-emerald-500' : 'border-rose-900/30 text-rose-900 opacity-50'}
-                            `} title="多头准入: RSI < 70">
-                                <div className={`w-1.5 h-1.5 rounded-full ${isLongEntrySafe ? 'bg-emerald-500 shadow-[0_0_5px_#10b981]' : 'bg-rose-900'}`} />
-                                <span className="text-[8px] font-bold">多</span>
-                            </div>
-
-                            {/* Short Entry Light */}
-                            <div className={`
-                                flex items-center justify-center gap-1 px-1.5 py-1 rounded bg-slate-950 border
-                                ${isShortEntrySafe ? 'border-emerald-500/30 text-emerald-500' : 'border-rose-900/30 text-rose-900 opacity-50'}
-                            `} title="空头准入: RSI > 30">
-                                <div className={`w-1.5 h-1.5 rounded-full ${isShortEntrySafe ? 'bg-emerald-500 shadow-[0_0_5px_#10b981]' : 'bg-rose-900'}`} />
-                                <span className="text-[8px] font-bold">空</span>
-                            </div>
-                        </div>
-
-                        {/* RSI Rules Tooltip */}
-                        <div className="absolute left-full top-0 ml-3 w-52 p-2.5 bg-slate-900/95 backdrop-blur text-[10px] text-slate-300 rounded-lg shadow-xl border border-slate-700 opacity-0 group-hover/rsi:opacity-100 group-focus-within/rsi:opacity-100 transition-opacity pointer-events-none z-50">
-                            <div className="font-bold text-slate-200 mb-1.5 border-b border-slate-700 pb-1">进场风控规则 (需联动)</div>
-                            <div className="space-y-2">
-                                <div>
-                                    <div className="flex justify-between font-bold text-rose-500">
-                                        <span>RSI ≥ 70</span>
-                                        <span>⛔️ Block Buy</span>
-                                    </div>
-                                    <div className="text-slate-500 mt-0.5">多头超买，禁止开多单/补多单</div>
-                                </div>
-                                <div>
-                                    <div className="flex justify-between font-bold text-rose-500">
-                                        <span>RSI ≤ 30</span>
-                                        <span>⛔️ Block Sell</span>
-                                    </div>
-                                    <div className="text-slate-500 mt-0.5">空头超卖，禁止开空单/补空单</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Exhaustion Warning */}
-                        {isTrendExhausted && (
-                            <div className="mt-1.5 pt-1.5 border-t border-slate-800 text-center animate-pulse">
-                                <span className="text-[9px] font-bold text-rose-400 flex items-center justify-center gap-1">
-                                    <AlertTriangle size={8} />
-                                    趋势力竭
-                                </span>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Martingale Warning Badge */}
-                    {smartMetrics.isMartingalePattern && (
-                        <div className="absolute -top-2 -right-2 animate-pulse">
-                            <div className="bg-amber-950/90 text-amber-500 border border-amber-500/50 p-1 rounded-md shadow-[0_0_10px_rgba(245,158,11,0.3)]">
-                            </div>
-                        </div>
                     )}
                 </div>
 
-                {/* 2. Middle: Critical Telemetry */}
-                <div className="flex-1 w-full grid grid-cols-2 gap-3 min-w-[240px]">
-                    {/* Liquidation Card */}
-                    <div className="col-span-1 bg-slate-900/50 rounded-xl p-3 border border-slate-800 flex flex-col justify-between relative overflow-hidden group-hover:border-slate-700 transition-colors">
-                        <div className="flex items-center gap-2 mb-1">
-                            <Target size={12} className="text-slate-500" />
-                            <span className="text-[10px] text-slate-500 uppercase font-mono tracking-wider">强平价格</span>
-                        </div>
-                        <div className="text-lg font-mono font-bold text-slate-200 tracking-tight">
-                            {liquidationPrice > 0 ? liquidationPrice.toFixed(2) : '---'}
-                        </div>
-                        <div className="text-[9px] text-slate-600 font-mono mt-1">
-                            {currentPrice && liquidationPrice > 0
-                                ? `偏离: ${(Math.abs(liquidationPrice - currentPrice) / currentPrice * 100).toFixed(2)}%`
-                                : '无敞口'}
-                        </div>
-                        {/* Decorative Line */}
-                        <div className="absolute bottom-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-rose-500/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </div>
-
-                    {/* Survival Card */}
-                    <div className="col-span-1 bg-slate-900/50 rounded-xl p-3 border border-slate-800 flex flex-col justify-between overflow-hidden group-hover:border-slate-700 transition-colors">
-                        <div className="flex items-center gap-2 mb-1">
-                            <Shield size={12} className="text-slate-500" />
-                            <span className="text-[10px] text-slate-500 uppercase font-mono tracking-wider">生存距离</span>
-                        </div>
-                        <div className={`text-lg font-mono font-bold tracking-tight ${survivalDistance < atr ? 'text-rose-400' : 'text-emerald-400'}`}>
-                            {survivalDistance !== Infinity ? survivalDistance.toFixed(0) : '∞'}
-                        </div>
-                        <div className="text-[9px] text-slate-600 font-mono mt-1 flex items-center justify-between">
-                            <span>{survivalTime}</span>
-                            <span>{atr ? `${(survivalDistance / atr).toFixed(1)}ATR` : ''}</span>
+                {/* Martingale Warning Badge */}
+                {smartMetrics.isMartingalePattern && (
+                    <div className="absolute -top-2 -right-2 animate-pulse">
+                        <div className="bg-amber-950/90 text-amber-500 border border-amber-500/50 p-1 rounded-md shadow-[0_0_10px_rgba(245,158,11,0.3)]">
                         </div>
                     </div>
+                )}
+            </div>
 
-                    {/* Risk  Factors (Compact Bars)  */}
-                    <div className="col-span-2 bg-slate-900/50 rounded-xl p-3 border border-slate-800 flex flex-col gap-2.5">
-                        <div className="flex items-center gap-2">
-                            <Radar size={12} className="text-cyan-500" />
-                            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">风险因子</span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+            {/* 2. Middle: Critical Telemetry */}
+            <div className="flex-1 w-full grid grid-cols-2 gap-3 min-w-[240px]">
+                {/* Liquidation Card */}
+                <div className="col-span-1 bg-slate-900/50 rounded-xl p-3 border border-slate-800 flex flex-col justify-between relative overflow-hidden group-hover:border-slate-700 transition-colors">
+                    <div className="flex items-center gap-2 mb-1">
+                        <Target size={12} className="text-slate-500" />
+                        <span className="text-[10px] text-slate-500 uppercase font-mono tracking-wider">强平价格</span>
+                    </div>
+                    <div className="text-lg font-mono font-bold text-slate-200 tracking-tight">
+                        {liquidationPrice > 0 ? liquidationPrice.toFixed(2) : '---'}
+                    </div>
+                    <div className="text-[9px] text-slate-600 font-mono mt-1">
+                        {currentPrice && liquidationPrice > 0
+                            ? `偏离: ${(Math.abs(liquidationPrice - currentPrice) / currentPrice * 100).toFixed(2)}%`
+                            : '无敞口'}
+                    </div>
+                    {/* Decorative Line */}
+                    <div className="absolute bottom-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-rose-500/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
 
-                            <div className="group/tooltip relative cursor-help" tabIndex={0}>
-                                <DataBar label="层级负荷" value={smartMetrics.layerScore} max={20} color="bg-cyan-500" warningThreshold={15} />
-                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-2 bg-slate-900/95 backdrop-blur text-[10px] text-slate-300 rounded-lg shadow-xl border border-slate-700 opacity-0 group-hover/tooltip:opacity-100 group-focus-within/tooltip:opacity-100 transition-opacity pointer-events-none z-50">
-                                    <div className="font-bold text-cyan-400 mb-1 border-b border-slate-700 pb-1">层级负荷 (20%)</div>
-                                    <div className="space-y-0.5">
-                                        <div className="flex justify-between"><span>≥ 15 层</span><span className="text-rose-400">20分</span></div>
-                                        <div className="flex justify-between"><span>≥ 10 层</span><span className="text-amber-400">15分</span></div>
-                                        <div className="flex justify-between"><span>≥ 5 层</span><span className="text-emerald-400">5分</span></div>
-                                        <div className="mt-1 text-slate-500 italic">层数越多，持仓风险越高</div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Drawdown Score */}
-                            <div className="group/tooltip relative cursor-help" tabIndex={0}>
-                                <DataBar label="回撤深度" value={smartMetrics.drawdownScore} max={30} color="bg-orange-500" warningThreshold={20} />
-                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-2 bg-slate-900/95 backdrop-blur text-[10px] text-slate-300 rounded-lg shadow-xl border border-slate-700 opacity-0 group-hover/tooltip:opacity-100 group-focus-within/tooltip:opacity-100 transition-opacity pointer-events-none z-50">
-                                    <div className="font-bold text-orange-400 mb-1 border-b border-slate-700 pb-1">回撤深度 (30%)</div>
-                                    <div className="space-y-0.5">
-                                        <div className="flex justify-between"><span>≥ 30%</span><span className="text-rose-400">30分</span></div>
-                                        <div className="flex justify-between"><span>≥ 20%</span><span className="text-amber-400">20分</span></div>
-                                        <div className="flex justify-between"><span>≥ 10%</span><span className="text-orange-300">10分</span></div>
-                                        <div className="flex justify-between"><span>≥ 5%</span><span className="text-emerald-400">5分</span></div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Velocity Score */}
-                            <div className="group/tooltip relative cursor-help" tabIndex={0}>
-                                <DataBar label="价格速度" value={smartMetrics.velocityScore} max={20} color="bg-indigo-500" warningThreshold={15} />
-                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-2 bg-slate-900/95 backdrop-blur text-[10px] text-slate-300 rounded-lg shadow-xl border border-slate-700 opacity-0 group-hover/tooltip:opacity-100 group-focus-within/tooltip:opacity-100 transition-opacity pointer-events-none z-50">
-                                    <div className="font-bold text-indigo-400 mb-1 border-b border-slate-700 pb-1">价格速度 (20%)</div>
-                                    <div className="space-y-0.5">
-                                        <div className="flex justify-between"><span>逆势 ≥ $3/min</span><span className="text-rose-400">20分</span></div>
-                                        <div className="flex justify-between"><span>逆势 ≥ $2/min</span><span className="text-amber-400">10分</span></div>
-                                        <div className="flex justify-between"><span>逆势 ≥ $1/min</span><span className="text-emerald-400">5分</span></div>
-                                        <div className="mt-1 text-slate-500 italic">仅计算对持仓不利方向</div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Distance Score */}
-                            <div className="group/tooltip relative cursor-help" tabIndex={0}>
-                                <DataBar label="生存空间" value={smartMetrics.distanceScore} max={30} color="bg-emerald-500" warningThreshold={25} />
-                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-2 bg-slate-900/95 backdrop-blur text-[10px] text-slate-300 rounded-lg shadow-xl border border-slate-700 opacity-0 group-hover/tooltip:opacity-100 group-focus-within/tooltip:opacity-100 transition-opacity pointer-events-none z-50">
-                                    <div className="font-bold text-emerald-400 mb-1 border-b border-slate-700 pb-1">生存空间 (30%)</div>
-                                    <div className="space-y-0.5">
-                                        <div className="flex justify-between"><span>&lt; 1 ATR</span><span className="text-rose-400">30分</span></div>
-                                        <div className="flex justify-between"><span>&lt; 2 ATR</span><span className="text-amber-400">20分</span></div>
-                                        <div className="flex justify-between"><span>&lt; 3 ATR</span><span className="text-orange-300">10分</span></div>
-                                        <div className="flex justify-between"><span>&lt; 5 ATR</span><span className="text-emerald-400">5分</span></div>
-                                        <div className="mt-1 text-slate-500 italic">基于强平距离与ATR比率</div>
-                                    </div>
-                                </div>
-
-                            </div>
-
-                        </div>
+                {/* Survival Card */}
+                <div className="col-span-1 bg-slate-900/50 rounded-xl p-3 border border-slate-800 flex flex-col justify-between overflow-hidden group-hover:border-slate-700 transition-colors">
+                    <div className="flex items-center gap-2 mb-1">
+                        <Shield size={12} className="text-slate-500" />
+                        <span className="text-[10px] text-slate-500 uppercase font-mono tracking-wider">生存距离</span>
+                    </div>
+                    <div className={`text-lg font-mono font-bold tracking-tight ${survivalDistance < atr ? 'text-rose-400' : 'text-emerald-400'}`}>
+                        {survivalDistance !== Infinity ? survivalDistance.toFixed(0) : '∞'}
+                    </div>
+                    <div className="text-[9px] text-slate-600 font-mono mt-1 flex items-center justify-between">
+                        <span>{survivalTime}</span>
+                        <span>{atr ? `${(survivalDistance / atr).toFixed(1)}ATR` : ''}</span>
                     </div>
                 </div>
 
-                {/* 3. Right: Market Pulse & Controls */}
-                <div className="flex flex-col gap-3 min-w-[200px] w-full md:w-auto">
-                    {/* Velocity Monitor Panel */}
-                    <div className="bg-slate-900/40 rounded-xl p-3 border border-slate-800 relative overflow-hidden">
-                        <div className="flex justify-between items-center mb-2">
-                            <span className="text-[10px] text-slate-500 font-bold uppercase">市场脉搏</span>
-                            <div className="flex items-center gap-2">
-                                {/* Data Freshness Indicator */}
-                                {backendRiskState?.updated_at && (
-                                    <span className={`text-[9px] font-mono ${(Date.now() / 1000 - backendRiskState.updated_at) > 60 ? 'text-rose-500 animate-pulse' : 'text-emerald-500'
-                                        }`}>
-                                        {(Date.now() / 1000 - backendRiskState.updated_at) > 60 ? '数据延迟' : '● 实时'}
-                                    </span>
-                                )}
-                                <Activity size={12} className={smartMetrics.isVelocityWarning ? 'text-rose-500 animate-pulse' : 'text-slate-600'} />
-                            </div>
-                        </div>
-
-                        {/* Fake Waveform Visual (CSS) */}
-                        <div className="flex items-end justify-between h-8 gap-0.5 opacity-50 mb-2">
-                            {[...Array(10)].map((_, i) => (
-                                <div key={i}
-                                    className={`w-1.5 rounded-t-sm transition-all duration-300 ${smartMetrics.velocityM1 > 0 ? 'bg-emerald-500' : 'bg-rose-500'}`}
-                                    style={{ height: `${20 + Math.random() * 60}%` }}
-                                />
-                            ))}
-                        </div>
-
-                        <div className="flex justify-between text-[10px] font-mono border-t border-slate-800/50 pt-1.5">
-                            <div className="flex flex-col">
-                                <span className="text-slate-600 text-[8px]">M1 速度</span>
-                                <span className={smartMetrics.velocityM1 > 5 ? 'text-rose-400' : 'text-slate-300'}>
-                                    ${smartMetrics.velocityM1.toFixed(2)}
-                                </span>
-                            </div>
-                            <div className="flex flex-col items-end">
-                                <span className="text-slate-600 text-[8px]">相对量能</span>
-                                <span className={smartMetrics.rvol > 2 ? 'text-amber-400' : 'text-slate-300'}>
-                                    {smartMetrics.rvol.toFixed(1)}x
-                                </span>
-                            </div>
-                        </div>
+                {/* Risk  Factors (Compact Bars)  */}
+                <div className="col-span-2 bg-slate-900/50 rounded-xl p-3 border border-slate-800 flex flex-col gap-2.5">
+                    <div className="flex items-center gap-2">
+                        <Radar size={12} className="text-cyan-500" />
+                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">风险因子</span>
                     </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2">
 
-                    {/*  Action Button (Tactical Switch) */}
-                    <button
-                        onClick={handleToggleLinkage}
-                        className={`
-                            relative overflow-hidden w-full py-2.5 rounded-lg border flex items-center justify-center gap-2
-                            transition-all duration-300 text-xs font-bold tracking-wider uppercase group/btn
-                            ${eaLinkageEnabled
-                                ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.15)] hover:bg-cyan-500/20'
-                                : 'bg-slate-800 border-slate-700 text-slate-500 hover:bg-slate-800/80 hover:text-slate-400'}
-                        `}
-                    >
-                        {eaLinkageEnabled ? <ShieldCheck size={14} /> : <ShieldAlert size={14} />}
-                        {eaLinkageEnabled ? 'EA 警戒中' : 'EA 已解除'}
-
-                        {/* Scanning Effect */}
-                        {eaLinkageEnabled && (
-                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-cyan-400/10 to-transparent -translate-x-full animate-[shimmer_2s_infinite]" />
-                        )}
-                        {syncStatus === 'SYNCING' && <span className="absolute right-2 animate-spin text-cyan-500">⟳</span>}
-                    </button>
-
-                    {/* Trigger Status */}
-                    {displayExitTrigger !== 'NONE' && (
-                        <div className={`px-2 py-1 rounded text-[9px] font-bold text-center border ${triggerConfig.bgColor} ${triggerConfig.color} ${triggerConfig.borderColor}`}>
-                            {backendRiskState?.exit_trigger || smartMetrics.triggerReason}
-                        </div>
-                    )}
-
-                    {/* Entry Fingerprint Toggle */}
-                    <button
-                        onClick={handleToggleFingerprint}
-                        className={`
-                            group relative overflow-hidden w-full py-1.5 rounded-lg border flex items-center justify-between px-3
-                            transition-all duration-300 text-[10px] font-bold
-                            ${fingerprintEnabled
-                                ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-400'
-                                : 'bg-slate-800/50 border-slate-700 text-slate-500 opacity-60'}
-                        `}
-                    >
-
-                        <div className={`
-                            w-6 h-3.5 rounded-full relative transition-colors duration-300
-                            ${fingerprintEnabled ? 'bg-indigo-500/30' : 'bg-slate-700'}
-                        `}>
-                            <div className={`
-                                absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white transition-all duration-300
-                                ${fingerprintEnabled ? 'right-0.5 shadow-[0_0_5px_rgba(255,255,255,0.8)]' : 'left-0.5'}
-                            `} />
-                        </div>
-                    </button>
-
-                    {/* Operation History Bar */}
-                    {operationLogs.length > 0 && (
-                        <div className="relative group/logs">
-                            <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-900/50 rounded border border-slate-800 cursor-pointer hover:border-slate-700 transition-colors">
-                                <Clock size={10} className="text-slate-500" />
-                                <span className="text-[9px] text-slate-500">最近 {operationLogs.length} 条操作</span>
-                                <div className="flex-1 h-1 bg-slate-800 rounded-full overflow-hidden">
-                                    <div
-                                        className="h-full bg-gradient-to-r from-cyan-500 to-indigo-500 transition-all duration-300"
-                                        style={{ width: `${Math.min(100, operationLogs.length * 10)}%` }}
-                                    />
-                                </div>
-                            </div>
-                            {/* Hover Tooltip */}
-                            <div className="absolute bottom-full left-0 right-0 mb-1 hidden group-hover/logs:block z-50">
-                                <div className="bg-slate-950 border border-slate-700 rounded-lg p-2 shadow-xl max-h-40 overflow-y-auto">
-                                    <div className="text-[9px] text-slate-400 font-bold mb-1.5 uppercase tracking-wider">操作历史</div>
-                                    {operationLogs.map((log, i) => (
-                                        <div key={log.id || i} className="flex items-center justify-between gap-2 py-1 border-b border-slate-800 last:border-0">
-
-                                            <span className={`text-[9px] font-mono font-bold ${log.action === 'DISABLED' ? 'text-slate-500' :
-                                                log.action?.includes('BLOCK') || log.action?.includes('禁止') ? 'text-rose-400' : 'text-cyan-400'
-                                                }`}>
-                                                {translateLogAction(log.action)}
-                                            </span>
-                                            <span className="text-[8px] text-slate-600">
-                                                {new Date(log.created_at * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
-                                            </span>
-                                        </div>
-                                    ))}
+                        <div className="group/tooltip relative cursor-help" tabIndex={0}>
+                            <DataBar label="层级负荷" value={smartMetrics.layerScore} max={20} color="bg-cyan-500" warningThreshold={15} />
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-2 bg-slate-900/95 backdrop-blur text-[10px] text-slate-300 rounded-lg shadow-xl border border-slate-700 opacity-0 group-hover/tooltip:opacity-100 group-focus-within/tooltip:opacity-100 transition-opacity pointer-events-none z-50">
+                                <div className="font-bold text-cyan-400 mb-1 border-b border-slate-700 pb-1">层级负荷 (20%)</div>
+                                <div className="space-y-0.5">
+                                    <div className="flex justify-between"><span>≥ 15 层</span><span className="text-rose-400">20分</span></div>
+                                    <div className="flex justify-between"><span>≥ 10 层</span><span className="text-amber-400">15分</span></div>
+                                    <div className="flex justify-between"><span>≥ 5 层</span><span className="text-emerald-400">5分</span></div>
+                                    <div className="mt-1 text-slate-500 italic">层数越多，持仓风险越高</div>
                                 </div>
                             </div>
                         </div>
-                    )}
+
+                        {/* Drawdown Score */}
+                        <div className="group/tooltip relative cursor-help" tabIndex={0}>
+                            <DataBar label="回撤深度" value={smartMetrics.drawdownScore} max={30} color="bg-orange-500" warningThreshold={20} />
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-2 bg-slate-900/95 backdrop-blur text-[10px] text-slate-300 rounded-lg shadow-xl border border-slate-700 opacity-0 group-hover/tooltip:opacity-100 group-focus-within/tooltip:opacity-100 transition-opacity pointer-events-none z-50">
+                                <div className="font-bold text-orange-400 mb-1 border-b border-slate-700 pb-1">回撤深度 (30%)</div>
+                                <div className="space-y-0.5">
+                                    <div className="flex justify-between"><span>≥ 30%</span><span className="text-rose-400">30分</span></div>
+                                    <div className="flex justify-between"><span>≥ 20%</span><span className="text-amber-400">20分</span></div>
+                                    <div className="flex justify-between"><span>≥ 10%</span><span className="text-orange-300">10分</span></div>
+                                    <div className="flex justify-between"><span>≥ 5%</span><span className="text-emerald-400">5分</span></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Velocity Score */}
+                        <div className="group/tooltip relative cursor-help" tabIndex={0}>
+                            <DataBar label="价格速度" value={smartMetrics.velocityScore} max={20} color="bg-indigo-500" warningThreshold={15} />
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-2 bg-slate-900/95 backdrop-blur text-[10px] text-slate-300 rounded-lg shadow-xl border border-slate-700 opacity-0 group-hover/tooltip:opacity-100 group-focus-within/tooltip:opacity-100 transition-opacity pointer-events-none z-50">
+                                <div className="font-bold text-indigo-400 mb-1 border-b border-slate-700 pb-1">价格速度 (20%)</div>
+                                <div className="space-y-0.5">
+                                    <div className="flex justify-between"><span>逆势 ≥ $3/min</span><span className="text-rose-400">20分</span></div>
+                                    <div className="flex justify-between"><span>逆势 ≥ $2/min</span><span className="text-amber-400">10分</span></div>
+                                    <div className="flex justify-between"><span>逆势 ≥ $1/min</span><span className="text-emerald-400">5分</span></div>
+                                    <div className="mt-1 text-slate-500 italic">仅计算对持仓不利方向</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Distance Score */}
+                        <div className="group/tooltip relative cursor-help" tabIndex={0}>
+                            <DataBar label="生存空间" value={smartMetrics.distanceScore} max={30} color="bg-emerald-500" warningThreshold={25} />
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-2 bg-slate-900/95 backdrop-blur text-[10px] text-slate-300 rounded-lg shadow-xl border border-slate-700 opacity-0 group-hover/tooltip:opacity-100 group-focus-within/tooltip:opacity-100 transition-opacity pointer-events-none z-50">
+                                <div className="font-bold text-emerald-400 mb-1 border-b border-slate-700 pb-1">生存空间 (30%)</div>
+                                <div className="space-y-0.5">
+                                    <div className="flex justify-between"><span>&lt; 1 ATR</span><span className="text-rose-400">30分</span></div>
+                                    <div className="flex justify-between"><span>&lt; 2 ATR</span><span className="text-amber-400">20分</span></div>
+                                    <div className="flex justify-between"><span>&lt; 3 ATR</span><span className="text-orange-300">10分</span></div>
+                                    <div className="flex justify-between"><span>&lt; 5 ATR</span><span className="text-emerald-400">5分</span></div>
+                                    <div className="mt-1 text-slate-500 italic">基于强平距离与ATR比率</div>
+                                </div>
+                            </div>
+
+                        </div>
+
+                    </div>
                 </div>
             </div>
 
-            {/* Critical Alert Overlay */}
-            {(displayExitTrigger === 'TACTICAL_EXIT' || displayExitTrigger === 'FORCE_EXIT') && (
-                <div className="absolute inset-0 z-50 pointer-events-none flex items-center justify-center bg-rose-950/20 backdrop-blur-[1px] rounded-2xl">
-                    <div className="border border-rose-500/50 bg-black/80 text-rose-500 px-6 py-4 rounded-xl shadow-[0_0_50px_rgba(244,63,94,0.5)] animate-pulse flex flex-col items-center">
-                        <AlertTriangle size={32} className="mb-2" />
-                        <span className="text-xl font-bold font-mono tracking-widest">紧急逃生</span>
-                        <span className="text-xs text-rose-400 mt-1">{backendRiskState?.exit_trigger || smartMetrics.triggerReason}</span>
+            {/* 3. Right: Market Pulse & Controls */}
+            <div className="flex flex-col gap-3 min-w-[200px] w-full md:w-auto">
+                {/* Velocity Monitor Panel */}
+                <div className="bg-slate-900/40 rounded-xl p-3 border border-slate-800 relative overflow-hidden">
+                    <div className="flex justify-between items-center mb-2">
+                        <span className="text-[10px] text-slate-500 font-bold uppercase">市场脉搏</span>
+                        <div className="flex items-center gap-2">
+                            {/* Data Freshness Indicator */}
+                            {backendRiskState?.updated_at && (
+                                <span className={`text-[9px] font-mono ${(Date.now() / 1000 - backendRiskState.updated_at) > 60 ? 'text-rose-500 animate-pulse' : 'text-emerald-500'
+                                    }`}>
+                                    {(Date.now() / 1000 - backendRiskState.updated_at) > 60 ? '数据延迟' : '● 实时'}
+                                </span>
+                            )}
+                            <Activity size={12} className={smartMetrics.isVelocityWarning ? 'text-rose-500 animate-pulse' : 'text-slate-600'} />
+                        </div>
+                    </div>
+
+                    {/* Fake Waveform Visual (CSS) */}
+                    <div className="flex items-end justify-between h-8 gap-0.5 opacity-50 mb-2">
+                        {[...Array(10)].map((_, i) => (
+                            <div key={i}
+                                className={`w-1.5 rounded-t-sm transition-all duration-300 ${smartMetrics.velocityM1 > 0 ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                                style={{ height: `${20 + Math.random() * 60}%` }}
+                            />
+                        ))}
+                    </div>
+
+                    <div className="flex justify-between text-[10px] font-mono border-t border-slate-800/50 pt-1.5">
+                        <div className="flex flex-col">
+                            <span className="text-slate-600 text-[8px]">M1 速度</span>
+                            <span className={smartMetrics.velocityM1 > 5 ? 'text-rose-400' : 'text-slate-300'}>
+                                ${smartMetrics.velocityM1.toFixed(2)}
+                            </span>
+                        </div>
+                        <div className="flex flex-col items-end">
+                            <span className="text-slate-600 text-[8px]">相对量能</span>
+                            <span className={smartMetrics.rvol > 2 ? 'text-amber-400' : 'text-slate-300'}>
+                                {smartMetrics.rvol.toFixed(1)}x
+                            </span>
+                        </div>
                     </div>
                 </div>
-            )}
+
+                {/*  Action Button (Tactical Switch) */}
+                <button
+                    onClick={handleToggleLinkage}
+                    className={`
+                            relative overflow-hidden w-full py-2.5 rounded-lg border flex items-center justify-center gap-2
+                            transition-all duration-300 text-xs font-bold tracking-wider uppercase group/btn
+                            ${eaLinkageEnabled
+                            ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.15)] hover:bg-cyan-500/20'
+                            : 'bg-slate-800 border-slate-700 text-slate-500 hover:bg-slate-800/80 hover:text-slate-400'}
+                        `}
+                >
+                    {eaLinkageEnabled ? <ShieldCheck size={14} /> : <ShieldAlert size={14} />}
+                    {eaLinkageEnabled ? 'EA 警戒中' : 'EA 已解除'}
+
+                    {/* Scanning Effect */}
+                    {eaLinkageEnabled && (
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-cyan-400/10 to-transparent -translate-x-full animate-[shimmer_2s_infinite]" />
+                    )}
+                    {syncStatus === 'SYNCING' && <span className="absolute right-2 animate-spin text-cyan-500">⟳</span>}
+                </button>
+
+                {/* Trigger Status */}
+                {displayExitTrigger !== 'NONE' && (
+                    <div className={`px-2 py-1 rounded text-[9px] font-bold text-center border ${triggerConfig.bgColor} ${triggerConfig.color} ${triggerConfig.borderColor}`}>
+                        {backendRiskState?.exit_trigger || smartMetrics.triggerReason}
+                    </div>
+                )}
+
+
+
+                {/* Operation History Bar */}
+                {operationLogs.length > 0 && (
+                    <div className="relative group/logs">
+                        <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-900/50 rounded border border-slate-800 cursor-pointer hover:border-slate-700 transition-colors">
+                            <Clock size={10} className="text-slate-500" />
+                            <span className="text-[9px] text-slate-500">最近 {operationLogs.length} 条操作</span>
+                            <div className="flex-1 h-1 bg-slate-800 rounded-full overflow-hidden">
+                                <div
+                                    className="h-full bg-gradient-to-r from-cyan-500 to-indigo-500 transition-all duration-300"
+                                    style={{ width: `${Math.min(100, operationLogs.length * 10)}%` }}
+                                />
+                            </div>
+                        </div>
+                        {/* Hover Tooltip */}
+                        <div className="absolute bottom-full left-0 right-0 mb-1 hidden group-hover/logs:block z-50">
+                            <div className="bg-slate-950 border border-slate-700 rounded-lg p-2 shadow-xl max-h-40 overflow-y-auto">
+                                <div className="text-[9px] text-slate-400 font-bold mb-1.5 uppercase tracking-wider">操作历史</div>
+                                {operationLogs.map((log, i) => (
+                                    <div key={log.id || i} className="flex items-center justify-between gap-2 py-1 border-b border-slate-800 last:border-0">
+
+                                        <span className={`text-[9px] font-mono font-bold ${log.action === 'DISABLED' ? 'text-slate-500' :
+                                            log.action?.includes('BLOCK') || log.action?.includes('禁止') ? 'text-rose-400' : 'text-cyan-400'
+                                            }`}>
+                                            {translateLogAction(log.action)}
+                                        </span>
+                                        <span className="text-[8px] text-slate-600">
+                                            {new Date(log.created_at * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
         </div>
+
+            {/* Critical Alert Overlay */ }
+    {
+        (displayExitTrigger === 'TACTICAL_EXIT' || displayExitTrigger === 'FORCE_EXIT') && (
+            <div className="absolute inset-0 z-50 pointer-events-none flex items-center justify-center bg-rose-950/20 backdrop-blur-[1px] rounded-2xl">
+                <div className="border border-rose-500/50 bg-black/80 text-rose-500 px-6 py-4 rounded-xl shadow-[0_0_50px_rgba(244,63,94,0.5)] animate-pulse flex flex-col items-center">
+                    <AlertTriangle size={32} className="mb-2" />
+                    <span className="text-xl font-bold font-mono tracking-widest">紧急逃生</span>
+                    <span className="text-xs text-rose-400 mt-1">{backendRiskState?.exit_trigger || smartMetrics.triggerReason}</span>
+                </div>
+            </div>
+        )
+    }
+        </div >
     );
 };
