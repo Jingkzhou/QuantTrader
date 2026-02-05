@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { formatServerTime } from '../utils/dateUtils';
+import { API_BASE } from '../config';
 import type { TradeHistory } from '../types';
 
 interface DashboardTablesProps {
@@ -49,7 +50,7 @@ export const DashboardTables: React.FC<DashboardTablesProps> = ({
 
         setIsClearing(true);
         try {
-            await axios.delete(`http://localhost:3001/api/v1/trade_history`, {
+            await axios.delete(`${API_BASE}/trade_history`, {
                 params: { mt4_account: mt4Account },
                 headers: { Authorization: `Bearer ${authToken}` }
             });
