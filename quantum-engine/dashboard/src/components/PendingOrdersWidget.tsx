@@ -14,16 +14,27 @@ export const PendingOrdersWidget: React.FC<PendingOrdersWidgetProps> = ({
     currentPrice,
     selectedSymbol
 }) => {
-    // 格式化时间辅助函数
+    // 格式化时间辅助函数 (使用服务器时间/UTC)
     const formatTime = (timestamp: number) => {
-        const date = new Date(timestamp * 1000); // 假设是秒级时间戳
+        if (!timestamp) return '--:--:--';
+        const date = new Date(timestamp * 1000);
         const now = new Date();
-        const isToday = date.getDate() === now.getDate() && date.getMonth() === now.getMonth();
 
-        const timeStr = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-        // 如果是跨天订单，显示日期
+        // Check if it's the same UTC day
+        const isToday = date.getUTCDate() === now.getUTCDate() &&
+            date.getUTCMonth() === now.getUTCMonth() &&
+            date.getUTCFullYear() === now.getUTCFullYear();
+
+        const hours = String(date.getUTCHours()).padStart(2, '0');
+        const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+        const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+        const timeStr = `${hours}:${minutes}:${seconds}`;
+
+        // 如果是跨天订单，显示日期 (UTC)
         if (!isToday) {
-            return `${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')} ${timeStr}`;
+            const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+            const day = String(date.getUTCDate()).padStart(2, '0');
+            return `${month}-${day} ${timeStr}`;
         }
         return timeStr;
     };
