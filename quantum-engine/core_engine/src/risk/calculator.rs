@@ -217,19 +217,19 @@ pub fn calculate_integrated_risk_score(
              trigger_reason = "综合评分极高 (等待具体触发)".to_string();
         }
     }
-    // Tactical Exit Conditions
-    else if total_risk_score >= 70.0 {
-        exit_trigger = "TACTICAL_EXIT".to_string();
-        trigger_reason = "综合风险分较高 (>70)".to_string();
-    } else if is_velocity_warning && is_adverse && survival_distance < (2.0 * atr_d1) {
-        exit_trigger = "TACTICAL_EXIT".to_string();
-        trigger_reason = "逆势加速且空间不足".to_string();
-    }
-    // Layer Lock
-    else if max_layer >= DEFAULT_MAX_LAYER {
-        exit_trigger = "LAYER_LOCK".to_string();
-        trigger_reason = "达到最大层级限制".to_string();
-    }
+    // // Tactical Exit Conditions
+    // else if total_risk_score >= 70.0 {
+    //     exit_trigger = "TACTICAL_EXIT".to_string();
+    //     trigger_reason = "综合风险分较高 (>70)".to_string();
+    // } else if is_velocity_warning && is_adverse && survival_distance < (2.0 * atr_d1) {
+    //     exit_trigger = "TACTICAL_EXIT".to_string();
+    //     trigger_reason = "逆势加速且空间不足".to_string();
+    // }
+    // // Layer Lock
+    // else if max_layer >= DEFAULT_MAX_LAYER {
+    //     exit_trigger = "LAYER_LOCK".to_string();
+    //     trigger_reason = "达到最大层级限制".to_string();
+    // }
 
     SmartExitMetrics {
         survival_distance,
