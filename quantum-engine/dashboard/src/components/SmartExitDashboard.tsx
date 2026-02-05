@@ -590,7 +590,9 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                 <div className="border border-rose-500/50 bg-black/80 text-rose-500 px-6 py-4 rounded-xl shadow-[0_0_50px_rgba(244,63,94,0.5)] animate-pulse flex flex-col items-center">
                     <AlertTriangle size={32} className="mb-2" />
                     <span className="text-xl font-bold font-mono tracking-widest">紧急逃生</span>
-                    <span className="text-xs text-rose-400 mt-1">{backendRiskState?.exit_trigger || smartMetrics.triggerReason}</span>
+                    <span className="text-xs text-rose-400 mt-1">
+                        {backendRiskState?.exit_trigger || smartMetrics.triggerReason}
+                    </span>
                 </div>
             </div>
         )
