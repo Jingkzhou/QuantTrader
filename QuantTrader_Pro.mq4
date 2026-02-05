@@ -897,12 +897,12 @@ void ProcessSellLogic(const OrderStats &stats)
 void TrackPendingOrders(const OrderStats &stats, int direction)
   {
    // 频率限制：每 5 秒最多执行一次追踪修改，避免 Error 136 (Off Quotes)
-   static datetime lastTrackTime = 0;
-   if(TimeCurrent() - lastTrackTime < 5) return;
+   // static datetime lastTrackTime = 0;
+   // if(TimeCurrent() - lastTrackTime < 5) return;
 
    if(PendingOrderTrailPoints <= 0) return;
    
-   lastTrackTime = TimeCurrent();
+   //lastTrackTime = TimeCurrent();
    double trailGap = PendingOrderTrailPoints * Point;
    double totalProfit = stats.buyProfit + stats.sellProfit;
    bool useFirstParam = (SecondParamTriggerLoss == 0 || totalProfit > -MathAbs(SecondParamTriggerLoss));
