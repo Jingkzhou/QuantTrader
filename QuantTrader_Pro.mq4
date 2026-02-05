@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "QuantTrader Pro"
 #property link      ""
-#property version   "1.28"
+#property version   "1.29"
 #property strict
 
 //+------------------------------------------------------------------+
@@ -827,7 +827,18 @@ void ProcessSellLogic(const OrderStats &stats)
       else if(stats.highestSellPrice!=0) limitPrice = NormalizeDouble(stats.highestSellPrice + step * Point, Digits);
 
       if(stats.highestSellPrice != 0 && pendingPrice < limitPrice)
-         pendingPrice = NormalizeDouble(Bid - step * Point, Digits);
+      {
+         // 计算离最近一单（最低位空单）的距离
+         double dist = 0;
+         if(stats.lowestSellPrice != 0) dist = (stats.lowestSellPrice - Bid) / Point;
+         
+         // 只有当“离上一单太近”（小于最小间距）时，才强制推远
+         // 这样既防止了密集加仓，又保证了能正常补单
+         if(dist < MinGridDistance) {
+             pendingPrice = NormalizeDouble(Bid - step * Point, Digits);
+         }
+         // 否则，保持 pendingPrice (即 Bid - MinGridDistance)，允许成交！
+      }
 
       // DEBUG LOGGING
       if(stats.sellCount > 0) {
