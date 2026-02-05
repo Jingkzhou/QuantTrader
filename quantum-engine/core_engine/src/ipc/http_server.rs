@@ -84,7 +84,7 @@ pub async fn start_server(db_pool: PgPool) {
         .route("/api/v1/logs", post(handlers::monitor::handle_logs))
         .route("/api/v1/history", post(handlers::history::handle_trade_history))
         .route("/api/v1/candles", get(handlers::candles::get_candles))
-        .route("/api/v1/trade_history", get(handlers::history::get_trade_history))
+        .route("/api/v1/trade_history", get(handlers::history::get_trade_history).delete(handlers::history::clear_trade_history))
         .route("/api/v1/command", post(handlers::commands::handle_command))
         .route("/api/v1/commands", get(handlers::commands::get_commands))
         .route("/api/v1/auth/login", post(handlers::auth::handle_login))

@@ -489,6 +489,9 @@ const App = () => {
                   pagination={pagination}
                   setPagination={setPagination}
                   onExport={handleExportHistory}
+                  mt4Account={selectedAccount?.mt4_account}
+                  authToken={auth.token || undefined}
+                  onRefresh={fetchData}
                 />
               </div>
 

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import axios from 'axios';
 import { formatServerTime } from '../utils/dateUtils';
 import type { TradeHistory } from '../types';
 
@@ -9,6 +10,9 @@ interface DashboardTablesProps {
     pagination: { page: number; limit: number; total: number };
     setPagination: React.Dispatch<React.SetStateAction<{ page: number; limit: number; total: number }>>;
     onExport?: () => void;
+    mt4Account?: number;
+    authToken?: string;
+    onRefresh?: () => void;
 }
 
 export const DashboardTables: React.FC<DashboardTablesProps> = ({
@@ -17,10 +21,14 @@ export const DashboardTables: React.FC<DashboardTablesProps> = ({
     selectedSymbol,
     pagination,
     setPagination,
-    onExport
+    onExport,
+    mt4Account,
+    authToken,
+    onRefresh
 }) => {
     const [activeTab, setActiveTab] = useState<'positions' | 'history'>('positions');
     const [isExporting, setIsExporting] = useState(false);
+    const [isClearing, setIsClearing] = useState(false);
 
     const filteredPositions = positions
         .filter((p: any) => (!selectedSymbol || p.symbol === selectedSymbol) && ['BUY', 'SELL'].includes(p.side));
@@ -33,6 +41,24 @@ export const DashboardTables: React.FC<DashboardTablesProps> = ({
             await onExport();
         } finally {
             setIsExporting(false);
+        }
+    };
+
+    const handleClearLogs = async () => {
+        if (!mt4Account || !authToken || !window.confirm('⚠️ 确定要清空该账号的所有历史记录吗？此操作不可恢复！')) return;
+
+        setIsClearing(true);
+        try {
+            await axios.delete(`http://localhost:3001/api/v1/trade_history`, {
+                params: { mt4_account: mt4Account },
+                headers: { Authorization: `Bearer ${authToken}` }
+            });
+            if (onRefresh) onRefresh();
+        } catch (err) {
+            console.error("Failed to clear history", err);
+            alert("清空失败，请查看控制台日志");
+        } finally {
+            setIsClearing(false);
         }
     };
 
@@ -60,24 +86,37 @@ export const DashboardTables: React.FC<DashboardTablesProps> = ({
                         交易明细 <span className="ml-2 text-xs px-2 py-0.5 bg-slate-800 rounded text-slate-400">{pagination.total}</span>
                     </button>
                 </div>
-                {activeTab === 'history' && onExport && (
-                    <button
-                        onClick={handleExportClick}
-                        disabled={isExporting}
-                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded border border-slate-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {isExporting ? (
-                            <>
-                                <span className="w-3 h-3 border-2 border-slate-400 border-t-cyan-500 rounded-full animate-spin"></span>
-                                导出中...
-                            </>
-                        ) : (
-                            <>
-                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                                导出 CSV
-                            </>
+                {activeTab === 'history' && (
+                    <div className="flex items-center gap-2">
+                        {mt4Account && authToken && (
+                            <button
+                                onClick={handleClearLogs}
+                                disabled={isClearing || history.length === 0}
+                                className="px-3 py-1.5 bg-rose-950/30 hover:bg-rose-900/50 text-rose-400 border border-rose-900 hover:border-rose-700 text-xs font-bold rounded transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {isClearing ? '清空中...' : '清空记录'}
+                            </button>
                         )}
-                    </button>
+                        {onExport && (
+                            <button
+                                onClick={handleExportClick}
+                                disabled={isExporting}
+                                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded border border-slate-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {isExporting ? (
+                                    <>
+                                        <span className="w-3 h-3 border-2 border-slate-400 border-t-cyan-500 rounded-full animate-spin"></span>
+                                        导出中...
+                                    </>
+                                ) : (
+                                    <>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                        导出 CSV
+                                    </>
+                                )}
+                            </button>
+                        )}
+                    </div>
                 )}
             </div>
 
@@ -184,30 +223,32 @@ export const DashboardTables: React.FC<DashboardTablesProps> = ({
             </div>
 
             {/* Pagination Controls */}
-            {activeTab === 'history' && (
-                <div className="border-t border-slate-800 p-4 flex items-center justify-between bg-slate-900/30 shrink-0">
-                    <div className="text-xs text-slate-500 font-mono">
-                        显示 {(pagination.page - 1) * pagination.limit + 1} - {Math.min(pagination.page * pagination.limit, pagination.total)} 条 / 共 {pagination.total} 条
+            {
+                activeTab === 'history' && (
+                    <div className="border-t border-slate-800 p-4 flex items-center justify-between bg-slate-900/30 shrink-0">
+                        <div className="text-xs text-slate-500 font-mono">
+                            显示 {(pagination.page - 1) * pagination.limit + 1} - {Math.min(pagination.page * pagination.limit, pagination.total)} 条 / 共 {pagination.total} 条
+                        </div>
+                        <div className="flex gap-2">
+                            <button
+                                children="上一页"
+                                disabled={pagination.page <= 1}
+                                onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
+                                className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-bold text-slate-300 transition-colors"
+                            />
+                            <span className="px-3 py-1.5 text-xs font-mono text-slate-400 bg-slate-900 rounded border border-slate-800">
+                                第 {pagination.page} 页
+                            </span>
+                            <button
+                                children="下一页"
+                                disabled={pagination.page * pagination.limit >= pagination.total}
+                                onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+                                className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-bold text-slate-300 transition-colors"
+                            />
+                        </div>
                     </div>
-                    <div className="flex gap-2">
-                        <button
-                            children="上一页"
-                            disabled={pagination.page <= 1}
-                            onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
-                            className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-bold text-slate-300 transition-colors"
-                        />
-                        <span className="px-3 py-1.5 text-xs font-mono text-slate-400 bg-slate-900 rounded border border-slate-800">
-                            第 {pagination.page} 页
-                        </span>
-                        <button
-                            children="下一页"
-                            disabled={pagination.page * pagination.limit >= pagination.total}
-                            onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
-                            className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-bold text-slate-300 transition-colors"
-                        />
-                    </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 };

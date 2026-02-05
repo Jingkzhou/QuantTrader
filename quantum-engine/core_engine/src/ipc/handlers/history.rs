@@ -203,3 +203,35 @@ pub async fn get_trade_history(
         limit
     }))
 }
+
+pub async fn clear_trade_history(
+    State(state): State<Arc<CombinedState>>,
+    claims: Claims,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> Result<axum::http::StatusCode, (axum::http::StatusCode, String)> {
+    let mt4_account = params.get("mt4_account").and_then(|id| id.parse::<i64>().ok())
+        .ok_or((axum::http::StatusCode::BAD_REQUEST, "Missing mt4_account".to_string()))?;
+
+    // Verify ownership
+    let _ = sqlx::query!(
+        "SELECT 1 as \"exists!\" FROM user_accounts WHERE user_id = $1 AND mt4_account = $2",
+        claims.user_id, mt4_account
+    )
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .ok_or((axum::http::StatusCode::FORBIDDEN, "Access denied".to_string()))?;
+
+    // Execute Delete
+    sqlx::query!(
+        "DELETE FROM trade_history WHERE mt4_account = $1",
+        mt4_account
+    )
+    .execute(&state.db)
+    .await
+    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    tracing::info!("Cleared trade history for account {}", mt4_account);
+
+    Ok(axum::http::StatusCode::OK)
+}
