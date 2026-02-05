@@ -27,7 +27,6 @@ pub async fn handle_ea_sync(
             exit_trigger: "NONE".to_string(),
             velocity_block: false, // Default
             enabled: false,
-            fingerprint_enabled: true,
         })
     };
 

@@ -153,13 +153,12 @@ pub async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json
     let metrics = calculate_ea_alert_metrics(&state, input).await;
 
     // 7. Extract Values for Control
-    let (risk_score, exit_trigger, fingerprint_enabled) = {
+    let (risk_score, exit_trigger) = {
         let mem = state.memory.read().unwrap();
         let control = mem.risk_controls.get(&payload.mt4_account);
         (
             metrics.risk_score,
-            metrics.exit_trigger.clone(),
-            control.map(|c| c.fingerprint_enabled).unwrap_or(true)
+            metrics.exit_trigger.clone()
         )
     };
 
@@ -177,14 +176,7 @@ pub async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json
         _ => (false, false, false),
     };
     
-    // RSI Entry Fingerprint Control
-    if fingerprint_enabled {
-        if metrics.rsi_14 >= 70.0 {
-            block_buy = true; // Forbid Buy (Overbought)
-        } else if metrics.rsi_14 <= 30.0 {
-            block_sell = true; // Forbid Sell (Oversold)
-        }
-    }
+
     
     let smart_exit_metrics = crate::data_models::SmartExitMetrics {
         survival_distance: metrics.survival_distance,
@@ -215,8 +207,8 @@ pub async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json
     let now_ts = chrono::Utc::now().timestamp();
     
     let update_res = sqlx::query(
-        "INSERT INTO risk_controls (mt4_account, block_buy, block_sell, block_all, risk_level, updated_at, velocity_block, enabled, risk_score, exit_trigger, fingerprint_enabled)
-         VALUES ($1, $2, $3, $4, $5, $6, false, false, $7, $8, $9)
+        "INSERT INTO risk_controls (mt4_account, block_buy, block_sell, block_all, risk_level, updated_at, velocity_block, enabled, risk_score, exit_trigger)
+         VALUES ($1, $2, $3, $4, $5, $6, false, false, $7, $8)
          ON CONFLICT (mt4_account) DO UPDATE SET 
             block_buy = CASE WHEN risk_controls.enabled = true THEN $2 ELSE risk_controls.block_buy END, 
             block_sell = CASE WHEN risk_controls.enabled = true THEN $3 ELSE risk_controls.block_sell END,
@@ -224,8 +216,7 @@ pub async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json
             exit_trigger = CASE WHEN risk_controls.enabled = true THEN $8 ELSE risk_controls.exit_trigger END,
             risk_score = $7, 
             risk_level = $5, 
-            updated_at = $6,
-            fingerprint_enabled = $9"
+            updated_at = $6"
     )
     .bind(payload.mt4_account)
     .bind(block_buy)
@@ -235,7 +226,6 @@ pub async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json
     .bind(now_ts)
     .bind(risk_score)
     .bind(&exit_trigger)
-    .bind(fingerprint_enabled)
     .execute(&state.db)
     .await;
 
@@ -312,7 +302,6 @@ pub async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json
             exit_trigger: new_trigger,
             velocity_block: existing.as_ref().map(|e| e.velocity_block).unwrap_or(false),
             enabled: was_enabled,
-            fingerprint_enabled,
         };
         s.risk_controls.insert(payload.mt4_account, risk_state);
         event
