@@ -131,7 +131,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
 }) => {
     // --- 1. Hooks (State & Memos) ---
     const [eaLinkageEnabled, setEaLinkageEnabled] = useState(false);
-    const [fingerprintEnabled, setFingerprintEnabled] = useState(true);
+    const [fingerprintEnabled, setFingerprintEnabled] = useState(false);
     const [syncStatus, setSyncStatus] = useState<'IDLE' | 'SYNCING' | 'ERROR'>('IDLE');
     const [operationLogs, setOperationLogs] = useState<any[]>([]);
     const [backendRiskState, setBackendRiskState] = useState<RiskControlState | null>(null);
@@ -646,10 +646,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                                 : 'bg-slate-800/50 border-slate-700 text-slate-500 opacity-60'}
                         `}
                     >
-                        <div className="flex items-center gap-2">
-                            <Fingerprint size={12} className={fingerprintEnabled ? 'text-indigo-400' : 'text-slate-600'} />
-                            <span>进场指纹控制</span>
-                        </div>
+
                         <div className={`
                             w-6 h-3.5 rounded-full relative transition-colors duration-300
                             ${fingerprintEnabled ? 'bg-indigo-500/30' : 'bg-slate-700'}

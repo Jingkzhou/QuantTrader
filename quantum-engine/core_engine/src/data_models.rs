@@ -186,11 +186,9 @@ pub struct RiskControlState {
     pub velocity_block: bool, // True if velocity triggered a block
     #[serde(default)]
     pub enabled: bool, // EA Linkage Enabled
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub fingerprint_enabled: bool, // Entry Fingerprint Enabled
 }
-
-fn default_true() -> bool { true }
 
 /// Velocity response data for Smart Exit calculations
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
