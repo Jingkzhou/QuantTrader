@@ -125,7 +125,7 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
                 return;
             }
             try {
-                const res = await axios.get(`${API_BASE}/account/history?mt4_account=${mt4Account}&broker=${encodeURIComponent(broker)}&limit=2000`, {
+                const res = await axios.get(`${API_BASE}/account/history?mt4_account=${mt4Account}&broker=${encodeURIComponent(broker)}&limit=100000`, {
                     headers: { Authorization: `Bearer ${authToken}` }
                 });
                 const history = res.data;
