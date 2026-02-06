@@ -132,6 +132,7 @@ export const DashboardTables: React.FC<DashboardTablesProps> = ({
                                 <th className="px-4 md:px-6 py-3">方向</th>
                                 <th className="px-4 md:px-6 py-3">手数</th>
                                 <th className="px-4 md:px-6 py-3">入场RSI</th>
+                                <th className="px-4 md:px-6 py-3">开仓时间</th>
                                 <th className="px-4 md:px-6 py-3">MAE / MFE</th>
                                 <th className="px-4 md:px-6 py-3 text-right">利润</th>
                             </tr>
@@ -150,14 +151,17 @@ export const DashboardTables: React.FC<DashboardTablesProps> = ({
                                     <td className="px-4 md:px-6 py-4 font-mono text-xs">
                                         {pos.open_rsi ? (
                                             <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${pos.open_rsi < 30 ? 'bg-emerald-500/10 text-emerald-400' :
-                                                    pos.open_rsi > 70 ? 'bg-rose-500/10 text-rose-400' :
-                                                        'bg-slate-700/50 text-slate-400'
+                                                pos.open_rsi > 70 ? 'bg-rose-500/10 text-rose-400' :
+                                                    'bg-slate-700/50 text-slate-400'
                                                 }`}>
                                                 {pos.open_rsi.toFixed(1)}
                                             </span>
                                         ) : (
                                             <span className="text-slate-600">---</span>
                                         )}
+                                    </td>
+                                    <td className="px-4 md:px-6 py-4 font-mono text-[10px] text-slate-500">
+                                        {formatServerTime(pos.open_time)}
                                     </td>
                                     <td className="px-4 md:px-6 py-4 font-mono text-xs">
                                         <span className="text-rose-400">{pos.mae?.toFixed(2) || '0.00'}</span>
@@ -170,8 +174,8 @@ export const DashboardTables: React.FC<DashboardTablesProps> = ({
                                 </tr>
                             ))}
                             {filteredPositions.length === 0 && (
-                                <tr>
-                                    <td colSpan={7} className="px-4 md:px-6 py-12 text-center text-slate-600 italic">该品种暂无活跃订单</td>
+                                <tr key="empty-pos">
+                                    <td colSpan={8} className="px-4 md:px-6 py-12 text-center text-slate-600 italic">该品种暂无活跃订单</td>
                                 </tr>
                             )}
                         </tbody>
@@ -188,8 +192,9 @@ export const DashboardTables: React.FC<DashboardTablesProps> = ({
                                 <th className="px-4 md:px-6 py-3">平仓价</th>
                                 <th className="px-4 md:px-6 py-3">MAE / MFE</th>
                                 <th className="px-4 md:px-6 py-3">开仓信号</th>
+                                <th className="px-4 md:px-6 py-3">开仓时间</th>
                                 <th className="px-4 md:px-6 py-3 text-right">利润</th>
-                                <th className="px-4 md:px-6 py-3 text-right">时间</th>
+                                <th className="px-4 md:px-6 py-3 text-right">平仓时间</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-800/50">
@@ -218,17 +223,20 @@ export const DashboardTables: React.FC<DashboardTablesProps> = ({
                                             } catch (e) { return '---'; }
                                         })() : '---'}
                                     </td>
+                                    <td className="px-4 md:px-6 py-3 font-mono text-[10px] text-slate-500 whitespace-nowrap">
+                                        {formatServerTime(t.open_time)}
+                                    </td>
                                     <td className={`px-4 md:px-6 py-3 text-right font-mono font-bold text-sm ${t.profit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
                                         {t.profit >= 0 ? '+' : ''}{t.profit.toFixed(2)}
                                     </td>
-                                    <td className="px-4 md:px-6 py-3 text-right font-mono text-slate-500 text-left text-[10px]">
+                                    <td className="px-4 md:px-6 py-3 text-right font-mono text-slate-500 text-left text-[10px] whitespace-nowrap">
                                         {formatServerTime(t.close_time)}
                                     </td>
                                 </tr>
                             ))}
                             {filteredHistory.length === 0 && (
                                 <tr>
-                                    <td colSpan={10} className="px-4 md:px-6 py-12 text-center text-slate-600 italic">该品种暂无历史记录</td>
+                                    <td colSpan={11} className="px-4 md:px-6 py-12 text-center text-slate-600 italic">该品种暂无历史记录</td>
                                 </tr>
                             )}
                         </tbody>
