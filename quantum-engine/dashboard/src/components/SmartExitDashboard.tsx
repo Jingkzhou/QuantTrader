@@ -558,23 +558,66 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                                     />
                                 </div>
                             </div>
-                            {/* Hover Tooltip */}
-                            <div className="absolute bottom-full left-0 right-0 mb-1 hidden group-hover/logs:block z-50">
-                                <div className="bg-slate-950 border border-slate-700 rounded-lg p-2 shadow-xl max-h-40 overflow-y-auto">
-                                    <div className="text-[9px] text-slate-400 font-bold mb-1.5 uppercase tracking-wider">操作历史</div>
-                                    {operationLogs.map((log, i) => (
-                                        <div key={log.id || i} className="flex items-center justify-between gap-2 py-1 border-b border-slate-800 last:border-0">
+                            {/* Hover Tooltip - Expanded for Snapshots */}
+                            <div className="absolute bottom-full left-0 right-0 mb-1 hidden group-hover/logs:block z-50 w-[320px]">
+                                <div className="bg-slate-950 border border-slate-700 rounded-lg p-3 shadow-xl max-h-80 overflow-y-auto">
+                                    <div className="text-[10px] text-slate-400 font-bold mb-2 uppercase tracking-wider flex justify-between">
+                                        <span>操作历史 & 快照</span>
+                                        <span className="text-[9px]">Hover for details</span>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {operationLogs.map((log, i) => (
+                                            <div key={log.id || i} className="flex flex-col gap-1 py-2 border-b border-slate-800 last:border-0 hover:bg-slate-900/50 rounded px-1 transition-colors">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className={`text-[10px] font-mono font-bold ${log.action === 'DISABLED' ? 'text-slate-500' :
+                                                        log.action?.includes('BLOCK') || log.action?.includes('禁止') ? 'text-rose-400' : 'text-cyan-400'
+                                                        }`}>
+                                                        {translateLogAction(log.action)}
+                                                    </span>
+                                                    <span className="text-[9px] text-slate-600">
+                                                        {new Date(log.created_at * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                                    </span>
+                                                </div>
 
-                                            <span className={`text-[9px] font-mono font-bold ${log.action === 'DISABLED' ? 'text-slate-500' :
-                                                log.action?.includes('BLOCK') || log.action?.includes('禁止') ? 'text-rose-400' : 'text-cyan-400'
-                                                }`}>
-                                                {translateLogAction(log.action)}
-                                            </span>
-                                            <span className="text-[8px] text-slate-600">
-                                                {new Date(log.created_at * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
-                                            </span>
-                                        </div>
-                                    ))}
+                                                {/* Snapshot Data (Only if Critical Trigger or explicitly available) */}
+                                                {(log.exit_trigger === 'FORCE_EXIT' || log.exit_trigger === 'TACTICAL_EXIT' || log.balance !== undefined) && (
+                                                    <div className="grid grid-cols-2 gap-x-2 gap-y-1 mt-1 bg-slate-900/80 p-1.5 rounded border border-slate-800/50">
+                                                        {log.trigger_reason && (
+                                                            <div className="col-span-2 text-[9px] text-rose-300 border-b border-white/5 pb-0.5 mb-0.5">
+                                                                ! {log.trigger_reason}
+                                                            </div>
+                                                        )}
+                                                        {log.balance !== undefined && (
+                                                            <div className="flex justify-between text-[9px]">
+                                                                <span className="text-slate-500">净值:</span>
+                                                                <span className="font-mono text-slate-300">${log.equity?.toFixed(2)}</span>
+                                                            </div>
+                                                        )}
+                                                        {log.drawdown_pct !== undefined && (
+                                                            <div className="flex justify-between text-[9px]">
+                                                                <span className="text-slate-500">回撤:</span>
+                                                                <span className={`font-mono ${log.drawdown_pct > 20 ? 'text-rose-400' : 'text-slate-300'}`}>
+                                                                    {log.drawdown_pct?.toFixed(2)}%
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                        {log.survival_distance !== undefined && (
+                                                            <div className="flex justify-between text-[9px]">
+                                                                <span className="text-slate-500">距离:</span>
+                                                                <span className="font-mono text-slate-300">{log.survival_distance?.toFixed(0)}</span>
+                                                            </div>
+                                                        )}
+                                                        {log.velocity_m1 !== undefined && (
+                                                            <div className="flex justify-between text-[9px]">
+                                                                <span className="text-slate-500">速度:</span>
+                                                                <span className="font-mono text-slate-300">${log.velocity_m1?.toFixed(2)}</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
                         </div>

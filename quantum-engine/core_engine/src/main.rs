@@ -195,7 +195,18 @@ async fn main() {
             risk_level TEXT,
             risk_score DOUBLE PRECISION,
             exit_trigger TEXT,
-            created_at BIGINT NOT NULL
+            created_at BIGINT NOT NULL,
+            balance DOUBLE PRECISION,
+            equity DOUBLE PRECISION,
+            margin DOUBLE PRECISION,
+            free_margin DOUBLE PRECISION,
+            floating_profit DOUBLE PRECISION,
+            drawdown_pct DOUBLE PRECISION,
+            survival_distance DOUBLE PRECISION,
+            velocity_m1 DOUBLE PRECISION,
+            rvol DOUBLE PRECISION,
+            positions_snapshot TEXT,
+            trigger_reason TEXT
         )"
     )
     .execute(&pool)
@@ -203,6 +214,19 @@ async fn main() {
     .expect("Failed to create risk_control_logs table");
 
     let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_rcl_account_time ON risk_control_logs (mt4_account, created_at DESC)").execute(&pool).await;
+
+    // Migration: Add snapshot columns to risk_control_logs
+    let _ = sqlx::query("ALTER TABLE risk_control_logs ADD COLUMN IF NOT EXISTS balance DOUBLE PRECISION").execute(&pool).await;
+    let _ = sqlx::query("ALTER TABLE risk_control_logs ADD COLUMN IF NOT EXISTS equity DOUBLE PRECISION").execute(&pool).await;
+    let _ = sqlx::query("ALTER TABLE risk_control_logs ADD COLUMN IF NOT EXISTS margin DOUBLE PRECISION").execute(&pool).await;
+    let _ = sqlx::query("ALTER TABLE risk_control_logs ADD COLUMN IF NOT EXISTS free_margin DOUBLE PRECISION").execute(&pool).await;
+    let _ = sqlx::query("ALTER TABLE risk_control_logs ADD COLUMN IF NOT EXISTS floating_profit DOUBLE PRECISION").execute(&pool).await;
+    let _ = sqlx::query("ALTER TABLE risk_control_logs ADD COLUMN IF NOT EXISTS drawdown_pct DOUBLE PRECISION").execute(&pool).await;
+    let _ = sqlx::query("ALTER TABLE risk_control_logs ADD COLUMN IF NOT EXISTS survival_distance DOUBLE PRECISION").execute(&pool).await;
+    let _ = sqlx::query("ALTER TABLE risk_control_logs ADD COLUMN IF NOT EXISTS velocity_m1 DOUBLE PRECISION").execute(&pool).await;
+    let _ = sqlx::query("ALTER TABLE risk_control_logs ADD COLUMN IF NOT EXISTS rvol DOUBLE PRECISION").execute(&pool).await;
+    let _ = sqlx::query("ALTER TABLE risk_control_logs ADD COLUMN IF NOT EXISTS positions_snapshot TEXT").execute(&pool).await;
+    let _ = sqlx::query("ALTER TABLE risk_control_logs ADD COLUMN IF NOT EXISTS trigger_reason TEXT").execute(&pool).await;
 
 
     // 3. Add feature engineering fields to trade_history for ML optimization
