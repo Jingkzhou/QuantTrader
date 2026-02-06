@@ -140,7 +140,7 @@ pub async fn update_risk_control(
     // Retrieve Account Snapshot for logging
     let account_snapshot = {
         let s = state.memory.read().unwrap();
-        s.account_states.get(&payload.mt4_account).cloned()
+        s.account_statuses.values().find(|acc| acc.mt4_account == payload.mt4_account).cloned()
     };
 
     let metrics_snapshot = {
@@ -149,11 +149,11 @@ pub async fn update_risk_control(
     };
 
     // Helper to calculate drawdown
-    let drawdown = if let Some(acc) = &account_snapshot {
-        if let (Some(bal), Some(eq)) = (acc.balance, acc.equity) {
-            if bal > 0.0 { ((bal - eq) / bal * 100.0).max(0.0) } else { 0.0 }
-        } else { 0.0 }
-    } else { 0.0 };
+    let drawdown = account_snapshot.as_ref().map(|acc| {
+        let bal = acc.balance;
+        let eq = acc.equity;
+        if bal > 0.0 { ((bal - eq) / bal * 100.0).max(0.0_f64) } else { 0.0 }
+    });
 
     let (surv, vel, rvol_val) = if let Some(m) = &metrics_snapshot {
         (Some(m.survival_distance), Some(m.velocity_m1), Some(m.rvol))
@@ -161,12 +161,12 @@ pub async fn update_risk_control(
         (None, None, None)
     };
 
-    let pos_snap = if let Some(acc) = &account_snapshot {
-        acc.positions.as_ref().map(|p| serde_json::to_string(p).unwrap_or_default())
-    } else { None };
+    let pos_snap = account_snapshot.as_ref().and_then(|acc| {
+        serde_json::to_string(&acc.positions).ok()
+    });
 
     let (bal, eq, mar, fm, fp) = if let Some(acc) = &account_snapshot {
-        (acc.balance, acc.equity, acc.margin, acc.free_margin, acc.floating_profit)
+        (Some(acc.balance), Some(acc.equity), Some(acc.margin), Some(acc.free_margin), Some(acc.floating_profit))
     } else {
         (None, None, None, None, None)
     };
@@ -181,47 +181,46 @@ pub async fn update_risk_control(
     
     // Common Insert Query
     // We use a macro-like approach or just repeat the query builder since we have many branches
-    let insert_log = |action: &str, trigger: &str, reason: Option<&String>| {
-        let trig_reason = reason.cloned().or(metrics_snapshot.as_ref().map(|m| m.trigger_reason.clone()));
-        
-        // Use sqlx::query directly
-        let sql = "INSERT INTO risk_control_logs 
-            (mt4_account, action, risk_level, risk_score, exit_trigger, created_at, 
-             balance, equity, margin, free_margin, floating_profit, drawdown_pct,
-             survival_distance, velocity_m1, rvol, positions_snapshot, trigger_reason) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)";
-        
-        sqlx::query(sql)
-            .bind(payload.mt4_account)
-            .bind(action)
-            .bind(&payload.risk_level)
-            .bind(payload.risk_score)
-            .bind(trigger)
-            .bind(now)
-            .bind(bal).bind(eq).bind(mar).bind(fm).bind(fp).bind(drawdown)
-            .bind(surv).bind(vel).bind(rvol_val).bind(pos_snap.clone()).bind(trig_reason)
-    };
+    // Replacement for insert_log closure to avoid lifetime issues with local captures
+    macro_rules! insert_log {
+        ($action:expr, $trigger:expr, $reason:expr) => {
+            sqlx::query("INSERT INTO risk_control_logs 
+                (mt4_account, action, risk_level, risk_score, exit_trigger, created_at, 
+                 balance, equity, margin, free_margin, floating_profit, drawdown_pct,
+                 survival_distance, velocity_m1, rvol, positions_snapshot, trigger_reason) 
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)")
+                .bind(payload.mt4_account)
+                .bind($action)
+                .bind(&payload.risk_level)
+                .bind(payload.risk_score)
+                .bind($trigger)
+                .bind(now)
+                .bind(bal).bind(eq).bind(mar).bind(fm).bind(fp).bind(drawdown)
+                .bind(surv).bind(vel).bind(rvol_val).bind(pos_snap.clone())
+                .bind($reason.map(|s: &String| s.clone()).or(metrics_snapshot.as_ref().map(|m| m.trigger_reason.clone())))
+        };
+    }
 
 
     if let Some(prev) = &prev_state {
         // Each directive change gets its own log entry
         if !prev.block_buy && payload.block_buy {
-            let _ = insert_log("禁止做多", &payload.exit_trigger, None).execute(&state.db).await;
+            let _ = insert_log!("禁止做多", &payload.exit_trigger, None::<&String>).execute(&state.db).await;
         }
         if prev.block_buy && !payload.block_buy {
-            let _ = insert_log("允许做多", &payload.exit_trigger, None).execute(&state.db).await;
+            let _ = insert_log!("允许做多", &payload.exit_trigger, None::<&String>).execute(&state.db).await;
         }
         if !prev.block_sell && payload.block_sell {
-             let _ = insert_log("禁止做空", &payload.exit_trigger, None).execute(&state.db).await;
+             let _ = insert_log!("禁止做空", &payload.exit_trigger, None::<&String>).execute(&state.db).await;
         }
         if prev.block_sell && !payload.block_sell {
-             let _ = insert_log("允许做空", &payload.exit_trigger, None).execute(&state.db).await;
+             let _ = insert_log!("允许做空", &payload.exit_trigger, None::<&String>).execute(&state.db).await;
         }
         if !prev.block_all && payload.block_all {
-             let _ = insert_log("全部禁止", &payload.exit_trigger, None).execute(&state.db).await;
+             let _ = insert_log!("全部禁止", &payload.exit_trigger, None::<&String>).execute(&state.db).await;
         }
         if prev.block_all && !payload.block_all {
-             let _ = insert_log("解除全禁", &payload.exit_trigger, None).execute(&state.db).await;
+             let _ = insert_log!("解除全禁", &payload.exit_trigger, None::<&String>).execute(&state.db).await;
         }
         if prev.exit_trigger != payload.exit_trigger && payload.exit_trigger != "NONE" {
             let trigger_action = match payload.exit_trigger.as_str() {
@@ -230,11 +229,11 @@ pub async fn update_risk_control(
                 "LAYER_LOCK" => "锁定加仓",
                 _ => "触发变更"
             };
-            let _ = insert_log(trigger_action, &payload.exit_trigger, None).execute(&state.db).await;
+            let _ = insert_log!(trigger_action, &payload.exit_trigger, None::<&String>).execute(&state.db).await;
         }
     } else if payload.enabled {
         // First time activation
-        let _ = insert_log("系统启动", &payload.exit_trigger, None).execute(&state.db).await;
+        let _ = insert_log!("系统启动", &payload.exit_trigger, None::<&String>).execute(&state.db).await;
     }
 
     Json(updated_payload).into_response()

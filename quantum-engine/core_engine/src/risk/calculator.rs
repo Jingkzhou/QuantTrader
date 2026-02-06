@@ -1,4 +1,4 @@
-use crate::data_models::{AccountStatus, Candle, DirectionalLiquidationPrice, Position, SmartExitMetrics};
+use crate::data_models::{Candle, DirectionalLiquidationPrice, Position, SmartExitMetrics};
 use std::f64;
 
 // 常量配置 (对应 SMART_EXIT_CONFIG)
@@ -7,7 +7,6 @@ const VELOCITY_CRITICAL_THRESHOLD: f64 = 3.0;
 const VELOCITY_EXTREME_THRESHOLD: f64 = 5.0;
 
 const RVOL_WARNING_THRESHOLD: f64 = 2.0;
-const RVOL_CRITICAL_THRESHOLD: f64 = 3.0;
 
 const DEFAULT_MAX_LAYER: usize = 15;
 

@@ -155,7 +155,7 @@ pub async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json
     // 7. Extract Values for Control
     let (risk_score, exit_trigger) = {
         let mem = state.memory.read().unwrap();
-        let control = mem.risk_controls.get(&payload.mt4_account);
+        let _control = mem.risk_controls.get(&payload.mt4_account);
         (
             metrics.risk_score,
             metrics.exit_trigger.clone()
@@ -170,7 +170,7 @@ pub async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json
         payload.mt4_account, risk_score, metrics.survival_distance, metrics.velocity_m1, metrics.rvol, metrics.liquidation_price);
 
     // 8. Determine Block Directives
-    let (mut block_buy, mut block_sell, block_all) = match exit_trigger.as_str() {
+    let (block_buy, block_sell, block_all) = match exit_trigger.as_str() {
         "FORCE_EXIT" | "TACTICAL_EXIT" => (true, true, true),
         "LAYER_LOCK" => (true, true, false), 
         _ => (false, false, false),
