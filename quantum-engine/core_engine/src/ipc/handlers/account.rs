@@ -309,13 +309,39 @@ pub async fn handle_account_status(State(state): State<Arc<CombinedState>>, Json
 
     // Write log if event occurred (Outside of lock)
     if let Some(action_msg) = log_event {
-         let _ = sqlx::query("INSERT INTO risk_control_logs (mt4_account, action, risk_level, risk_score, exit_trigger, created_at) VALUES ($1, $2, $3, $4, $5, $6)")
+        // Calculate drawdown percentage for snapshot
+        let drawdown_pct = if payload.balance > 0.0 {
+            ((payload.balance - payload.equity) / payload.balance * 100.0).max(0.0)
+        } else {
+            0.0
+        };
+        
+        let positions_json = serde_json::to_string(&payload.positions).ok();
+        
+        let _ = sqlx::query(
+            "INSERT INTO risk_control_logs 
+             (mt4_account, action, risk_level, risk_score, exit_trigger, created_at,
+              balance, equity, margin, free_margin, floating_profit, drawdown_pct,
+              survival_distance, velocity_m1, rvol, positions_snapshot, trigger_reason) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)"
+        )
             .bind(payload.mt4_account)
             .bind(action_msg)
             .bind(risk_level_str)
             .bind(risk_score)
             .bind(&exit_trigger) 
             .bind(now_ts)
+            .bind(payload.balance)
+            .bind(payload.equity)
+            .bind(payload.margin)
+            .bind(payload.free_margin)
+            .bind(payload.floating_profit)
+            .bind(drawdown_pct)
+            .bind(metrics.survival_distance)
+            .bind(metrics.velocity_m1)
+            .bind(metrics.rvol)
+            .bind(positions_json)
+            .bind(&metrics.trigger_reason)
             .execute(&state.db)
             .await;
     }

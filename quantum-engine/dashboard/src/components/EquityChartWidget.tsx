@@ -1,8 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createChart, ColorType, AreaSeries } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts';
 import axios from 'axios';
-import { AreaChart } from 'lucide-react';
+import { AreaChart, Clock } from 'lucide-react';
 import { API_BASE } from '../config';
 
 interface EquityChartWidgetProps {
@@ -12,6 +12,17 @@ interface EquityChartWidgetProps {
     broker: string | null;
 }
 
+type TimeRange = '1H' | '4H' | '12H' | '1D' | '3D' | '7D' | 'ALL';
+
+const TIME_RANGE_OPTIONS: { key: TimeRange; label: string; hours: number }[] = [
+    { key: '1H', label: '1小时', hours: 1 },
+    { key: '4H', label: '4小时', hours: 4 },
+    { key: '12H', label: '12小时', hours: 12 },
+    { key: '1D', label: '1天', hours: 24 },
+    { key: '3D', label: '3天', hours: 72 },
+    { key: '7D', label: '7天', hours: 168 },
+    { key: 'ALL', label: '全部', hours: 0 },
+];
 
 export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAccountStatus, authToken, mt4Account, broker }) => {
     const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -19,8 +30,10 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
     const balanceSeriesRef = useRef<ISeriesApi<"Area"> | null>(null);
     const equitySeriesRef = useRef<ISeriesApi<"Area"> | null>(null);
     const lastTimeRef = useRef<number>(0);
+    const allDataRef = useRef<{ balance: any[]; equity: any[] }>({ balance: [], equity: [] });
 
     const [isLoaded, setIsLoaded] = useState(false);
+    const [timeRange, setTimeRange] = useState<TimeRange>('1D');
 
     // Initial Setup
     useEffect(() => {
@@ -161,6 +174,9 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
                 const balanceData = processData(history, 'balance');
                 const equityData = processData(history, 'equity');
 
+                // Store all data for later filtering
+                allDataRef.current = { balance: balanceData, equity: equityData };
+
                 console.log("Equity Chart - Data Processed:", {
                     original: history.length,
                     balance: balanceData.length,
@@ -169,11 +185,22 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
                     lastTime: balanceData[balanceData.length - 1]?.time
                 });
 
-                if (balanceData.length > 0) {
-                    balanceSeries.setData(balanceData);
+                // Apply default time range filter (1D)
+                const filterByTimeRange = (data: any[], hours: number) => {
+                    if (hours === 0) return data; // ALL
+                    const cutoff = Math.floor(Date.now() / 1000) - hours * 3600;
+                    return data.filter(d => (d.time as number) >= cutoff);
+                };
+
+                const defaultHours = TIME_RANGE_OPTIONS.find(o => o.key === '1D')?.hours || 24;
+                const filteredBalance = filterByTimeRange(balanceData, defaultHours);
+                const filteredEquity = filterByTimeRange(equityData, defaultHours);
+
+                if (filteredBalance.length > 0) {
+                    balanceSeries.setData(filteredBalance);
                 }
-                if (equityData.length > 0) {
-                    equitySeries.setData(equityData);
+                if (filteredEquity.length > 0) {
+                    equitySeries.setData(filteredEquity);
                 }
 
                 // Initialize lastTimeRef with the latest history time
@@ -261,6 +288,32 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
 
     }, [currentAccountStatus, isLoaded]);
 
+    // Time range change handler
+    const handleTimeRangeChange = useCallback((range: TimeRange) => {
+        setTimeRange(range);
+
+        if (!chartRef.current || !balanceSeriesRef.current || !equitySeriesRef.current) return;
+
+        const { balance, equity } = allDataRef.current;
+        if (balance.length === 0 && equity.length === 0) return;
+
+        const hours = TIME_RANGE_OPTIONS.find(o => o.key === range)?.hours || 0;
+
+        const filterByTimeRange = (data: any[], h: number) => {
+            if (h === 0) return data; // ALL
+            const cutoff = Math.floor(Date.now() / 1000) - h * 3600;
+            return data.filter(d => (d.time as number) >= cutoff);
+        };
+
+        const filteredBalance = filterByTimeRange(balance, hours);
+        const filteredEquity = filterByTimeRange(equity, hours);
+
+        balanceSeriesRef.current.setData(filteredBalance.length > 0 ? filteredBalance : []);
+        equitySeriesRef.current.setData(filteredEquity.length > 0 ? filteredEquity : []);
+
+        chartRef.current.timeScale().fitContent();
+    }, []);
+
     const calculateRiskRatio = () => {
         if (!currentAccountStatus || !currentAccountStatus.balance) return 0;
         const bal = currentAccountStatus.balance;
@@ -281,7 +334,23 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
                     <AreaChart className={`w-4 h-4 ${isHighRisk ? 'text-rose-500 animate-pulse' : 'text-emerald-500'}`} />
                     资金曲线 (Equity vs Balance)
                 </h3>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3">
+                    {/* Time Range Selector */}
+                    <div className="flex items-center gap-1 bg-slate-800/50 rounded-lg p-0.5 border border-slate-700/50">
+                        <Clock size={12} className="text-slate-500 ml-1.5" />
+                        {TIME_RANGE_OPTIONS.map((opt) => (
+                            <button
+                                key={opt.key}
+                                onClick={() => handleTimeRangeChange(opt.key)}
+                                className={`px-2 py-0.5 text-[10px] font-bold rounded transition-all ${timeRange === opt.key
+                                        ? 'bg-cyan-500/20 text-cyan-400 shadow-inner'
+                                        : 'text-slate-500 hover:text-slate-300 hover:bg-slate-700/50'
+                                    }`}
+                            >
+                                {opt.label}
+                            </button>
+                        ))}
+                    </div>
                     {riskRatio > 0 && (
                         <div className={`text-xs font-mono font-bold px-2 py-1 rounded border ${isHighRisk ? 'bg-rose-500/10 text-rose-500 border-rose-500/50 animate-pulse' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>
                             浮亏比: {riskRatio.toFixed(2)}%

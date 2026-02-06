@@ -96,7 +96,7 @@ export const AccountStatistics: React.FC<AccountStatisticsProps> = ({
                     <span className="font-mono text-lg font-bold text-amber-500">{marginLevel.toFixed(0)}%</span>
                 </div>
                 <div className="flex flex-col">
-                    <span className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">最大回撤</span>
+                    <span className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">回撤比例</span>
                     <div className="flex items-baseline gap-2">
                         <span className={`font-mono text-lg font-bold ${currentDrawdown > 5 ? 'text-rose-500' : 'text-slate-300'}`}>
                             {currentDrawdown.toFixed(2)}%
