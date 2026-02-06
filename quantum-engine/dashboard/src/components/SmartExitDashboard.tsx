@@ -307,7 +307,7 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                 } opacity-80`} />
 
             {/* Main Content Grid */}
-            <div className="p-5 flex flex-col md:flex-row gap-6 items-center md:items-stretch">
+            <div className="p-4 md:p-5 flex flex-col md:flex-row gap-4 md:gap-6 items-center md:items-stretch">
 
                 {/* 1. Left: Risk Radar & Gauge */}
                 <div className="flex flex-col items-center justify-center min-w-[140px] relative">
@@ -315,7 +315,8 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                         <RiskGauge score={displayRiskScore} level={displayRiskLevel} />
 
                         {/* Risk Score Tooltip */}
-                        <div className="absolute top-full mt-2 w-72 p-3 bg-slate-900/95 backdrop-blur text-[10px] text-slate-300 rounded-lg shadow-xl border border-slate-700 opacity-0 group-hover/gauge:opacity-100 group-focus-within/gauge:opacity-100 transition-opacity pointer-events-none z-50 text-center">
+                        <div className="absolute top-full mt-2 w-72 max-w-[90vw] p-3 bg-slate-900/95 backdrop-blur text-[10px] text-slate-300 rounded-lg shadow-xl border border-slate-700 opacity-0 group-hover/gauge:opacity-100 group-focus-within/gauge:opacity-100 transition-opacity pointer-events-none z-50 text-center
+                            left-1/2 -translate-x-1/2 md:left-0 md:translate-x-0">
                             <div className="font-bold text-slate-200 mb-2 border-b border-slate-700 pb-1">EA 干预规则</div>
                             <div className="space-y-3 text-left">
                                 <div>
@@ -433,9 +434,9 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
 
                             {/* Drawdown Score */}
                             <div className="group/tooltip relative cursor-help" tabIndex={0}>
-                                <DataBar label="回撤深度" value={smartMetrics.drawdownScore} max={30} color="bg-orange-500" warningThreshold={20} />
+                                <DataBar label="当前回撤" value={smartMetrics.drawdownScore} max={30} color="bg-orange-500" warningThreshold={20} />
                                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-2 bg-slate-900/95 backdrop-blur text-[10px] text-slate-300 rounded-lg shadow-xl border border-slate-700 opacity-0 group-hover/tooltip:opacity-100 group-focus-within/tooltip:opacity-100 transition-opacity pointer-events-none z-50">
-                                    <div className="font-bold text-orange-400 mb-1 border-b border-slate-700 pb-1">回撤深度 (30%)</div>
+                                    <div className="font-bold text-orange-400 mb-1 border-b border-slate-700 pb-1">当前浮亏回撤 (30%)</div>
                                     <div className="space-y-0.5">
                                         <div className="flex justify-between"><span>≥ 30%</span><span className="text-rose-400">30分</span></div>
                                         <div className="flex justify-between"><span>≥ 20%</span><span className="text-amber-400">20分</span></div>
