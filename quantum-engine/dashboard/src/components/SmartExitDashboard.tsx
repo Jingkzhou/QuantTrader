@@ -95,7 +95,7 @@ const RiskGauge = ({ score, level }: { score: number, level: string }) => {
     );
 };
 
-const DataBar = ({ label, value, max = 100, color = 'bg-cyan-500', warningThreshold = 80 }: any) => {
+const DataBar = ({ label, value, max = 100, color = 'bg-cyan-500', warningThreshold = 80, displayValue }: any) => {
     const percent = Math.min(100, Math.max(0, (value / max) * 100));
     const isWarning = percent > warningThreshold;
     const finalColor = isWarning ? 'bg-rose-500' : color;
@@ -105,7 +105,7 @@ const DataBar = ({ label, value, max = 100, color = 'bg-cyan-500', warningThresh
             <div className="flex justify-between items-end">
                 <span className="text-[10px] text-slate-500 font-mono tracking-wider uppercase">{label}</span>
                 <span className={`text-[10px] font-bold font-mono ${isWarning ? 'text-rose-400' : 'text-slate-300'}`}>
-                    {value.toFixed(0)}<span className="text-[8px] text-slate-600">/{max}</span>
+                    {displayValue ? displayValue : <>{value.toFixed(0)}<span className="text-[8px] text-slate-600">/{max}</span></>}
                 </span>
             </div>
             <div className="h-1.5 w-full bg-slate-800/50 rounded-sm overflow-hidden border border-slate-800">
@@ -168,6 +168,15 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
         rsi: metrics?.rsi_14 ?? 50.0,
         rsiSignal: metrics?.rsi_signal ?? 'NEUTRAL',
     };
+
+    // Derived Real-time Metrics
+    const buyLayer = accountStatus.positions.filter(p => p.side === 'BUY').length;
+    const sellLayer = accountStatus.positions.filter(p => p.side === 'SELL').length;
+    const currentLayer = Math.max(buyLayer, sellLayer);
+
+    const currentFloatingDD = accountStatus.balance > 0
+        ? Math.max(0, ((accountStatus.balance - accountStatus.equity) / accountStatus.balance) * 100)
+        : 0;
 
     // --- 2. Side Effects ---
     // Fetch Risk State from Backend (Poll)
@@ -420,7 +429,14 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                         <div className="grid grid-cols-2 gap-x-4 gap-y-2">
 
                             <div className="group/tooltip relative cursor-help" tabIndex={0}>
-                                <DataBar label="层级负荷" value={smartMetrics.layerScore} max={20} color="bg-cyan-500" warningThreshold={15} />
+                                <DataBar
+                                    label="层级负荷"
+                                    value={smartMetrics.layerScore}
+                                    max={20}
+                                    color="bg-cyan-500"
+                                    warningThreshold={15}
+                                    displayValue={<span className="font-mono text-cyan-300">{currentLayer} 层</span>}
+                                />
                                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-2 bg-slate-900/95 backdrop-blur text-[10px] text-slate-300 rounded-lg shadow-xl border border-slate-700 opacity-0 group-hover/tooltip:opacity-100 group-focus-within/tooltip:opacity-100 transition-opacity pointer-events-none z-50">
                                     <div className="font-bold text-cyan-400 mb-1 border-b border-slate-700 pb-1">层级负荷 (20%)</div>
                                     <div className="space-y-0.5">
@@ -434,7 +450,14 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
 
                             {/* Drawdown Score */}
                             <div className="group/tooltip relative cursor-help" tabIndex={0}>
-                                <DataBar label="当前回撤" value={smartMetrics.drawdownScore} max={30} color="bg-orange-500" warningThreshold={20} />
+                                <DataBar
+                                    label="当前回撤"
+                                    value={smartMetrics.drawdownScore}
+                                    max={30}
+                                    color="bg-orange-500"
+                                    warningThreshold={20}
+                                    displayValue={<span className="font-mono text-orange-300">{currentFloatingDD.toFixed(2)}%</span>}
+                                />
                                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-2 bg-slate-900/95 backdrop-blur text-[10px] text-slate-300 rounded-lg shadow-xl border border-slate-700 opacity-0 group-hover/tooltip:opacity-100 group-focus-within/tooltip:opacity-100 transition-opacity pointer-events-none z-50">
                                     <div className="font-bold text-orange-400 mb-1 border-b border-slate-700 pb-1">当前浮亏回撤 (30%)</div>
                                     <div className="space-y-0.5">
@@ -448,7 +471,14 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
 
                             {/* Velocity Score */}
                             <div className="group/tooltip relative cursor-help" tabIndex={0}>
-                                <DataBar label="价格速度" value={smartMetrics.velocityScore} max={20} color="bg-indigo-500" warningThreshold={15} />
+                                <DataBar
+                                    label="价格速度"
+                                    value={smartMetrics.velocityScore}
+                                    max={20}
+                                    color="bg-indigo-500"
+                                    warningThreshold={15}
+                                    displayValue={<span className="font-mono text-indigo-300">${Math.abs(smartMetrics.velocityM1).toFixed(1)}/m</span>}
+                                />
                                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-2 bg-slate-900/95 backdrop-blur text-[10px] text-slate-300 rounded-lg shadow-xl border border-slate-700 opacity-0 group-hover/tooltip:opacity-100 group-focus-within/tooltip:opacity-100 transition-opacity pointer-events-none z-50">
                                     <div className="font-bold text-indigo-400 mb-1 border-b border-slate-700 pb-1">价格速度 (20%)</div>
                                     <div className="space-y-0.5">
@@ -462,7 +492,14 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
 
                             {/* Distance Score */}
                             <div className="group/tooltip relative cursor-help" tabIndex={0}>
-                                <DataBar label="生存空间" value={smartMetrics.distanceScore} max={30} color="bg-emerald-500" warningThreshold={25} />
+                                <DataBar
+                                    label="生存空间"
+                                    value={smartMetrics.distanceScore}
+                                    max={30}
+                                    color="bg-emerald-500"
+                                    warningThreshold={25}
+                                    displayValue={<span className="font-mono text-emerald-300">ATR: {atr.toFixed(1)}</span>}
+                                />
                                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-2 bg-slate-900/95 backdrop-blur text-[10px] text-slate-300 rounded-lg shadow-xl border border-slate-700 opacity-0 group-hover/tooltip:opacity-100 group-focus-within/tooltip:opacity-100 transition-opacity pointer-events-none z-50">
                                     <div className="font-bold text-emerald-400 mb-1 border-b border-slate-700 pb-1">生存空间 (30%)</div>
                                     <div className="space-y-0.5">
