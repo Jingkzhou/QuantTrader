@@ -315,22 +315,30 @@ export const SmartExitDashboard: React.FC<SmartExitDashboardProps> = ({
                         <RiskGauge score={displayRiskScore} level={displayRiskLevel} />
 
                         {/* Risk Score Tooltip */}
-                        <div className="absolute top-full mt-2 w-48 p-2.5 bg-slate-900/95 backdrop-blur text-[10px] text-slate-300 rounded-lg shadow-xl border border-slate-700 opacity-0 group-hover/gauge:opacity-100 group-focus-within/gauge:opacity-100 transition-opacity pointer-events-none z-50 text-center">
-                            <div className="font-bold text-slate-200 mb-1.5 border-b border-slate-700 pb-1">EA 干预规则</div>
-                            <div className="space-y-2 text-left">
+                        <div className="absolute top-full mt-2 w-72 p-3 bg-slate-900/95 backdrop-blur text-[10px] text-slate-300 rounded-lg shadow-xl border border-slate-700 opacity-0 group-hover/gauge:opacity-100 group-focus-within/gauge:opacity-100 transition-opacity pointer-events-none z-50 text-center">
+                            <div className="font-bold text-slate-200 mb-2 border-b border-slate-700 pb-1">EA 干预规则</div>
+                            <div className="space-y-3 text-left">
                                 <div>
-                                    <div className="flex justify-between font-bold text-rose-500">
-                                        <span>≥ 90分</span>
+                                    <div className="flex justify-between font-bold text-rose-500 mb-0.5">
+                                        <span>≥ 90分 (且满足死线)</span>
                                         <span>紧急逃生</span>
                                     </div>
-                                    <div className="text-slate-500 mt-0.5">触发 FORCE_EXIT，阻断一切交易，建议立即清仓</div>
+                                    <div className="text-slate-400 leading-relaxed">
+                                        触发 <span className="font-mono text-rose-400">FORCE_EXIT</span>。
+                                        需同时满足: Score≥90 且 (生存&lt;0.5ATR 或 DD&gt;45% 或 极速&gt;4.0)。
+                                        <div className="text-rose-500/80 mt-0.5">后果: 阻断一切交易，强制清仓</div>
+                                    </div>
                                 </div>
                                 <div>
-                                    <div className="flex justify-between font-bold text-amber-500">
-                                        <span>≥ 70分</span>
+                                    <div className="flex justify-between font-bold text-amber-500 mb-0.5">
+                                        <span>≥ 70分 (或90分无死线)</span>
                                         <span>战术减仓</span>
                                     </div>
-                                    <div className="text-slate-500 mt-0.5">触发 TACTICAL_EXIT，禁止开新仓，建议减仓防守</div>
+                                    <div className="text-slate-400 leading-relaxed">
+                                        触发 <span className="font-mono text-amber-400">TACTICAL_EXIT</span>。
+                                        满足: Score≥70 或 Score≥90但未触及死线。
+                                        <div className="text-amber-500/80 mt-0.5">后果: 禁止开新仓，建议减仓防守</div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
