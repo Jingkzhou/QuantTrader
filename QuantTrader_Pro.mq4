@@ -840,6 +840,7 @@ void ProcessSellLogic(const OrderStats &stats)
          // 否则，保持 pendingPrice (即 Bid - MinGridDistance)，允许成交！
       }
 
+      /*
       // DEBUG LOGGING
       if(stats.sellCount > 0) {
          Print("DEBUG SELL: Bid=", DoubleToString(Bid, Digits), " Highest=", DoubleToString(stats.highestSellPrice, Digits), " Step=", DoubleToString(step, 0), " Pending=", DoubleToString(pendingPrice, Digits), " Limit=", DoubleToString(limitPrice, Digits));
@@ -849,6 +850,7 @@ void ProcessSellLogic(const OrderStats &stats)
             Print("DEBUG SELL: Price Condition FAILED. Need ", DoubleToString(limitPrice, Digits));
          }
       }
+      */
      }
 
    bool canOpen = false;
