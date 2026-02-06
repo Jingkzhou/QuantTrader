@@ -17,6 +17,7 @@ export interface Position {
     commission: number;
     mae?: number;
     mfe?: number;
+    open_rsi?: number;
 }
 
 export interface AccountStatus {

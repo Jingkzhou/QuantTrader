@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "QuantTrader Pro"
 #property link      ""
-#property version   "1.30"
+#property version   "1.29"
 #property strict
 
 //+------------------------------------------------------------------+
@@ -1551,11 +1551,10 @@ void ReportAccountStatus() {
          else if(type == OP_BUYSTOP) side = "BUY_STOP";
          else if(type == OP_SELLSTOP) side = "SELL_STOP";
 
-         string item = StringFormat("{\"ticket\":%d,\"symbol\":\"%s\",\"side\":\"%s\",\"lots\":%.2f,\"open_price\":%.5f,\"open_time\":%d,\"profit\":%.2f,\"swap\":%.2f,\"commission\":%.2f,\"mae\":%.2f,\"mfe\":%.2f,\"open_rsi\":%.2f}",
+         string item = StringFormat("{\"ticket\":%d,\"symbol\":\"%s\",\"side\":\"%s\",\"lots\":%.2f,\"open_price\":%.5f,\"open_time\":%d,\"profit\":%.2f,\"swap\":%.2f,\"commission\":%.2f,\"mae\":%.2f,\"mfe\":%.2f}",
                                     OrderTicket(), OrderSymbol(), side, OrderLots(), OrderOpenPrice(), (long)OrderOpenTime(), OrderProfit(), OrderSwap(), OrderCommission(),
                                     GlobalVariableGet(StringFormat("%sMAE_%d", GV_PREFIX, OrderTicket())),
-                                    GlobalVariableGet(StringFormat("%sMFE_%d", GV_PREFIX, OrderTicket())),
-                                    GlobalVariableGet(StringFormat("%sRSI_%d", GV_PREFIX, OrderTicket())));
+                                    GlobalVariableGet(StringFormat("%sMFE_%d", GV_PREFIX, OrderTicket())));
          posJson += (posJson == "" ? "" : ",") + item;
       }
    }

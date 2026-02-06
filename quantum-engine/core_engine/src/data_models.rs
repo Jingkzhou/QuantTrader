@@ -31,6 +31,8 @@ pub struct Position {
     pub mae: f64,
     #[serde(default)]
     pub mfe: f64,
+    #[serde(default)]
+    pub open_rsi: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]

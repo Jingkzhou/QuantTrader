@@ -131,6 +131,7 @@ export const DashboardTables: React.FC<DashboardTablesProps> = ({
                                 <th className="px-4 md:px-6 py-3">品种</th>
                                 <th className="px-4 md:px-6 py-3">方向</th>
                                 <th className="px-4 md:px-6 py-3">手数</th>
+                                <th className="px-4 md:px-6 py-3">入场RSI</th>
                                 <th className="px-4 md:px-6 py-3">MAE / MFE</th>
                                 <th className="px-4 md:px-6 py-3 text-right">利润</th>
                             </tr>
@@ -147,6 +148,18 @@ export const DashboardTables: React.FC<DashboardTablesProps> = ({
                                     </td>
                                     <td className="px-4 md:px-6 py-4 font-mono">{pos.lots.toFixed(2)}</td>
                                     <td className="px-4 md:px-6 py-4 font-mono text-xs">
+                                        {pos.open_rsi ? (
+                                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${pos.open_rsi < 30 ? 'bg-emerald-500/10 text-emerald-400' :
+                                                    pos.open_rsi > 70 ? 'bg-rose-500/10 text-rose-400' :
+                                                        'bg-slate-700/50 text-slate-400'
+                                                }`}>
+                                                {pos.open_rsi.toFixed(1)}
+                                            </span>
+                                        ) : (
+                                            <span className="text-slate-600">---</span>
+                                        )}
+                                    </td>
+                                    <td className="px-4 md:px-6 py-4 font-mono text-xs">
                                         <span className="text-rose-400">{pos.mae?.toFixed(2) || '0.00'}</span>
                                         <span className="text-slate-600 mx-1">/</span>
                                         <span className="text-emerald-400">{pos.mfe?.toFixed(2) || '0.00'}</span>
@@ -158,7 +171,7 @@ export const DashboardTables: React.FC<DashboardTablesProps> = ({
                             ))}
                             {filteredPositions.length === 0 && (
                                 <tr>
-                                    <td colSpan={6} className="px-4 md:px-6 py-12 text-center text-slate-600 italic">该品种暂无活跃订单</td>
+                                    <td colSpan={7} className="px-4 md:px-6 py-12 text-center text-slate-600 italic">该品种暂无活跃订单</td>
                                 </tr>
                             )}
                         </tbody>
