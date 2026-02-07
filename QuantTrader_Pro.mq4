@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "QuantTrader Pro"
 #property link      ""
-#property version   "1.30"
+#property version   "1.40"
 #property strict
 
 //+------------------------------------------------------------------+
@@ -146,6 +146,7 @@ extern bool   EnableLayeredProfit       = true;         // 单边平仓金额累
 extern double SingleSideProfit          = 2;            // 单边平仓金额 (StopProfit) - 作为保底值
 extern bool   EnableDynamicTP           = true;         // [动态止盈] 开启 ATR 动态止盈
 extern int    ATR_Period                = 14;           // [动态止盈] ATR 周期
+extern ENUM_TIMEFRAMES ATR_Timeframe    = PERIOD_M5;    // [动态止盈] ATR 时间周期 (M5/M15/M30/H1)
 extern double ATR_Profit_Factor         = 1.5;          // [动态止盈] ATR 止盈系数
 extern double StopLossAmount            = 0;            // 止损金额 (StopLoss)
 
@@ -1076,8 +1077,8 @@ bool CheckSingleSideProfit(const OrderStats &stats)
    double dynSellTarget = 0;
 
    if(EnableDynamicTP) {
-       // 获取 M5 周期的 ATR (避免短周期噪音)
-       double atr = iATR(NULL, PERIOD_M5, ATR_Period, 0);
+       // 获取指定周期的 ATR
+       double atr = iATR(NULL, ATR_Timeframe, ATR_Period, 0);
        
        // 获取当前品种的点值价值 (Tick Value)
        // 公式：(ATR / TickSize) * TickValue * Lots
