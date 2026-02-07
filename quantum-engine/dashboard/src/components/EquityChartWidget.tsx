@@ -329,14 +329,26 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
 
     return (
         <div className={`bg-slate-900/50 border rounded-2xl p-4 md:p-6 flex flex-col min-h-[350px] md:h-[280px] transition-colors ${isHighRisk ? 'border-rose-500/50 shadow-[0_0_20px_rgba(244,63,94,0.1)]' : 'border-slate-800'}`}>
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
-                <h3 className="font-bold text-slate-300 flex items-center gap-2 uppercase tracking-wide text-sm shrink-0">
-                    <AreaChart className={`w-4 h-4 ${isHighRisk ? 'text-rose-500 animate-pulse' : 'text-emerald-500'}`} />
-                    资金曲线 (Equity vs Balance)
-                </h3>
-                <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-4">
+                {/* Title Section - Mobile: Row with SpaceBetween (Title + Ratio), Desktop: Auto width */}
+                <div className="flex justify-between items-center w-full md:w-auto">
+                    <h3 className="font-bold text-slate-300 flex items-center gap-2 uppercase tracking-wide text-sm shrink-0">
+                        <AreaChart className={`w-4 h-4 ${isHighRisk ? 'text-rose-500 animate-pulse' : 'text-emerald-500'}`} />
+                        <span className="truncate">资金曲线 (Equity)</span>
+                    </h3>
+
+                    {/* Mobile Only: Risk Label next to Title */}
+                    {riskRatio > 0 && (
+                        <div className={`md:hidden text-[10px] font-mono font-bold px-2 py-1 rounded border whitespace-nowrap ${isHighRisk ? 'bg-rose-500/10 text-rose-500 border-rose-500/50 animate-pulse' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>
+                            DD: {riskRatio.toFixed(2)}%
+                        </div>
+                    )}
+                </div>
+
+                {/* Controls Section - Mobile: Full width, Desktop: Auto */}
+                <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
                     {/* Time Range Selector */}
-                    <div className="flex items-center gap-1 bg-slate-800/50 rounded-lg p-0.5 border border-slate-700/50 overflow-x-auto no-scrollbar">
+                    <div className="flex items-center gap-1 bg-slate-800/50 rounded-lg p-0.5 border border-slate-700/50 overflow-x-auto no-scrollbar flex-1 md:flex-none">
                         <Clock size={12} className="text-slate-500 ml-1.5 shrink-0" />
                         {TIME_RANGE_OPTIONS.map((opt) => (
                             <button
@@ -351,8 +363,10 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
                             </button>
                         ))}
                     </div>
+
+                    {/* Desktop Only: Risk Label in controls area */}
                     {riskRatio > 0 && (
-                        <div className={`text-[10px] md:text-xs font-mono font-bold px-2 py-1 rounded border whitespace-nowrap ${isHighRisk ? 'bg-rose-500/10 text-rose-500 border-rose-500/50 animate-pulse' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>
+                        <div className={`hidden md:block text-xs font-mono font-bold px-2 py-1 rounded border whitespace-nowrap ${isHighRisk ? 'bg-rose-500/10 text-rose-500 border-rose-500/50 animate-pulse' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>
                             浮亏比: {riskRatio.toFixed(2)}%
                         </div>
                     )}
