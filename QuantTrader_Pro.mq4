@@ -143,7 +143,10 @@ extern int    LotDecimalPlaces          = 2;            // 下单量的小数位
 //--- 止盈止损
 extern double TotalProfitTarget         = 0.5;          // 整体平仓金额 (CloseAll)
 extern bool   EnableLayeredProfit       = true;         // 单边平仓金额累加开关 (Profit)
-extern double SingleSideProfit          = 2;            // 单边平仓金额 (StopProfit)
+extern double SingleSideProfit          = 2;            // 单边平仓金额 (StopProfit) - 作为保底值
+extern bool   EnableDynamicTP           = true;         // [动态止盈] 开启 ATR 动态止盈
+extern int    ATR_Period                = 14;           // [动态止盈] ATR 周期
+extern double ATR_Profit_Factor         = 1.5;          // [动态止盈] ATR 止盈系数
 extern double StopLossAmount            = 0;            // 止损金额 (StopLoss)
 
 //--- 交易限制
@@ -1053,15 +1056,72 @@ bool CheckStopLoss(const OrderStats &stats)
    return false;
   }
 
+// 优化的单边止盈检查 (支持 ATR 动态膨胀 + 保底)
 bool CheckSingleSideProfit(const OrderStats &stats)
   {
-   if(SingleSideProfit <= 0) return false;
-   double bt = EnableLayeredProfit ? SingleSideProfit * stats.buyCount : SingleSideProfit;
-   double st = EnableLayeredProfit ? SingleSideProfit * stats.sellCount : SingleSideProfit;
+   // 基础检查：如果没有开启单边止盈且没有动态止盈，直接返回
+   if(SingleSideProfit <= 0 && !EnableDynamicTP) return false;
 
-   if(stats.buyCount > 0 && stats.buyProfit > bt) { CloseAllOrders(1); return true; }
-   if(stats.sellCount > 0 && stats.sellProfit > st) { CloseAllOrders(-1); return true; }
-   return false;
+   // 1. 计算原始保底金额 (Fixed Floor)
+   double fixedBuyTarget = 0;
+   double fixedSellTarget = 0;
+   
+   if(SingleSideProfit > 0) {
+       fixedBuyTarget = EnableLayeredProfit ? SingleSideProfit * stats.buyCount : SingleSideProfit;
+       fixedSellTarget = EnableLayeredProfit ? SingleSideProfit * stats.sellCount : SingleSideProfit;
+   }
+
+   // 2. 计算 ATR 动态金额 (Dynamic Ceiling)
+   double dynBuyTarget = 0;
+   double dynSellTarget = 0;
+
+   if(EnableDynamicTP) {
+       // 获取 M5 周期的 ATR (避免短周期噪音)
+       double atr = iATR(NULL, PERIOD_M5, ATR_Period, 0);
+       
+       // 获取当前品种的点值价值 (Tick Value)
+       // 公式：(ATR / TickSize) * TickValue * Lots
+       double tickVal = MarketInfo(Symbol(), MODE_TICKVALUE);
+       double tickSize = MarketInfo(Symbol(), MODE_TICKSIZE);
+       
+       // 防止除以零错误
+       if(tickSize > 0) {
+           double atrValuePerLot = (atr / tickSize) * tickVal;
+           
+           // 动态目标 = ATR价值 * 总手数 * 系数
+           dynBuyTarget = atrValuePerLot * stats.buyLots * ATR_Profit_Factor;
+           dynSellTarget = atrValuePerLot * stats.sellLots * ATR_Profit_Factor;
+       }
+   }
+
+   // 3. 最终决策：取两者之大 (保底 vs 动态)
+   double finalBuyTarget = MathMax(fixedBuyTarget, dynBuyTarget);
+   double finalSellTarget = MathMax(fixedSellTarget, dynSellTarget);
+
+   // 4. 执行平仓判断
+   bool executed = false;
+   
+   // 多单止盈
+   if(stats.buyCount > 0 && stats.buyProfit >= finalBuyTarget && finalBuyTarget > 0) {
+      Print("动态止盈触发(BUY): Profit=", DoubleToString(stats.buyProfit, 2), 
+            " >= Target=", DoubleToString(finalBuyTarget, 2), 
+            " (Fixed=", DoubleToString(fixedBuyTarget, 2), 
+            ", ATR_Dyn=", DoubleToString(dynBuyTarget, 2), ")");
+      CloseAllOrders(1); 
+      executed = true; 
+   }
+   
+   // 空单止盈
+   if(stats.sellCount > 0 && stats.sellProfit >= finalSellTarget && finalSellTarget > 0) {
+      Print("动态止盈触发(SELL): Profit=", DoubleToString(stats.sellProfit, 2), 
+            " >= Target=", DoubleToString(finalSellTarget, 2), 
+            " (Fixed=", DoubleToString(fixedSellTarget, 2), 
+            ", ATR_Dyn=", DoubleToString(dynSellTarget, 2), ")");
+      CloseAllOrders(-1); 
+      executed = true; 
+   }
+
+   return executed;
   }
 
 bool CheckTrendProtection(const OrderStats &stats)
