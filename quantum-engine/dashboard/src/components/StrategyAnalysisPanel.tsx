@@ -47,7 +47,7 @@ export const StrategyAnalysisPanel: React.FC<StrategyAnalysisPanelProps> = ({ au
             setLoading(true);
             try {
                 // Fetch sufficient history for analysis
-                const res = await axios.get(`${API_BASE}/trade_history?mt4_account=${mt4Account}&broker=${encodeURIComponent(broker)}&limit=5000`, {
+                const res = await axios.get(`${API_BASE}/trade_history?mt4_account=${mt4Account}&broker=${encodeURIComponent(broker)}&limit=500`, {
                     headers: { Authorization: `Bearer ${authToken}` }
                 });
                 const data = Array.isArray(res.data) ? res.data : (res.data.data || []);
