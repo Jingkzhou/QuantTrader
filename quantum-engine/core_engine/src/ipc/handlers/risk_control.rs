@@ -137,10 +137,51 @@ pub async fn update_risk_control(
         payload.mt4_account, payload.enabled, payload.risk_level, payload.block_buy, payload.block_sell);
 
     // Insert operation log ONLY when directives change or system starts
-    // Retrieve Account Snapshot for logging
+    // Retrieve Account Snapshot for logging (Memory first, then DB fallback)
     let account_snapshot = {
         let s = state.memory.read().unwrap();
         s.account_statuses.values().find(|acc| acc.mt4_account == payload.mt4_account).cloned()
+    };
+
+    // [FIX] If memory snapshot is empty, try to fetch from database
+    let account_snapshot = if account_snapshot.is_none() {
+        let db_row = sqlx::query(
+            "SELECT balance, equity, margin, free_margin, floating_profit, timestamp, positions_snapshot, mt4_account, broker 
+             FROM account_status WHERE mt4_account = $1 ORDER BY timestamp DESC LIMIT 1"
+        )
+        .bind(payload.mt4_account)
+        .fetch_optional(&state.db)
+        .await;
+
+        match db_row {
+            Ok(Some(row)) => {
+                use sqlx::Row;
+                let positions: Vec<crate::data_models::Position> = row.try_get::<Option<String>, _>("positions_snapshot")
+                    .ok()
+                    .flatten()
+                    .and_then(|s| serde_json::from_str(&s).ok())
+                    .unwrap_or_default();
+                    
+                Some(crate::data_models::AccountStatus {
+                    balance: row.try_get("balance").unwrap_or(0.0),
+                    equity: row.try_get("equity").unwrap_or(0.0),
+                    margin: row.try_get("margin").unwrap_or(0.0),
+                    free_margin: row.try_get("free_margin").unwrap_or(0.0),
+                    floating_profit: row.try_get("floating_profit").unwrap_or(0.0),
+                    timestamp: row.try_get("timestamp").unwrap_or(0),
+                    mt4_account: row.try_get("mt4_account").unwrap_or(0),
+                    broker: row.try_get("broker").unwrap_or_default(),
+                    positions,
+                    ..Default::default()
+                })
+            }
+            _ => {
+                tracing::warn!("No account snapshot found for mt4_account {} in memory or DB", payload.mt4_account);
+                None
+            }
+        }
+    } else {
+        account_snapshot
     };
 
     let metrics_snapshot = {

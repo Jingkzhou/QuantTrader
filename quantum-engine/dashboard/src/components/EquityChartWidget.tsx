@@ -328,23 +328,23 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
     const isHighRisk = riskRatio > 30;
 
     return (
-        <div className={`bg-slate-900/50 border rounded-2xl p-6 flex flex-col h-[250px] md:h-[280px] transition-colors ${isHighRisk ? 'border-rose-500/50 shadow-[0_0_20px_rgba(244,63,94,0.1)]' : 'border-slate-800'}`}>
-            <div className="flex justify-between items-center mb-4">
-                <h3 className="font-bold text-slate-300 flex items-center gap-2 uppercase tracking-wide text-sm">
+        <div className={`bg-slate-900/50 border rounded-2xl p-4 md:p-6 flex flex-col min-h-[350px] md:h-[280px] transition-colors ${isHighRisk ? 'border-rose-500/50 shadow-[0_0_20px_rgba(244,63,94,0.1)]' : 'border-slate-800'}`}>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+                <h3 className="font-bold text-slate-300 flex items-center gap-2 uppercase tracking-wide text-sm shrink-0">
                     <AreaChart className={`w-4 h-4 ${isHighRisk ? 'text-rose-500 animate-pulse' : 'text-emerald-500'}`} />
                     资金曲线 (Equity vs Balance)
                 </h3>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
                     {/* Time Range Selector */}
-                    <div className="flex items-center gap-1 bg-slate-800/50 rounded-lg p-0.5 border border-slate-700/50">
-                        <Clock size={12} className="text-slate-500 ml-1.5" />
+                    <div className="flex items-center gap-1 bg-slate-800/50 rounded-lg p-0.5 border border-slate-700/50 overflow-x-auto no-scrollbar">
+                        <Clock size={12} className="text-slate-500 ml-1.5 shrink-0" />
                         {TIME_RANGE_OPTIONS.map((opt) => (
                             <button
                                 key={opt.key}
                                 onClick={() => handleTimeRangeChange(opt.key)}
-                                className={`px-2 py-0.5 text-[10px] font-bold rounded transition-all ${timeRange === opt.key
-                                        ? 'bg-cyan-500/20 text-cyan-400 shadow-inner'
-                                        : 'text-slate-500 hover:text-slate-300 hover:bg-slate-700/50'
+                                className={`px-2 py-0.5 text-[10px] font-bold rounded transition-all whitespace-nowrap ${timeRange === opt.key
+                                    ? 'bg-cyan-500/20 text-cyan-400 shadow-inner'
+                                    : 'text-slate-500 hover:text-slate-300 hover:bg-slate-700/50'
                                     }`}
                             >
                                 {opt.label}
@@ -352,13 +352,13 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
                         ))}
                     </div>
                     {riskRatio > 0 && (
-                        <div className={`text-xs font-mono font-bold px-2 py-1 rounded border ${isHighRisk ? 'bg-rose-500/10 text-rose-500 border-rose-500/50 animate-pulse' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>
+                        <div className={`text-[10px] md:text-xs font-mono font-bold px-2 py-1 rounded border whitespace-nowrap ${isHighRisk ? 'bg-rose-500/10 text-rose-500 border-rose-500/50 animate-pulse' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>
                             浮亏比: {riskRatio.toFixed(2)}%
                         </div>
                     )}
                 </div>
             </div>
-            <div ref={chartContainerRef} className="w-full flex-1" />
+            <div ref={chartContainerRef} className="w-full flex-1 min-h-[200px]" />
         </div>
     );
 };
