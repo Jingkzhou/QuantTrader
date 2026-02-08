@@ -153,7 +153,7 @@
 
 使用根目录下的 `build_images.sh` 脚本生成部署包。该工具支持智能增量构建，输出产物位于 `dist/` 目录。
 
-```bash
+```bash 
 # [推荐] 智能构建变动模块
 # 自动检测 git 变更，只打包代码有修改的服务（Core/Brain/Dashboard）
 ./build_images.sh --changed
