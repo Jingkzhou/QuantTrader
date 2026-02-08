@@ -465,6 +465,8 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
                 }));
 
                 if (data.length > 0) {
+                    if (!seriesRef.current) return;
+
                     seriesRef.current.setData(data);
                     lastCandleRef.current = data[data.length - 1];
                     allCandlesRef.current = data;
@@ -479,6 +481,9 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
                     drawTradeLines();
                 }
             } catch (err) {
+                if (axios.isAxiosError(err) && err.response?.status === 403) {
+                    return;
+                }
                 console.error("Failed to fetch candle data", err);
             }
         };
@@ -561,6 +566,7 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
             allCandlesRef.current = [newCandle];
         }
 
+        if (!seriesRef.current) return;
         seriesRef.current.update(newCandle as any);
 
         // Update MA Realtime
