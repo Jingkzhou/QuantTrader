@@ -177,6 +177,8 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
                 // Store all data for later filtering
                 allDataRef.current = { balance: balanceData, equity: equityData };
 
+                if (!chartRef.current) return; // Prevent update if unmounted
+
                 console.log("Equity Chart - Data Processed:", {
                     original: history.length,
                     balance: balanceData.length,
@@ -213,6 +215,10 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
                 chart.timeScale().fitContent();
                 setIsLoaded(true);
             } catch (e) {
+                if (axios.isAxiosError(e) && e.response?.status === 403) {
+                    console.warn("EquityChart access forbidden (403). Ignoring.");
+                    return;
+                }
                 console.error("Failed to fetch equity history", e);
             }
         };

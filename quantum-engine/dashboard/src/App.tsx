@@ -60,12 +60,14 @@ const App = () => {
     setAuth({ token: null, username: null, role: null });
   };
 
-  // Global Axios Interceptor for Auto-Logout on 401/403
+  // Global Axios Interceptor for Auto-Logout on 401
   useEffect(() => {
     const interceptor = axios.interceptors.response.use(
       (response) => response,
       (error) => {
-        if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+        // Only logout on 401 Unauthorized (Invalid Token)
+        // 403 is Forbidden (Valid Token, No Permission), should be handled by components
+        if (error.response && error.response.status === 401) {
           handleLogout();
         }
         return Promise.reject(error);
@@ -123,6 +125,14 @@ const App = () => {
       // Parallelize Requests: State, History, AccountHistory
       const requests: Promise<any>[] = [
         axios.get(stateUrl, { headers: { Authorization: `Bearer ${auth.token}` } })
+          .catch(e => {
+            // Handle 403 specifically to reset bad account selection
+            if (axios.isAxiosError(e) && e.response?.status === 403 && selectedAccount) {
+              console.warn("Access denied for selected account. Resetting selection.");
+              return { error: e, status: 403 };
+            }
+            throw e; // Re-throw other errors to fail Promise.all or be caught below
+          })
       ];
 
       // If account selected, add history fetches
@@ -141,6 +151,14 @@ const App = () => {
 
       const results = await Promise.all(requests);
       const stateRes = results[0];
+
+      // Safe guard if state fetch failed (e.g. 403 handled above)
+      if (stateRes.status === 403) {
+        setSelectedAccount(null);
+        localStorage.removeItem('lastAccount');
+        return;
+      }
+
       const newState = stateRes.data;
       setData(newState);
 
@@ -204,7 +222,8 @@ const App = () => {
     fetchData(); // Initial fetch
     const interval = setInterval(fetchData, 2000);
     return () => clearInterval(interval);
-  }, [selectedSymbol, auth.token, selectedAccount, pagination.page]);
+  }, [selectedSymbol, auth.token, selectedAccount?.mt4_account, pagination.page]); // Fix dependency to primitive
+
 
   // Reset pagination when symbol or account changes
   useEffect(() => {
