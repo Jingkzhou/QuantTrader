@@ -288,6 +288,9 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({ symbol, currentData, a
         return () => {
             window.removeEventListener('resize', handleResize);
             chart.remove();
+            chartRef.current = null;
+            seriesRef.current = null;
+            maSeriesRef.current = null;
         };
     }, [isFullScreen]);
 

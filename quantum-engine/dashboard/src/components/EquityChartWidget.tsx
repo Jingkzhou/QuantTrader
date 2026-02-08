@@ -236,6 +236,9 @@ export const EquityChartWidget: React.FC<EquityChartWidgetProps> = ({ currentAcc
         return () => {
             window.removeEventListener('resize', handleResize);
             chart.remove();
+            chartRef.current = null;
+            balanceSeriesRef.current = null;
+            equitySeriesRef.current = null;
         };
     }, [authToken, mt4Account, broker]);
 
